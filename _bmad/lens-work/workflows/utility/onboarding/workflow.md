@@ -318,13 +318,7 @@ if file_exists(gov_setup_path):
     # Detect current branch from clone if it exists
     default_release_branch = "release/4.5"
     if dir_exists("bmad.lens.release") and is_git_repo("bmad.lens.release"):
-```
-
-```bash
-      detected=$(git -C bmad.lens.release rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-```
-
-```yaml
+      detected = git_current_branch("bmad.lens.release")
       if detected:
         default_release_branch = detected
 
@@ -338,23 +332,11 @@ if file_exists(gov_setup_path):
     release_url = "https://github.com/crisweber2600/bmad.lens.release"
     copilot_url = "https://github.com/crisweber2600/bmad.lens.copilot"
     if dir_exists("bmad.lens.release") and is_git_repo("bmad.lens.release"):
-```
-
-```bash
-      detected_url=$(git -C bmad.lens.release remote get-url origin 2>/dev/null || echo "")
-```
-
-```yaml
+      detected_url = git_remote_url("bmad.lens.release", "origin")
       if detected_url:
         release_url = detected_url
     if dir_exists(".github") and is_git_repo(".github"):
-```
-
-```bash
-      detected_url=$(git -C .github remote get-url origin 2>/dev/null || echo "")
-```
-
-```yaml
+      detected_url = git_remote_url(".github", "origin")
       if detected_url:
         copilot_url = detected_url
 

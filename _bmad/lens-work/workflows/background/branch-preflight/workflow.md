@@ -204,10 +204,16 @@ This uses a TTL-based marker file (same pattern as step 4a) so the check only
 runs periodically, not on every single invocation.
 
 ```yaml
-# Load source repo config from governance-setup.yaml
+# Load source repo config from governance-setup.yaml (may not exist on fresh installs)
+if not file_exists("_bmad-output/lens-work/governance-setup.yaml"):
+  log: "governance-setup.yaml not found — skipping freshness check"
+  continue: true
+
 gov_setup = load_yaml("_bmad-output/lens-work/governance-setup.yaml")
 source_repos = gov_setup.source_repos || null
-source_ttl = (gov_setup.source_sync || {}).ttl || 3600  # default 1 hour
+source_ttl = (gov_setup.source_sync || {}).ttl
+if source_ttl == null:
+  source_ttl = 3600  # default 1 hour
 
 # Skip entirely if source_repos not configured (pre-upgrade control repos)
 if source_repos == null:
@@ -216,8 +222,8 @@ if source_repos == null:
 ```
 
 ```yaml
-# TTL gate — use a shared marker file in the control repo root
-marker_file = ".last-source-check"
+# TTL gate — store marker in gitignored personal folder to avoid dirty working tree
+marker_file = "_bmad-output/lens-work/personal/.last-source-check"
 last_check_epoch = 0
 
 if file_exists(marker_file):
@@ -265,9 +271,9 @@ for repo_key, repo_config in source_repos.items():
     continue
 ```
 
-```bash
-  # Count commits behind
-  behind_count=$(git -C "${local_path}" rev-list HEAD..origin/"${branch}" --count 2>/dev/null || echo "0")
+```yaml
+  # Count commits behind (YAML helper keeps value in workflow context)
+  behind_count = git_commits_behind(local_path, "origin/" + branch)
 ```
 
 ```yaml
@@ -390,14 +396,24 @@ if lens_release_updated:
     # Run installer in update mode — refreshes prompts and instructions
     # even if they already exist (unlike initial install which skips existing)
     node -e "
-      const {install} = require('./${installer_path}');
-      install({
-        projectRoot: process.cwd(),
-        config: {},
-        installedIDEs: ['github-copilot'],
-        updateMode: true,
-        logger: { log: console.log, warn: console.warn, error: console.error }
-      });
+      (async () => {
+        try {
+          const { install } = require('./${installer_path}');
+          const installSucceeded = await install({
+            projectRoot: process.cwd(),
+            config: {},
+            installedIDEs: ['github-copilot'],
+            updateMode: true,
+            logger: { log: console.log, warn: console.warn, error: console.error }
+          });
+          if (!installSucceeded) {
+            process.exit(1);
+          }
+        } catch (err) {
+          console.error(err);
+          process.exit(1);
+        }
+      })();
     "
 ```
 
