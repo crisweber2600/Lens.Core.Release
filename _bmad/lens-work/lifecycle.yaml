@@ -180,7 +180,7 @@ tracks:
 
   tech-change:
     description: "Pure technical change — no business case needed"
-    phases: [techplan, sprintplan]
+    phases: [techplan, devproposal, sprintplan]
     audiences: [small, medium, large, base]
     constitution_controlled_gates: [devproposal, medium-to-large]
     start_phase: techplan

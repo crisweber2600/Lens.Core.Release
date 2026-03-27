@@ -53,7 +53,7 @@ Collect missing parameters from the user. **Track selection applies only to feat
 |-------|-------------|--------|
 | `full` | Complete lifecycle — all phases, all audiences | preplan → businessplan → techplan → devproposal → sprintplan |
 | `feature` | Known business context — skip research | businessplan → techplan → devproposal → sprintplan |
-| `tech-change` | Pure technical change | techplan → sprintplan |
+| `tech-change` | Pure technical change | techplan → devproposal → sprintplan |
 | `hotfix` | Urgent fix — minimal planning | techplan |
 | `spike` | Research only — no implementation | preplan |
 | `quickdev` | Rapid execution — delegates to target agents | devproposal |

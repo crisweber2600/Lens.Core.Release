@@ -69,7 +69,7 @@ Not all tracks include all phases. The agent reads `tracks.{track}.phases` from 
 |-------|-------------|
 | full | preplan, businessplan, techplan, devproposal, sprintplan |
 | feature | businessplan, techplan, devproposal, sprintplan |
-| tech-change | techplan, sprintplan |
+| tech-change | techplan, devproposal, sprintplan |
 | hotfix | techplan |
 | spike | preplan |
 | quickdev | devproposal |
