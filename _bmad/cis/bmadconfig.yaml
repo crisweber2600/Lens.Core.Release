@@ -6,7 +6,7 @@
 visual_tools: intermediate
 
 # Core Configuration Values
-user_name: CrisWeber
+user_name: "${github_username}"  # Resolved from lens-work/bmadconfig.yaml: github_username
 communication_language: English
 document_output_language: English
 output_folder: _bmad-output
