@@ -801,7 +801,7 @@ for each repo in repo_results:
 
     try:
         # Construct the docs output path — canonical convention for all discover-generated docs
-        docs_output_path = "Docs/{domain}/{service}/{repo.repo_name}/"
+        docs_output_path = "docs/{domain}/{service}/{repo.repo_name}/"
 
         # Delegate to bmad-bmm-generate-project-context workflow
         result = invoke_workflow("bmad-bmm-generate-project-context", {
@@ -827,7 +827,7 @@ for each repo in repo_results:
 
 **Rules:**
 - Per-repo failure is **non-fatal** — failure for one repo does NOT abort remaining repos
-- Output is written to `Docs/{domain}/{service}/{repo_name}/` — the canonical discover docs path (NOT the repo root or `_bmad-output/`)
+- Output is written to `docs/{domain}/{service}/{repo_name}/` — the canonical discover docs path (NOT the repo root or `_bmad-output/`)
 - The `bmad-bmm-generate-project-context` workflow handle is resolved from module registry
 
 ### 5.5c. Output Context Summary
@@ -867,7 +867,7 @@ for each repo in repo_results:
 
     try:
         # Construct the docs output path — canonical convention for all discover-generated docs
-        docs_output_path = "Docs/{domain}/{service}/{repo.repo_name}/"
+        docs_output_path = "docs/{domain}/{service}/{repo.repo_name}/"
 
         # Delegate to bmad-bmm-document-project workflow
         result = invoke_workflow("bmad-bmm-document-project", {
@@ -893,7 +893,7 @@ for each repo in repo_results:
 
 **Rules:**
 - Per-repo failure is **non-fatal** — failure for one repo does NOT abort remaining repos
-- All documentation output is written to `Docs/{domain}/{service}/{repo_name}/` — the canonical discover docs path (NOT the repo root or `_bmad-output/`)
+- All documentation output is written to `docs/{domain}/{service}/{repo_name}/` — the canonical discover docs path (NOT the repo root or `_bmad-output/`)
 - The `bmad-bmm-document-project` workflow handle is resolved from module registry
 
 ### 5.6c. Output Documentation Summary

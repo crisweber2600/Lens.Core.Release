@@ -103,11 +103,65 @@ if [ -d ".github/prompts" ]; then
 fi
 ```
 
-### 4. Verify Authority Repos
+### Step 3b: Sync Agent Entry Points
+
+On every preflight run, sync agent entry point files from the release repo to the workspace root. Copy each entry point file if it is missing or if the release version changed during pull.
+
+This check runs even when the pull is skipped by timestamp.
+
+**Bash:**
+```bash
+for entry_point in CLAUDE.md; do
+    if [ -f "bmad.lens.release/$entry_point" ]; then
+        changed="$(git -C bmad.lens.release diff --name-only HEAD@{1} HEAD -- "$entry_point" 2>/dev/null || true)"
+        if [ ! -f "./$entry_point" ] || [ -n "$changed" ]; then
+            cp "bmad.lens.release/$entry_point" "./$entry_point"
+        fi
+    fi
+done
+```
+
+**PowerShell:**
+```powershell
+foreach ($entryPoint in @("CLAUDE.md")) {
+    $src = "bmad.lens.release/$entryPoint"
+    $dst = "./$entryPoint"
+    if (Test-Path $src) {
+        $changed = git -C bmad.lens.release diff --name-only HEAD@{1} HEAD -- $entryPoint 2>$null
+        if (-not (Test-Path $dst) -or $changed) {
+            Copy-Item -Force $src $dst
+        }
+    }
+}
+```
 
 If any authority repo directory is missing, stop and report the failure.
 
 **Exception for /onboard:** If missing repos are reported during onboarding, continue so the workflow can bootstrap/repair those repos.
+
+### Step 4: Verify IDE Adapters
+
+On every preflight run, check that IDE command adapters are installed. For Claude Code, the required adapter is `.claude/commands/`. If the directory is missing, run the installer in idempotent mode before proceeding.
+
+This check runs even when pull is skipped by timestamp.
+
+**Bash:**
+```bash
+if [ ! -d ".claude/commands" ]; then
+    echo "[preflight] .claude/commands missing — running installer..."
+    bash bmad.lens.release/_bmad/lens-work/scripts/install.sh --ide claude
+fi
+```
+
+**PowerShell:**
+```powershell
+if (-not (Test-Path ".claude/commands")) {
+    Write-Host "[preflight] .claude/commands missing — running installer..."
+    bash bmad.lens.release/_bmad/lens-work/scripts/install.sh --ide claude
+}
+```
+
+Note: If additional IDEs are active (Cursor, Codex), add equivalent checks as those adapters are introduced to the workspace.
 
 ### 5. Resolve and Enforce Constitution
 
@@ -157,3 +211,4 @@ After a successful full preflight, write the current UTC timestamp (ISO 8601 dat
 | Source | Destination | Content |
 |--------|-------------|---------|
 | `bmad.lens.release/.github/` | `.github/` | Copilot agents, prompts, instructions |
+| `bmad.lens.release/CLAUDE.md` | `./CLAUDE.md` | Claude Code agent entry point |
