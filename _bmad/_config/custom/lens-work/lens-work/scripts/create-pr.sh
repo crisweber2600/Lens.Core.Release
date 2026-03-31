@@ -85,11 +85,12 @@ parse_remote_url() {
     # Initialize variables
     local host="" org="" repo="" project="" platform="unknown"
 
-    # GitHub HTTPS: https://github.com/org/repo
+    # GitHub HTTPS: https://github.com/org/repo(.git)
     if [[ "$remote_url" =~ ^https?://([^/]+)/([^/]+)/([^/]+?)(\.git)?$ ]]; then
         host="${BASH_REMATCH[1]}"
         org="${BASH_REMATCH[2]}"
         repo="${BASH_REMATCH[3]}"
+        repo="${repo%.git}"
         if [[ "$host" =~ github\.com|github ]]; then
             platform="github"
         fi
@@ -97,11 +98,12 @@ parse_remote_url() {
         return
     fi
 
-    # GitHub SSH: git@github.com:org/repo
+    # GitHub SSH: git@github.com:org/repo(.git)
     if [[ "$remote_url" =~ ^git@([^:]+):([^/]+)/([^/]+?)(\.git)?$ ]]; then
         host="${BASH_REMATCH[1]}"
         org="${BASH_REMATCH[2]}"
         repo="${BASH_REMATCH[3]}"
+        repo="${repo%.git}"
         if [[ "$host" =~ github\.com|github ]]; then
             platform="github"
         fi
@@ -115,6 +117,7 @@ parse_remote_url() {
         org="${BASH_REMATCH[1]}"
         project="${BASH_REMATCH[2]}"
         repo="${BASH_REMATCH[3]}"
+        repo="${repo%.git}"
         platform="azdo"
         echo "$host|$org|$repo|$project|$platform"
         return
@@ -126,6 +129,7 @@ parse_remote_url() {
         org="${BASH_REMATCH[1]}"
         project="${BASH_REMATCH[2]}"
         repo="${BASH_REMATCH[3]}"
+        repo="${repo%.git}"
         platform="azdo"
         echo "$host|$org|$repo|$project|$platform"
         return
@@ -237,7 +241,7 @@ EOF
     fi
 
     # Fall back to manual URL
-    echo "MANUAL|$(get_pr_url "$host" "$org" "$repo" "" "$platform" "$source" "$target")|"
+    echo "MANUAL|$(get_pr_url "$host" "$org" "$repo" "" "github" "$source" "$target")|"
 }
 
 # ============================================================================

@@ -54,7 +54,7 @@ Tracks are predefined lifecycle profiles that determine which phases apply.
 |-------|--------|----------|
 | full | preplan → businessplan → techplan → devproposal → sprintplan | Complete lifecycle |
 | feature | businessplan → techplan → devproposal → sprintplan | Known business context |
-| tech-change | techplan → sprintplan | Pure technical change |
+| tech-change | techplan → devproposal → sprintplan | Pure technical change |
 | hotfix | techplan | Urgent fix |
 | spike | preplan | Research only |
 | quickdev | devproposal | Rapid execution |

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # ============================================================
 # LENS Workbench — GitHub PAT Setup Script
 # store-github-pat.sh
