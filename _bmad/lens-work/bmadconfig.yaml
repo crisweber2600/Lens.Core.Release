@@ -1,6 +1,11 @@
 # LENS Workbench Configuration
 # Generated during installation
 
+# NOTE: User identity (github_username) is NOT stored here.
+# Set github_username in your control repo's personal profile:
+#   _bmad-output/lens-work/personal/profile.yaml
+# Agents resolve ${github_username} from that file at runtime.
+
 # TargetProjects path (where repos are cloned)
 target_projects_path: "../TargetProjects"
 

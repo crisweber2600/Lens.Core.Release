@@ -3,7 +3,7 @@
 # Version: 6.0.4
 # Date: 2026-03-17T15:29:10.208Z
 
-user_name: CrisWeber
+user_name: "${github_username}"  # Resolved from lens-work/bmadconfig.yaml: github_username
 communication_language: English
 document_output_language: English
 output_folder: _bmad-output

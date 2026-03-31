@@ -19,7 +19,7 @@ test_review_output: _bmad-output/test-artifacts/test-reviews
 trace_output: _bmad-output/test-artifacts/traceability
 
 # Core Configuration Values
-user_name: CrisWeber
+user_name: "${github_username}"  # Resolved from lens-work/bmadconfig.yaml: github_username
 communication_language: English
 document_output_language: English
 output_folder: _bmad-output
