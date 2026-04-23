@@ -1,0 +1,13 @@
+code: lcb
+name: "Lens Core Baseline"
+description: "Governance and workspace-structure enforcement for Lens Core projects."
+module_version: 1.0.0
+default_selected: false
+module_greeting: >
+  Lens Core Governance is installed and ready. Run the governance skill with `setup` anytime to review or update configuration.
+agents:
+  - code: core-repo
+    name: ""
+    title: "Governance Enforcement Engine"
+    icon: "⚖️"
+    description: "Validates and enforces Lens Core structural constructs across workspaces."

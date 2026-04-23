@@ -1,0 +1,8 @@
+module,skill,display-name,menu-code,description,action,args,phase,after,before,required,output-location,outputs
+lcb,lc-agent-core-repo,Setup Lens Core Baseline,SU,Install or reconfigure the Lens Core Baseline module,configure,[setup|configure|install],anytime,,,false,,module registration and config
+lcb,lc-agent-core-repo,Validate Workspace,VW,Check workspace structure against Lens Core governance rules,validate-workspace,[path|scope],anytime,,,false,,workspace compliance report
+lcb,lc-agent-core-repo,Generate Redirect Stubs,GS,Create or update .github redirect stubs to canonical Lens Core paths,generate-github-stubs,[workflows|prompts|both],anytime,,,false,,redirect stubs
+lcb,lc-agent-core-repo,Generate Enforcement Workflows,GW,Generate GitHub Actions workflows for Lens Core enforcement,generate-enforcement-workflows,[rules|events],anytime,,,false,,workflow YAML
+lcb,lc-agent-core-repo,Define Core Rules,DR,Define or refine the authoritative Lens Core governance ruleset,define-rules,[scope],anytime,,,false,,Agents.md and rules updates
+lcb,lc-agent-core-repo,Register Rule Extensions,RX,Register custom governance rules from other Lens Core agents,register-extensions,[extension-spec],anytime,,,false,,rules extension entry
+lcb,lc-agent-core-repo,Audit Enforcement,AE,Review enforcement history and unresolved governance issues,audit-enforcement,[date-range|scope],anytime,,,false,,enforcement audit report
