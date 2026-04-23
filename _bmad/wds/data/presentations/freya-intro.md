@@ -61,7 +61,7 @@ docs/
 │
 └── 🔨 E-Development/                          ← Build, Test & Iterate (Phases 5–10)
     ├── 000-PRD.md                           ← Master product requirements
-    └── NNN-[feature].yaml                    ← Feature PRDs
+    └── NNN-[feature].xml                    ← Feature PRDs
 ```
 
 **This isn't just design work - it's your creative command center that transforms strategy into radiant user experiences!**

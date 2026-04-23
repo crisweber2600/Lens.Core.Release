@@ -1,14 +1,15 @@
 ---
 name: bmad-teach-me-testing
-description: "Teach testing progressively through structured sessions. Use when user says \"lets learn testing\" or \"I want to study test practices\""
+description: 'Teach testing progressively through structured sessions. Use when user says "lets learn testing" or "I want to study test practices"'
 ---
 
-# bmad-teach-me-testing (Stub)
+## Conventions
 
-> **This is a stub.** Load and execute the full skill from the release module.
+- `{skill-root}` resolves to this workflow skill's installed directory.
+- `{project-root}` resolves to the repository working directory.
 
-Read and follow all instructions in:
+## On Activation
 
-```
-lens.core/_bmad/tea/workflows/testarch/bmad-teach-me-testing/SKILL.md
-```
+Read `{skill-root}/workflow.md` and follow it exactly.
+
+When `workflow.md`, step files, templates, or checklists reference sibling files with relative paths such as `steps-c/...`, `./instructions.md`, or `templates/...`, resolve them from `{skill-root}`, not from the workspace root.

@@ -1,14 +1,15 @@
 ---
 name: bmad-testarch-automate
-description: "Expand test automation coverage for codebase. Use when user says \"lets expand test coverage\" or \"I want to automate tests\""
+description: 'Expand test automation coverage for codebase. Use when user says "lets expand test coverage" or "I want to automate tests"'
 ---
 
-# bmad-testarch-automate (Stub)
+## Conventions
 
-> **This is a stub.** Load and execute the full skill from the release module.
+- `{skill-root}` resolves to this workflow skill's installed directory.
+- `{project-root}` resolves to the repository working directory.
 
-Read and follow all instructions in:
+## On Activation
 
-```
-lens.core/_bmad/tea/workflows/testarch/bmad-testarch-automate/SKILL.md
-```
+Read `{skill-root}/workflow.md` and follow it exactly.
+
+When `workflow.md`, step files, templates, or checklists reference sibling files with relative paths such as `steps-c/...`, `./instructions.md`, or `templates/...`, resolve them from `{skill-root}`, not from the workspace root.

@@ -1,14 +1,15 @@
 ---
 name: bmad-testarch-test-design
-description: "Create system-level or epic-level test plans. Use when the user says \"lets design test plan\" or \"I want to create test strategy\""
+description: 'Create system-level or epic-level test plans. Use when the user says "lets design test plan" or "I want to create test strategy"'
 ---
 
-# bmad-testarch-test-design (Stub)
+## Conventions
 
-> **This is a stub.** Load and execute the full skill from the release module.
+- `{skill-root}` resolves to this workflow skill's installed directory.
+- `{project-root}` resolves to the repository working directory.
 
-Read and follow all instructions in:
+## On Activation
 
-```
-lens.core/_bmad/tea/workflows/testarch/bmad-testarch-test-design/SKILL.md
-```
+Read `{skill-root}/workflow.md` and follow it exactly.
+
+When `workflow.md`, step files, templates, or checklists reference sibling files with relative paths such as `steps-c/...`, `./instructions.md`, or `templates/...`, resolve them from `{skill-root}`, not from the workspace root.
