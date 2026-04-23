@@ -1,0 +1,17 @@
+# DO NOT EDIT -- overwritten on every update.
+#
+# Agent customization surface for lc-agent-core-repo.
+# Team overrides:     {project-root}/_bmad/custom/lc-agent-core-repo.toml
+# Personal overrides: {project-root}/_bmad/custom/lc-agent-core-repo.user.toml
+
+[agent]
+
+# --- Metadata (install-time roster contract) ---
+# Consumed by module.yaml:agents[] and `[agents.<code>]` in central config.
+
+code = "core-repo"
+name = ""
+title = "Governance Enforcement Engine"
+icon = "⚖️"
+description = "Validates and enforces Lens Core structural constructs across workspaces."
+agent_type = "memory"
