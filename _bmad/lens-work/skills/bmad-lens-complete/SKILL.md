@@ -56,7 +56,7 @@ If config is absent, use current repo root as governance repo.
 
 Before finalizing, verify:
 1. Feature exists in governance repo
-2. Feature phase is `dev` or `complete` (not `preplan`, `planning`, `techplan`, `finalizeplan`, `paused`)
+2. Feature phase is `dev`, `dev-complete`, or `complete` (not `preplan`, `planning`, `techplan`, `finalizeplan`, `paused`)
 3. `retrospective.md` exists in the feature directory (or user explicitly confirms skip)
 4. Constitution compliance check has passed (or user confirms override)
 
@@ -108,5 +108,5 @@ python3 ./scripts/complete-ops.py archive-status \
 | `bmad-lens-retrospective` | Triggered as first step of complete workflow |
 | `bmad-lens-feature-yaml` | Feature.yaml phase updated to `complete` |
 | `bmad-lens-document-project` | Project documentation captured before archive |
+| target repo git branches | Finalize validates feature branches are merged to default base branch and removes merged feature branches |
 | `bmad-lens-git-orchestration` | Final summary committed to main branch |
-| `bmad-lens-status` | Feature appears as `archived` in status views |

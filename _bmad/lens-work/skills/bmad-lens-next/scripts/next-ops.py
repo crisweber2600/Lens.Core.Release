@@ -21,6 +21,7 @@ import yaml
 
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 COMPLETE_SUFFIX = "-complete"
+DEV_COMPLETE_PHASE = "dev-complete"
 LIFECYCLE_PATH = Path(__file__).resolve().parents[3] / "lifecycle.yaml"
 
 # Legacy track names still appear in existing feature.yaml files.
@@ -82,6 +83,14 @@ def build_phase_recommendation(data: dict, phase: str, lifecycle: dict) -> dict:
     """Resolve the action/command pair from lifecycle phase state."""
     phases = lifecycle.get("phases") or {}
 
+    if phase == DEV_COMPLETE_PHASE:
+        return {
+            "action": "complete",
+            "command": "/complete",
+            "rationale": "Dev execution is complete — continue with /complete to run retrospective, documentation, and archival",
+            "gate_phase": "complete",
+        }
+
     if phase.endswith(COMPLETE_SUFFIX):
         completed_phase = phase[: -len(COMPLETE_SUFFIX)]
         phase_meta = phases.get(completed_phase) or {}
@@ -89,11 +98,10 @@ def build_phase_recommendation(data: dict, phase: str, lifecycle: dict) -> dict:
         if next_command:
             next_action = str(next_command).lstrip("/")
             display_name = phase_meta.get("display_name", completed_phase.replace("-", " ").title())
-            promote_note = " with promotion" if phase_meta.get("auto_advance_promote") else ""
             return {
                 "action": next_action,
                 "command": str(next_command),
-                "rationale": f"{display_name} is complete — continue with {next_command}{promote_note}",
+                "rationale": f"{display_name} is complete — continue with {next_command}",
                 "gate_phase": next_action,
             }
 
@@ -134,10 +142,10 @@ def build_phase_recommendation(data: dict, phase: str, lifecycle: dict) -> dict:
         }
 
     return {
-        "action": "check-status",
-        "command": "/status",
-        "rationale": f"Feature is in {phase} phase — check current status",
-        "gate_phase": "status",
+        "action": "help",
+        "command": "/help",
+        "rationale": f"Feature is in {phase} phase — review the available commands for the current lifecycle state",
+        "gate_phase": "help",
     }
 
 

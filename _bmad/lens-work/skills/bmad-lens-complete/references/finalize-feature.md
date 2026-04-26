@@ -13,6 +13,7 @@ Before calling finalize, confirm all of the following:
 - [ ] `check-preconditions` returned status `pass` or `warn` (not `fail`)
 - [ ] `retrospective.md` exists in the feature directory (or user confirmed skip)
 - [ ] Project documentation captured via `bmad-lens-document-project`
+- [ ] Target repo feature branches are merged to their default base branch
 - [ ] User has explicitly confirmed finalize (this is irreversible)
 
 ## Confirmation Gate
@@ -65,10 +66,12 @@ python3 ./scripts/complete-ops.py finalize \
 ## What the Script Does
 
 1. Reads current feature.yaml
-2. Updates `phase` to `complete` and sets `completed_at` to current UTC ISO timestamp
-3. Reads `{governance-repo}/feature-index.yaml` and updates the matching entry's `status` to `archived` and `updated_at` to current UTC ISO timestamp
-4. Writes `{feature-dir}/summary.md` with the archive summary
-5. All writes are atomic (temp file + rename)
+2. Validates target repo feature branches are fully merged into each repo default branch
+3. Deletes merged feature branches (local + origin) in target repos during finalize (no deletion if dry-run)
+4. Updates `phase` to `complete` and sets `completed_at` to current UTC ISO timestamp
+5. Reads `{governance-repo}/feature-index.yaml` and updates the matching entry's `status` to `archived` and `updated_at` to current UTC ISO timestamp
+6. Writes `{feature-dir}/summary.md` with the archive summary
+7. All writes are atomic (temp file + rename)
 
 ## Post-Script Git Sync
 

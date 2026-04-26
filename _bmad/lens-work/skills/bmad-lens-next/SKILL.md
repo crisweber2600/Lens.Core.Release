@@ -45,6 +45,7 @@ You read feature state and route to the most actionable next step. You are opini
 |-----------|---------------|
 | Phase=`{lifecycle phase}` | Delegate to the phase command (`/preplan`, `/businessplan`, `/techplan`, `/finalizeplan`, `/expressplan`) |
 | Phase=`{phase}-complete` | Delegate to that phase's `auto_advance_to` command from `lifecycle.yaml` |
+| Phase=`dev-complete` | Delegate to `/complete` |
 | Phase=dev | Delegate to `/dev` |
 | Phase=complete | Delegate to `/complete` |
 | Phase=paused | Delegate to `/pause-resume` |
@@ -108,7 +109,6 @@ uv run scripts/next-ops.py suggest --governance-repo /path/to/repo --feature-id 
 
 | Skill | How next is used |
 |-------|-----------------|
-| `bmad-lens-status` | Appends next-action recommendation to feature status output |
 | `bmad-lens-init-feature` | Called on activation to determine if feature is initialized |
 | All lifecycle phase skills | `/next` delegates into the lifecycle owner when unblocked |
 | `bmad-lens-pause-resume` | Resumes paused work from the stored `paused_from` phase |

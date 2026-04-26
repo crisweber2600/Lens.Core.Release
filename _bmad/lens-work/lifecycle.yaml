@@ -1,5 +1,5 @@
 # =============================================================================
-# Lens-Work Lifecycle Contract v3.4
+# Lens-Work Lifecycle Contract v4.0
 # =============================================================================
 # The single source of truth for lens-work lifecycle behavior.
 # The @lens agent (with 5 skills) and all workflows import
@@ -13,9 +13,11 @@
 #        feature.yaml as optional state source, per-track topology config.
 # v3.5: FinalizePlan collapses the old DevProposal + SprintPlan chain into
 #        a single post-TechPlan planning phase with explicit PR handoffs.
+# v4.0: Local personal state lives in .lens and active generated docs live
+#       under docs/ rather than the legacy output folder.
 # =============================================================================
 
-schema_version: 3.5
+schema_version: 4
 close_states: [completed, abandoned, superseded]
 initiative_state_schema: initiative-state.yaml
 artifact_publication:
@@ -98,7 +100,7 @@ milestones:
     tracked_state:
       stories_terminal: true          # All stories must be merged or explicitly deferred
       epics_merged_to_develop: true   # All epic branches merged to develop
-      close_validation: true          # /close validates dev-complete before allowing 'completed' state
+      close_validation: true          # /complete validates dev-complete before allowing 'completed' state
 
 # -----------------------------------------------------------------------------
 # PHASES
@@ -116,7 +118,6 @@ phases:
       - brainstorm
     milestone: techplan
     auto_advance_to: /businessplan
-    auto_advance_promote: false
     completion_review:
       gate: adversarial-review
       mode: party
@@ -136,7 +137,6 @@ phases:
       - ux-design
     milestone: techplan
     auto_advance_to: /techplan
-    auto_advance_promote: false
     completion_review:
       gate: adversarial-review
       mode: party
@@ -155,7 +155,6 @@ phases:
       - architecture
     milestone: techplan
     auto_advance_to: /finalizeplan
-    auto_advance_promote: true
     completion_review:
       gate: adversarial-review
       mode: party
@@ -180,13 +179,28 @@ phases:
     milestone: finalizeplan
     branching_milestone: finalizeplan
     auto_advance_to: /dev
-    auto_advance_promote: false
     completion_review:
       gate: adversarial-review
       mode: party
       report: finalizeplan-review.md
+      # Default (full track) — all planning artifacts accumulated across all prior phases.
+      # Use ready_when_artifacts_by_track to narrow requirements for non-full tracks.
       ready_when_artifacts: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      ready_when_artifacts_by_track:
+        tech-change: [architecture]
+        hotfix: [architecture]
+        hotfix-express: [architecture]
+        feature: [prd, ux-design, architecture]
+        express: [business-plan, tech-plan, sprint-plan]
+        quickdev: []
       reviewed_artifacts: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      reviewed_artifacts_by_track:
+        tech-change: [architecture]
+        hotfix: [architecture]
+        hotfix-express: [architecture]
+        feature: [prd, ux-design, architecture]
+        express: [business-plan, tech-plan, sprint-plan]
+        quickdev: []
       outcomes: [pass, pass-with-warnings, fail]
     execution_contract:
       - step: 1
@@ -213,7 +227,6 @@ phases:
       - expressplan-adversarial-review
     milestone: finalizeplan
     auto_advance_to: /finalizeplan
-    auto_advance_promote: false
     completion_review:
       gate: adversarial-review
       mode: party
@@ -318,25 +331,6 @@ tracks:
     topology: 2-branch
     feature_yaml: true
 
-# -----------------------------------------------------------------------------
-# PROMOTE SEMANTICS (v3.1 — approval-only model)
-# -----------------------------------------------------------------------------
-# In the happy path, all promotion PRs are auto-created by auto_advance_promote.
-# /promote is an approval + verification action, not a creation action.
-# The PR already exists when the user runs /promote.
-promote:
-  behavior: approval-only
-  description: >
-    /promote verifies that the auto-created promotion PR has been approved
-    and merged, then transitions the initiative to the next milestone.
-    If the PR does not yet exist (edge case), /promote creates it.
-  actions:
-    - verify_pr_merged
-    - run_sensing_check
-    - transition_milestone
-  auto_create_fallback: true  # Create PR if somehow missing
-
-# -----------------------------------------------------------------------------
 # ARTIFACT VALIDATION HOOKS (v3.1)
 # -----------------------------------------------------------------------------
 # Per-artifact structural validation that runs before commit acceptance.
@@ -480,7 +474,7 @@ dashboard:
   description: >
     Generate a consolidated view of all active initiatives across domains,
     showing current phase, milestone, blocking PRs, and sensing alerts.
-    Replaces the need to /switch + /status repeatedly.
+    Replaces the need to repeatedly `/switch` between initiatives just to inspect portfolio state.
   output_format: mermaid
   data_sources:
     - git_branch_list               # All initiative branches
@@ -738,7 +732,7 @@ git_state:
 data_zones:
   governance:
     description: "Universal artifacts shared across all initiatives"
-    setup_file: ".github/lens-work/governance-setup.yaml"
+    setup_file: ".lens/governance-setup.yaml"
     artifacts:
       - constitutions/
       - roster/
@@ -755,11 +749,11 @@ data_zones:
       merge_target: "{initiative_root}"
 
   personal:
-    description: "User profile and preferences"
-    local_path: .github/lens-work/
+    description: "Local-only user profile, context, and preferences"
+    local_path: .lens/personal/
     artifacts:
       - profile.yaml
-      - governance-setup.yaml
+      - context.yaml
 
 # -----------------------------------------------------------------------------
 # CREDENTIAL POLICY (NFR4)
@@ -831,7 +825,7 @@ required_frontmatter:
 features_registry:
   enabled: false                    # Opt-in — enable via constitution or /lens-upgrade
   file: "docs/lens-work/feature-index.yaml"
-  legacy_file: "_bmad-output/lens-work/features.yaml"  # v3.2 compatibility fallback
+  legacy_file: "docs/lens-work/features.yaml"  # v3.2 compatibility fallback after docs consolidation
   schema:
     features:
       "{feature-name}":
@@ -933,7 +927,7 @@ migrations:
         value: features_registry
       - type: add_section
         path: features_registry
-        value: { index_file: "_bmad-output/lens-work/features.yaml", scope: per-domain-service }
+        value: { index_file: "docs/lens-work/features.yaml", scope: per-domain-service }
       - type: add_section
         path: problem_logging
         value: { enabled: true, consumed_by: retrospective }
@@ -966,9 +960,39 @@ migrations:
         path: features_registry
         description: "Evolve features.yaml → feature-index.yaml with cross-feature visibility"
         value:
-          file: "_bmad-output/lens-work/feature-index.yaml"
-          legacy_file: "_bmad-output/lens-work/features.yaml"
+          file: "docs/lens-work/feature-index.yaml"
+          legacy_file: "docs/lens-work/features.yaml"
           new_fields: [owner, plan_branch, updated_at, summary, relationships]
+
+  - from_version: 3.5
+    to_version: 4
+    breaking: true
+    migration_command: "/lens-upgrade --from 3.5 --to 4"
+    branch_rename_required: false
+    changes:
+      - type: replace_value
+        path: data_zones.personal.local_path
+        old_value: .github/lens/personal/
+        new_value: .lens/personal/
+      - type: replace_value
+        path: config.personal_output_folder
+        old_value: "{project-root}/.github/lens/personal"
+        new_value: "{project-root}/.lens/personal"
+      - type: replace_value
+        path: config.output_folder
+        old_value: "{project-root}/_bmad-output"
+        new_value: "{project-root}/docs"
+      - type: replace_value
+        path: features_registry.legacy_file
+        old_value: "_bmad-output/lens-work/features.yaml"
+        new_value: "docs/lens-work/features.yaml"
+    optional_migrations:
+      - name: migrate-personal-state
+        description: "Move local-only personal files from the legacy personal directory into .lens/personal"
+        steps:
+          - "If .lens/personal does not exist and the legacy personal directory exists, move the full directory to .lens/personal"
+          - "If .lens root contains profile.yaml or context.yaml, relocate them into .lens/personal"
+          - "If both paths exist, prefer .lens/personal and leave the legacy directory untouched until manual cleanup"
 
   - from_version: 3.4
     to_version: 3.5
