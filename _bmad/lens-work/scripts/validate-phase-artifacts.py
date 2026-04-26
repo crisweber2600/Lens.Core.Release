@@ -34,18 +34,6 @@ def get_required_artifacts(lifecycle_path: Path, phase: str, contract: str) -> l
     raise ValueError(f"Unsupported contract: {contract}")
 
 
-def apply_track_overrides(
-    required: list[str],
-    phase: str,
-    contract: str,
-    track: str | None,
-) -> list[str]:
-    if contract == "review-ready" and phase == "finalizeplan" and (track or "").strip().lower() == "tech-change":
-        return [artifact for artifact in required if artifact != "ux-design"]
-
-    return required
-
-
 def is_batch_input(candidate: Path) -> bool:
     return candidate.name.endswith("-batch-input.md")
 
@@ -61,22 +49,21 @@ def artifact_candidates(docs_root: Path, name: str) -> list[Path]:
             candidates += list((docs_root / "research").glob("*.md"))
         case "brainstorm":
             candidates = [docs_root / "brainstorm.md"]
-        case "prd" | "business-plan":
-            candidates = [docs_root / "prd.md", docs_root / "business-plan.md"]
+        case "prd":
+            candidates = [docs_root / "prd.md"]
         case "ux-design":
             candidates = [docs_root / "ux-design.md", docs_root / "ux-design-specification.md"]
-        case "architecture" | "tech-plan":
+        case "architecture":
             candidates = [docs_root / "architecture.md"]
             candidates += list(docs_root.glob("*architecture*.md"))
-            candidates += list(docs_root.glob("*tech-plan*.md"))
         case "epics":
             candidates = [docs_root / "epics.md"]
         case "stories":
             candidates = [docs_root / "stories.md"]
         case "implementation-readiness":
             candidates = [docs_root / "readiness-checklist.md", docs_root / "implementation-readiness.md"]
-        case "sprint-status" | "sprint-plan":
-            candidates = [docs_root / "sprint-status.yaml", docs_root / "sprint-backlog.md", docs_root / "sprint-plan.md"]
+        case "sprint-status":
+            candidates = [docs_root / "sprint-status.yaml", docs_root / "sprint-backlog.md"]
         case "story-files":
             candidates = story_file_candidates(docs_root)
         case "review-report":
@@ -138,7 +125,6 @@ def main() -> int:
         choices=("phase-artifacts", "completion-review", "review-ready"),
         help="Which lifecycle artifact contract to validate.",
     )
-    parser.add_argument("--track", help="Optional feature track override for track-specific artifact rules.")
     parser.add_argument("--lifecycle-path", required=True, help="Path to lifecycle.yaml")
     parser.add_argument("--docs-root", required=True, help="Path to docs root")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -151,12 +137,7 @@ def main() -> int:
         print(f"ERROR: lifecycle.yaml not found: {lifecycle_path}", file=sys.stderr)
         return 1
 
-    required = apply_track_overrides(
-        get_required_artifacts(lifecycle_path, args.phase, args.contract),
-        args.phase,
-        args.contract,
-        args.track,
-    )
+    required = get_required_artifacts(lifecycle_path, args.phase, args.contract)
 
     if not required:
         if args.json:

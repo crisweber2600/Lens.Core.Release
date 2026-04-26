@@ -52,7 +52,6 @@ You are the FinalizePlan phase conductor for the Lens agent. You coordinate revi
 12. Determine mode: `interactive` (default) or `batch`.
 13. If mode is `batch` and `batch_resume_context` is absent, delegate to `bmad-lens-batch --target finalizeplan`, write or refresh `finalizeplan-batch-input.md`, and stop. Do not publish reviewed TechPlan artifacts, launch wrappers, create PRs, or update `feature.yaml` on pass 1.
 14. If mode is `batch` and `batch_resume_context` is present, treat the answered batch input as pre-approved context. Use it to resolve review scope, merge expectations, sprint boundaries, and story-file conventions before step execution.
-15. Run `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase finalizeplan --contract review-ready --track <resolved feature.yaml.track> --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root <resolved staged docs path> --json` using the staged docs path from step 6 and the track loaded in step 3. If the readiness check returns `status=fail`, report the missing artifacts and stop. Do not proceed to Step 1 if required planning artifacts are incomplete.
 
 ## Three-Step Execution Contract
 
