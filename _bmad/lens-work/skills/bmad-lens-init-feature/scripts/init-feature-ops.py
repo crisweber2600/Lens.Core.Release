@@ -379,7 +379,7 @@ def make_domain_constitution_md(domain: str, name: str) -> str:
     display = name or domain
     return (
         "---\n"
-        "permitted_tracks: [quickplan, full, hotfix, tech-change]\n"
+        "permitted_tracks: [quickplan, full, hotfix, tech-change, express, expressplan]\n"
         "required_artifacts:\n"
         "  planning:\n"
         "    - business-plan\n"
@@ -403,7 +403,7 @@ def make_domain_constitution_md(domain: str, name: str) -> str:
         "\n"
         "## Tracks\n"
         "\n"
-        "All standard tracks are permitted: `quickplan`, `full`, `hotfix`, `tech-change`.\n"
+        "All standard tracks are permitted: `quickplan`, `full`, `hotfix`, `tech-change`, `express`, `expressplan`.\n"
         "Service-level constitutions may restrict this list further.\n"
         "\n"
         "## Artifacts\n"
@@ -429,7 +429,7 @@ def make_service_constitution_md(domain: str, service: str, name: str) -> str:
     display = name or service
     return (
         "---\n"
-        "permitted_tracks: [quickplan, full, hotfix, tech-change]\n"
+        "permitted_tracks: [quickplan, full, hotfix, tech-change, express, expressplan]\n"
         "required_artifacts:\n"
         "  planning:\n"
         "    - business-plan\n"
@@ -453,7 +453,7 @@ def make_service_constitution_md(domain: str, service: str, name: str) -> str:
         "\n"
         "## Tracks\n"
         "\n"
-        f"Inherits all permitted tracks from the domain: `quickplan`, `full`, `hotfix`, `tech-change`.\n"
+        f"Inherits all permitted tracks from the domain: `quickplan`, `full`, `hotfix`, `tech-change`, `express`, `expressplan`.\n"
         "Repo-level constitutions may restrict this list further.\n"
         "\n"
         "## Artifacts\n"
