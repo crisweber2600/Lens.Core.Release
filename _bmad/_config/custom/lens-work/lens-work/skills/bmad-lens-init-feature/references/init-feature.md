@@ -29,10 +29,29 @@ Prompt for (if not already provided):
 Derive:
 
 - **featureSlug** — slugify the feature name: lowercase, replace spaces with `-`, strip non-alphanumeric
-- **featureId** — compose the canonical identifier as `{normalized-domain}-{normalized-service}-{featureSlug}`
+- **featureId (full)** — `{normalized-domain}-{normalized-service}-{featureSlug}` (e.g., `platform-identity-auth-refresh`)
 - **username** — from `{username}` resolved on activation
 
-Confirm the derived featureId, featureSlug, and the explicitly chosen track with the user before proceeding.
+**Before proceeding, present the naming choice to the user:**
+
+```
+Derived featureId:
+  Short:  {featureSlug}
+  Full:   {domain}-{service}-{featureSlug}
+
+The full form is the default — it is unique across all domains and services.
+The short form is simpler but only guaranteed unique within a domain+service.
+
+Use full form? [Y/n] (or type a custom featureId)
+```
+
+- If the user accepts the default (Y / Enter): use `{domain}-{service}-{featureSlug}`
+- If the user types `n` or `short`: use `{featureSlug}` only
+- If the user types a custom value: use that (validate it is kebab-case, no spaces)
+
+Set `featureSlug` to the slug portion only (always). Set `featureId` to the chosen value.
+
+Confirm the chosen featureId and the explicitly chosen track with the user before proceeding.
 
 ### Step 2: Validate with Dry Run
 

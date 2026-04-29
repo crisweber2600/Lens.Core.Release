@@ -42,7 +42,7 @@ You are the entry point for all feature work in the Lens system. You orchestrate
 
 | Term | Definition |
 |------|-----------|
-| **featureId** | Canonical identifier composed from normalized `{domain}-{service}-{featureSlug}` (e.g., `platform-identity-auth-refresh`); used as the globally unique branch name and directory key |
+| **featureId** | Unique identifier for the feature. Defaults to `{domain}-{service}-{featureSlug}` (e.g., `platform-identity-auth-refresh`). The user is prompted to confirm, shorten to just `{featureSlug}`, or provide a custom value before anything is written. |
 | **featureSlug** | Short feature-local slug derived from feature name (e.g., `auth-refresh`); preserved for concise target-repo working branches |
 | **plan branch** | `{featureId}-plan` — control repo planning branch for code work and draft artifacts |
 | **feature branch** | `{featureId}` — the base branch in the control repo for all development work on this feature |
