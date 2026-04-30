@@ -21,7 +21,7 @@ from pathlib import Path
 import yaml
 
 
-COMPLETABLE_PHASES = {"dev", "complete"}
+COMPLETABLE_PHASES = {"dev", "dev-complete", "complete"}
 TERMINAL_PHASE = "complete"
 ARCHIVED_STATUS = "archived"
 
