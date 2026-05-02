@@ -21,7 +21,7 @@ from pathlib import Path
 import yaml
 
 
-COMPLETABLE_PHASES = {"dev", "dev-complete", "complete"}
+COMPLETABLE_PHASES = {"dev", "complete"}
 TERMINAL_PHASE = "complete"
 ARCHIVED_STATUS = "archived"
 
@@ -211,7 +211,7 @@ def cmd_check_preconditions(args: argparse.Namespace) -> dict:
     # Phase check
     if phase not in COMPLETABLE_PHASES:
         blockers.append(
-            f"Feature phase is '{phase}' — must be 'dev', 'dev-complete', or 'complete' to finalize "
+            f"Feature phase is '{phase}' — must be 'dev' or 'complete' to finalize "
             f"(current phase does not permit archiving)"
         )
 

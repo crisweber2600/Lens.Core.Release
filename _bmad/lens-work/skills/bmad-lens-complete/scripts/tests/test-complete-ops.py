@@ -169,25 +169,6 @@ def test_check_preconditions_complete_phase_pass():
         assert_eq("phase is complete", result["phase"], "complete")
 
 
-def test_check_preconditions_dev_complete_phase_pass():
-    print("test_check_preconditions_dev_complete_phase_pass", file=sys.stderr)
-    with tempfile.TemporaryDirectory() as tmp:
-        make_feature(tmp, "feat-dev-complete", "platform", "api", phase="dev-complete")
-        make_retrospective(tmp, "feat-dev-complete", "platform", "api")
-
-        result, code = run([
-            "check-preconditions",
-            "--governance-repo", tmp,
-            "--feature-id", "feat-dev-complete",
-            "--domain", "platform",
-            "--service", "api",
-        ])
-        assert_eq("status pass", result["status"], "pass")
-        assert_eq("exit code 0", code, 0)
-        assert_eq("phase is dev-complete", result["phase"], "dev-complete")
-        assert_eq("no blockers", result["blockers"], [])
-
-
 # ---------------------------------------------------------------------------
 # finalize tests
 # ---------------------------------------------------------------------------
@@ -388,7 +369,6 @@ def main():
         test_check_preconditions_preplan_blocker,
         test_check_preconditions_missing_retrospective_warn,
         test_check_preconditions_complete_phase_pass,
-        test_check_preconditions_dev_complete_phase_pass,
         test_finalize_updates_feature_yaml_phase,
         test_finalize_updates_feature_index,
         test_finalize_dry_run_no_changes,

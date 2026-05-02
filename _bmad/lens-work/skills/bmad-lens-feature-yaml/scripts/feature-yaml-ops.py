@@ -75,8 +75,7 @@ TRACK_TRANSITIONS = {
     },
     "express": {
         "preplan": ["expressplan", "dev", "paused"],
-        "expressplan": ["finalizeplan", "dev", "paused"],
-        "finalizeplan": ["dev", "paused"],
+        "expressplan": ["dev", "paused"],
         "dev": ["complete", "paused"],
         "paused": BASE_PHASES,
         "complete": [],
@@ -389,8 +388,7 @@ def cmd_update(args: argparse.Namespace) -> dict:
             transitions = get_transitions_for_track(track)
             allowed = transitions.get(normalize_phase(current_phase), [])
             completing_current_phase = value == f"{normalize_phase(current_phase)}-complete"
-            is_completion_of_allowed = is_completion_phase(value) and normalize_phase(value) in allowed
-            if not completing_current_phase and not is_completion_of_allowed and value not in allowed:
+            if not completing_current_phase and value not in allowed:
                 return {
                     "status": "fail",
                     "error": f"Invalid phase transition: {current_phase} -> {value} on track '{track}'. "
