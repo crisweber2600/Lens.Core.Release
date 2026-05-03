@@ -2,16 +2,16 @@
 
 Standalone module self-registration. This file is loaded when:
 - The user passes `setup`, `configure`, or `install` as an argument
-- The module is not yet registered in `{project-root}/_bmad/bmadconfig.yaml`
+- The module is not yet registered in `{project-root}/lens.core/_bmad/bmadconfig.yaml`
 - The skill's first-run init flow detects this is a fresh installation (e.g., agent memory doesn't exist yet)
 
 ## Overview
 
 Registers this standalone module into a project. Module identity (name, code, version) comes from `./assets/module.yaml` (sibling to this file). Collects user preferences and writes them to three files:
 
-- **`{project-root}/_bmad/bmadconfig.yaml`** — shared project config: core settings at root (e.g. `output_folder`, `document_output_language`) plus a section per module with metadata and module-specific values. User-only keys (`user_name`, `communication_language`) are **never** written here.
-- **`{project-root}/_bmad/config.user.yaml`** — personal settings intended to be gitignored: `user_name`, `communication_language`, and any module variable marked `user_setting: true` in `./assets/module.yaml`. These values live exclusively here.
-- **`{project-root}/_bmad/module-help.csv`** — registers module capabilities for the help system.
+- **`{project-root}/lens.core/_bmad/bmadconfig.yaml`** — shared project config: core settings at root (e.g. `output_folder`, `document_output_language`) plus a section per module with metadata and module-specific values. User-only keys (`user_name`, `communication_language`) are **never** written here.
+- **`{project-root}/lens.core/_bmad/config.user.yaml`** — personal settings intended to be gitignored: `user_name`, `communication_language`, and any module variable marked `user_setting: true` in `./assets/module.yaml`. These values live exclusively here.
+- **`{project-root}/lens.core/_bmad/module-help.csv`** — registers module capabilities for the help system.
 
 Both config scripts use an anti-zombie pattern — existing entries for this module are removed before writing fresh ones, so stale values never persist.
 
@@ -20,7 +20,7 @@ Both config scripts use an anti-zombie pattern — existing entries for this mod
 ## Check Existing Config
 
 1. Read `./assets/module.yaml` for module metadata and variable definitions (the `code` field is the module identifier)
-2. Check if `{project-root}/_bmad/bmadconfig.yaml` exists — if a section matching the module's code is already present, inform the user this is an update (reconfiguration)
+2. Check if `{project-root}/lens.core/_bmad/bmadconfig.yaml` exists — if a section matching the module's code is already present, inform the user this is an update (reconfiguration)
 
 If the user provides arguments (e.g. `accept all defaults`, `--headless`, or inline values like `user name is BMad, I speak Swahili`), map any provided values to config keys, use defaults for the rest, and skip interactive prompting. Still display the full confirmation summary at the end.
 
@@ -54,8 +54,8 @@ Ask using the prompt with its default value. Apply `result` templates when stori
 Write a temp JSON file with the collected answers structured as `{"core": {...}, "module": {...}}` (omit `core` if it already exists). Then run both scripts — they can run in parallel since they write to different files:
 
 ```bash
-python3 ./scripts/merge-config.py --config-path "{project-root}/_bmad/bmadconfig.yaml" --user-config-path "{project-root}/_bmad/config.user.yaml" --module-yaml ./assets/module.yaml --answers {temp-file}
-python3 ./scripts/merge-help-csv.py --target "{project-root}/_bmad/module-help.csv" --source ./assets/module-help.csv --module-code {module-code}
+python3 ./scripts/merge-config.py --config-path "{project-root}/lens.core/_bmad/bmadconfig.yaml" --user-config-path "{project-root}/lens.core/_bmad/config.user.yaml" --module-yaml ./assets/module.yaml --answers {temp-file}
+python3 ./scripts/merge-help-csv.py --target "{project-root}/lens.core/_bmad/module-help.csv" --source ./assets/module-help.csv --module-code {module-code}
 ```
 
 Both scripts output JSON to stdout with results. If either exits non-zero, surface the error and stop.

@@ -536,7 +536,7 @@ def add_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--feature-path", required=False, help="Direct path to feature.yaml")
     parser.add_argument("--governance-repo", required=False, help="Governance repo root path")
     parser.add_argument("--workspace-root", required=False, help="Workspace/project root for config discovery")
-    parser.add_argument("--module-config", required=False, help="Explicit _bmad/lens-work/bmadconfig.yaml path")
+    parser.add_argument("--module-config", required=False, help="Explicit {project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml path")
     parser.add_argument("--lifecycle-path", required=False, help="Explicit lifecycle.yaml path")
 
 
@@ -565,7 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
     commit_parser = subparsers.add_parser("commit-dirty", help="Commit and push relevant dirty governance changes")
     commit_parser.add_argument("--governance-repo", required=False, help="Governance repo root path")
     commit_parser.add_argument("--workspace-root", required=False, help="Workspace/project root for config discovery")
-    commit_parser.add_argument("--module-config", required=False, help="Explicit _bmad/lens-work/bmadconfig.yaml path")
+    commit_parser.add_argument("--module-config", required=False, help="Explicit {project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml path")
     commit_parser.add_argument("--feature-id", required=False, help="Feature id whose feature.yaml should be staged")
     commit_parser.add_argument("--path", action="append", dest="paths", default=[], help="Relevant path to stage; repeatable")
     commit_parser.add_argument("--message", required=False, help="Commit message")

@@ -252,7 +252,7 @@ The scaffolded tests in `scripts/tests/test-complete-ops.py` define the red-phas
 Focused validation for the scaffold:
 
 ```bash
-uv run --with pytest pytest _bmad/lens-work/skills/bmad-lens-complete/scripts/tests/test-complete-ops.py -q
+uv run --with pytest pytest {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-complete/scripts/tests/test-complete-ops.py -q
 ```
 
 ## References

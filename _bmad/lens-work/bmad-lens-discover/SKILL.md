@@ -30,7 +30,7 @@ Required derived paths:
 
 - `{inventory_path}` = `{governance_repo_path}/repo-inventory.yaml`
 - `{target_root}` = resolved `target_projects_path`
-- `{discover_script}` = `{project-root}/_bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py`
+- `{discover_script}` = `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py`
 
 ## Modes
 
@@ -84,7 +84,7 @@ Run script commands with `uv run --script` from the source repo root.
 ### scan
 
 ```bash
-uv run --script _bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py scan \
+uv run --script {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py scan \
   --inventory-path {inventory_path} \
   --target-root {target_root} \
   --json
@@ -95,7 +95,7 @@ uv run --script _bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.p
 ### add-entry
 
 ```bash
-uv run --script _bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py add-entry \
+uv run --script {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py add-entry \
   --inventory-path {inventory_path} \
   --name {repo_name} \
   --remote-url {remote_url} \
@@ -108,7 +108,7 @@ uv run --script _bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.p
 ### validate
 
 ```bash
-uv run --script _bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py validate \
+uv run --script {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py validate \
   --inventory-path {inventory_path} \
   --json
 ```
@@ -162,6 +162,6 @@ No empty commit is allowed on a no-op run. The commit message must be exactly `[
 Run from the target source repo root:
 
 ```bash
-uv run --with pytest pytest _bmad/lens-work/skills/bmad-lens-discover/scripts/tests/ -q
-uv run --script _bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py --help
+uv run --with pytest pytest {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-discover/scripts/tests/ -q
+uv run --script {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-discover/scripts/discover-ops.py --help
 ```

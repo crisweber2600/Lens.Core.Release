@@ -43,8 +43,8 @@ You are the Next conductor. Your only job is to ask `next-ops.py` what to do and
 
 ## On Activation
 
-1. Load module config from `{project-root}/_bmad/lens-work/bmadconfig.yaml`.
-2. Load workspace config from `{project-root}/_bmad/bmadconfig.yaml` and `{project-root}/_bmad/config.user.yaml` (if present).
+1. Load module config from `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`.
+2. Load workspace config from `{project-root}/lens.core/_bmad/bmadconfig.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml` (if present).
 3. Resolve `{governance_repo}`, `{control_repo}`, and `{module_path}` from the loaded config.
 4. Resolve `{feature_id}`:
    - Use the value provided as a CLI argument if present.

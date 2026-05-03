@@ -3,7 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Merge module help entries into shared _bmad/module-help.csv.
+"""Merge module help entries into shared {project-root}/lens.core/_bmad/module-help.csv.
 
 Reads a source CSV with module help entries and merges them into a target CSV.
 Uses an anti-zombie pattern: all existing rows matching the source module code
@@ -43,12 +43,12 @@ HEADER = [
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Merge module help entries into shared _bmad/module-help.csv with anti-zombie pattern."
+        description="Merge module help entries into shared {project-root}/lens.core/_bmad/module-help.csv with anti-zombie pattern."
     )
     parser.add_argument(
         "--target",
         required=True,
-        help="Path to the target _bmad/module-help.csv file",
+        help="Path to the target {project-root}/lens.core/_bmad/module-help.csv file",
     )
     parser.add_argument(
         "--source",
@@ -57,7 +57,7 @@ def parse_args():
     )
     parser.add_argument(
         "--legacy-dir",
-        help="Path to _bmad/ directory to check for legacy per-module CSV files.",
+        help="Path to {project-root}/lens.core/_bmad/ directory to check for legacy per-module CSV files.",
     )
     parser.add_argument(
         "--module-code",

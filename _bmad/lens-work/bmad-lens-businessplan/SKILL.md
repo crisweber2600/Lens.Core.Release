@@ -38,7 +38,7 @@ You are the BusinessPlan phase conductor. You delegate PRD and UX authoring thro
 
 ## On Activation
 
-1. Load config from `{project-root}/_bmad/bmadconfig.yaml` and `{project-root}/_bmad/config.user.yaml`
+1. Load config from `{project-root}/lens.core/_bmad/bmadconfig.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`
 2. Resolve `{governance_repo}` and `{feature_id}`
 3. Resolve `{control_repo}` from config (`control_repo` key); default to `{governance_repo}` if absent
 4. Load `feature.yaml` via `bmad-lens-feature-yaml`
@@ -48,12 +48,12 @@ You are the BusinessPlan phase conductor. You delegate PRD and UX authoring thro
 8. Determine mode: `interactive` (default) or `batch`
 9. **Batch pass 1:** If mode is `batch` and `batch_resume_context` is absent, delegate to `bmad-lens-batch --target businessplan`, write `businessplan-batch-input.md`, and stop. Do not publish, delegate authoring, or update `feature.yaml`.
 10. **Batch pass 2:** If mode is `batch` and `batch_resume_context` is present, derive workflow selection from batch input and treat as pre-approved context. Skip interactive menu unless batch input is ambiguous.
-11. **Review-ready check:** Run `uv run {project-root}/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase businessplan --contract review-ready --lifecycle-path {project-root}/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json`
+11. **Review-ready check:** Run `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase businessplan --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json`
 12. **Review-ready fast path:** If feature phase is still `businessplan` and check returns `status=pass`, skip menu and confirmation prompts. Proceed directly to `bmad-lens-adversarial-review --phase businessplan --source phase-complete`, then continue to Phase Completion.
 13. **Interactive workflow selection:** If mode is `interactive` and check returns `status=fail`, present menu: `prd`, `ux-design`, or `both`
 14. **Interactive direct invocation:** If invoked directly (not via `/next`) and check returns `status=fail`, confirm governance publish and delegation. If user declines, stop cleanly.
 15. **Interactive auto-delegation:** If auto-delegated from `/next` and check returns `status=fail`, treat delegation as confirmed once workflow is selected. Do not ask redundant run prompt.
-16. **Publish PrePlan to governance:** Invoke `uv run {project-root}/_bmad/lens-work/skills/bmad-lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance --governance-repo {governance_repo} --control-repo {control_repo} --feature-id {feature_id} --phase preplan` before authoring. Do not write governance files directly.
+16. **Publish PrePlan to governance:** Invoke `uv run {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance --governance-repo {governance_repo} --control-repo {control_repo} --feature-id {feature_id} --phase preplan` before authoring. Do not write governance files directly.
 17. Load preplan artifacts from staged docs path for authoring context; use governance mirror for cross-feature references
 18. Load cross-feature context via `bmad-lens-init-feature fetch-context --depth full`
 19. Load domain constitution via `bmad-lens-constitution`

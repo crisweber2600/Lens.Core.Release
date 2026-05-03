@@ -26,7 +26,7 @@ You are the service registration conductor. You resolve the parent domain, colle
 
 ## On Activation
 
-1. Load config from `{project-root}/_bmad/bmadconfig.yaml` and `{project-root}/_bmad/config.user.yaml`.
+1. Load config from `{project-root}/lens.core/_bmad/bmadconfig.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
 2. Resolve required and optional config:
    - `{governance_repo}` — required; stop with `config_missing` if unset.
    - `{target_projects_path}` — optional.
@@ -42,7 +42,7 @@ You are the service registration conductor. You resolve the parent domain, colle
 8. Run the service creation script:
 
 ```bash
-uv run {project-root}/_bmad/lens-work/skills/bmad-lens-init-feature/scripts/init-feature-ops.py \
+uv run {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-init-feature/scripts/init-feature-ops.py \
   create-service \
   --governance-repo {governance_repo} \
   --domain {domain_slug} \

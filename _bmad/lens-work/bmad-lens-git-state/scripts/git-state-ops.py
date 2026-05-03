@@ -593,7 +593,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--governance-repo", help="Governance repo containing feature-index.yaml.")
     parser.add_argument("--feature-id", help="Limit feature reporting to one feature ID.")
     parser.add_argument("--workspace-root", help="Workspace root used for config discovery.")
-    parser.add_argument("--module-config", help="Explicit _bmad/lens-work/bmadconfig.yaml path.")
+    parser.add_argument("--module-config", help="Explicit {project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml path.")
 
 
 def build_parser() -> argparse.ArgumentParser:

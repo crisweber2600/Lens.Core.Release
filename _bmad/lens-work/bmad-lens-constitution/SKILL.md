@@ -93,7 +93,7 @@ Any free-form guidance for feature authors in this scope...
 
 I resolve governance rules from the governance repo's `constitutions/` directory. I do not write to the repo or modify feature state — I am read-only.
 
-Load available config from `{project-root}/_bmad/bmadconfig.yaml` and `{project-root}/_bmad/config.user.yaml`. Resolve:
+Load available config from `{project-root}/lens.core/_bmad/bmadconfig.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`. Resolve:
 - `{governance_repo}` — path to the governance repo (required; constitutions live under `{governance_repo}/constitutions/`). If not configured, halt and instruct the user to run `lens-new-domain` to scaffold the governance structure.
 - `{domain}` and `{service}` — from the active feature's `feature.yaml` (or ask the user)
 - `{repo}` — optional; enables repo-level constitution override

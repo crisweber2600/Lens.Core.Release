@@ -16,7 +16,7 @@ This skill is the sanctioned state boundary for Lens `feature.yaml` files in the
 Load a feature by `--feature-id` or `--feature-path` and return structured JSON containing identity fields, `phase`, `track`, `docs`, docs paths, `target_repos`, dependencies, milestones, and transition history.
 
 ```bash
-uv run --script _bmad/lens-work/skills/bmad-lens-feature-yaml/scripts/feature-yaml-ops.py read \
+uv run --script {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-feature-yaml/scripts/feature-yaml-ops.py read \
   --governance-repo <governance-repo> \
   --feature-id <feature-id>
 ```

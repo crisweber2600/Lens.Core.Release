@@ -41,7 +41,7 @@ You are the ExpressPlan conductor. You protect the express track from accidental
 
 ## On Activation
 
-1. Load config from `{project-root}/_bmad/bmadconfig.yaml` and `{project-root}/_bmad/config.user.yaml`.
+1. Load config from `{project-root}/lens.core/_bmad/bmadconfig.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
 2. Resolve `{governance_repo}`, `{control_repo}`, `{feature_id}`, and `{module_path}`.
 3. Load `feature.yaml` through `bmad-lens-feature-yaml` and resolve `domain`, `service`, `track`, `phase`, and `docs.path`.
 4. **Express-only gate before any delegation:** validate `feature.yaml.track` is `express` or `expressplan`. If not, stop with the state-gate block message. ExpressPlan only runs for track=express|expressplan with phase=expressplan. This command will not convert the feature track.

@@ -3,7 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = ["pyyaml"]
 # ///
-"""Merge module configuration into shared _bmad/config.yaml and config.user.yaml.
+"""Merge module configuration into shared {project-root}/lens.core/_bmad/config.yaml and config.user.yaml.
 
 Reads a module.yaml definition and a JSON answers file, then writes or updates
 the shared config.yaml (core values at root + module section) and config.user.yaml
@@ -33,12 +33,12 @@ except ImportError:
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Merge module config into shared _bmad/config.yaml with anti-zombie pattern."
+        description="Merge module config into shared {project-root}/lens.core/_bmad/config.yaml with anti-zombie pattern."
     )
     parser.add_argument(
         "--config-path",
         required=True,
-        help="Path to the target _bmad/config.yaml file",
+        help="Path to the target {project-root}/lens.core/_bmad/config.yaml file",
     )
     parser.add_argument(
         "--module-yaml",
@@ -53,11 +53,11 @@ def parse_args():
     parser.add_argument(
         "--user-config-path",
         required=True,
-        help="Path to the target _bmad/config.user.yaml file",
+        help="Path to the target {project-root}/lens.core/_bmad/config.user.yaml file",
     )
     parser.add_argument(
         "--legacy-dir",
-        help="Path to _bmad/ directory to check for legacy per-module config files. "
+        help="Path to {project-root}/lens.core/_bmad/ directory to check for legacy per-module config files. "
         "Matching values are used as fallback defaults, then legacy files are deleted.",
     )
     parser.add_argument(

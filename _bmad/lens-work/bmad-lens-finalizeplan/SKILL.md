@@ -35,14 +35,14 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 
 ## On Activation
 
-1. Load config from `{project-root}/_bmad/bmadconfig.yaml` and `{project-root}/_bmad/config.user.yaml`.
+1. Load config from `{project-root}/lens.core/_bmad/bmadconfig.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
 2. Resolve `{governance_repo}`, `{control_repo}`, `{feature_id}`, and `{module_path}`.
 3. Load `feature.yaml` through `bmad-lens-feature-yaml` and resolve `domain`, `service`, `track`, `phase`, `docs.path`, and branch names.
 4. Validate the current branch model: `{featureId}` and `{featureId}-plan` must exist in the control repo before FinalizePlan proceeds.
 5. Validate the predecessor phase gate:
    - Accept `techplan-complete`.
    - Accept `expressplan-complete`.
-   - If phase wording is active `techplan` or active `expressplan`, continue only when `uv run {project-root}/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase {phase} --contract review-ready --lifecycle-path {project-root}/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json` passes and the user is resuming a phase-complete handoff.
+   - If phase wording is active `techplan` or active `expressplan`, continue only when `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase {phase} --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json` passes and the user is resuming a phase-complete handoff.
    - Otherwise stop with: "FinalizePlan requires TechPlan or ExpressPlan completion before it can begin."
 6. Resolve staged docs path from `feature.yaml.docs.path` with fallback `docs/{domain}/{service}/{featureId}` in `{control_repo}`.
 7. Load domain constitution through `bmad-lens-constitution` for final cross-feature and governance context.
@@ -68,7 +68,7 @@ bmad-lens-adversarial-review --phase finalizeplan --source phase-complete
 4. Publish reviewed upstream planning artifacts to the governance mirror through the CLI-backed boundary:
 
 ```bash
-uv run _bmad/lens-work/skills/bmad-lens-git-orchestration/scripts/git-orchestration-ops.py \
+uv run {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-git-orchestration/scripts/git-orchestration-ops.py \
   publish-to-governance \
   --governance-repo {governance_repo} \
   --control-repo {control_repo} \
