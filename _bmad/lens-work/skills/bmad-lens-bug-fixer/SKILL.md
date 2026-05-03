@@ -46,14 +46,19 @@ delegate to `bmad-lens-expressplan` for planning execution. You own the outcome 
 - **Three-commit lifecycle** — commit after feature creation, after Inprogress move, after Fixed
 - **Idempotent** — `discover-new` returns only status=New bugs; already-processed bugs are invisible
 - **Fixed is terminal** — `--complete` on already-Fixed bugs returns `already_fixed`; no double-commit
+- **derive-feature-id-first** — the `feature_id` field MUST come from the JSON response of
+  `bug-fixer-ops.py derive-feature-id`. The conductor MUST NOT generate a feature ID using
+  timestamps, random strings, the `stub` field alone, or any inline computation. Using any
+  source other than the `feature_id` key in the derive-feature-id JSON output is an
+  implementation error.
+- **no-inline-feature-creation** — `feature.yaml`, `summary.md`, and any feature directory
+  structure MUST NOT be authored by the conductor directly. Feature creation MUST be delegated
+  exclusively to `init-feature-ops.py create`. Any attempt to create these files inline
+  bypasses schema enforcement, index updating, and governance validation.
 
 ## On Activation: --fix-all-new
 
-1. Run the light preflight from the exact CWD and path below; exit on non-zero:
-   ```bash
-   cd "{control_repo}/TargetProjects/lens-dev/new-codebase/lens.core.src"
-   uv run --script _bmad/lens-work/lens-preflight/scripts/light-preflight.py
-   ```
+1. Run light-preflight.py via the stub; exit on non-zero.
 2. Load this SKILL.md.
 3. Resolve `governance_repo`, `control_repo`, `username` from config.
 
@@ -77,11 +82,14 @@ delegate to `bmad-lens-expressplan` for planning execution. You own the outcome 
    uv run --script _bmad/lens-work/scripts/bug-fixer-ops.py derive-feature-id \
      --slugs {slug1} {slug2} ...
    ```
-   Parse JSON and set `featureId = {feature_id}`.
+   Parse JSON and set `featureId = result["feature_id"]`.
+   > **NON-NEGOTIABLE:** The conductor MUST read `feature_id` from this JSON object and use
+   > it verbatim. Do NOT construct a feature ID from `stub`, timestamps, random hex, or any
+   > inline formula. The only acceptable source is `result["feature_id"]`.
 10. Derive a human-readable batch name from discovered bug slugs:
     - Replace hyphens with spaces, title-case each slug, join with "; "
     - E.g. `["preflight-failed", "reporter-bug"]` → `"Bugbash: Preflight Failed; Reporter Bug"`
-11. Delegate to `lens-new-feature` via `init-feature-ops.py create`:
+11. Delegate feature creation to `init-feature-ops.py create`:
     ```bash
     uv run --script _bmad/lens-work/lens-init-feature/scripts/init-feature-ops.py create \
       --governance-repo {governance_repo} \
@@ -93,8 +101,15 @@ delegate to `bmad-lens-expressplan` for planning execution. You own the outcome 
       --track express \
       --username {username}
     ```
-12. Verify `index_updated == true`; if false: abort — all bugs remain in New; report error.
-13. If feature creation fails for any reason: stop; all bugs remain in New; print error and exit 1.
+    > **NON-NEGOTIABLE:** The conductor MUST NOT create `feature.yaml`, `summary.md`, or
+    > any feature directory inline. `init-feature-ops.py create` is the sole author of
+    > these files. Inline creation bypasses schema enforcement, index updating, and
+    > governance validation — it is always wrong regardless of circumstance.
+12. Verify `index_updated == true` in the response; if false or absent: abort — all bugs
+    remain in New; print error and exit 1. This is a hard gate. Do NOT proceed to Phase 3
+    unless `result["index_updated"] == true`.
+13. If feature creation fails for any reason (non-zero exit, `status != "pass"`, or
+    missing `index_updated`): stop; all bugs remain in New; print error and exit 1.
 
 ### Phase 3 — Status → Inprogress
 14. Invoke:
