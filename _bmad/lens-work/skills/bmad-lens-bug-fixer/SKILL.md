@@ -25,7 +25,7 @@ mutations, and expressplan delegation. It does not implement any business logic 
 
 You are the bug fix conductor. You route by flag, delegate to `bug-fixer-ops.py` for
 discovery and file moves, delegate to `bmad-lens-init-feature` for feature creation, and
-delegate to `bmad-lens-expressplan` for planning execution. You own the outcome report.
+delegate to `lens-expressplan` for planning execution. You own the outcome report.
 
 ## Communication Style
 
@@ -124,9 +124,20 @@ delegate to `bmad-lens-expressplan` for planning execution. You own the outcome 
 17. Push governance repo.
 
 ### Phase 4 — Expressplan Execution
-18. Collect planning input: concatenate all bug descriptions + chat logs from Inprogress bugs.
-19. Delegate to `bmad-lens-expressplan` skill with the combined bug content as planning context.
-20. Handle expressplan failure: bugs remain Inprogress; outcome report identifies failure.
+18. Collect planning input by delegating to `bug-fixer-ops.py`:
+    ```bash
+    uv run --script _bmad/lens-work/scripts/bug-fixer-ops.py collect-planning-input \
+      --governance-repo {governance_repo} \
+      --feature-id {featureId}
+    ```
+    Parse JSON output; use `planning_context` as the concatenated bug context string.
+19. Activate the `lens-expressplan` skill — do NOT run `lens-expressplan` or any variant as a
+    shell command; it is not a registered shell command and does not exist as an executable:
+    - Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-expressplan/SKILL.md`.
+    - Follow its `On Activation` section, running action `plan {featureId}`.
+    - Pass the `planning_context` string as additional planning context for QuickPlan.
+20. If the `lens-expressplan` skill activation fails or is blocked by a gate, bugs remain
+    Inprogress; record the gate/failure message in the outcome report.
 
 ### Outcome Report
 21. Print the per-bug outcome report (see Story 3.2 format):
@@ -188,11 +199,11 @@ updated_at: ...
 
 | Skill / Script | Role |
 |----------------|------|
-| `scripts/bug-fixer-ops.py` | Discovery, deterministic featureId derivation, move-to-inprogress, move-to-fixed, resolve-bugs |
+| `scripts/bug-fixer-ops.py` | Discovery, deterministic featureId derivation, move-to-inprogress, move-to-fixed, resolve-bugs, collect-planning-input |
 | `bugbash_scope_guard.py` | Path validation (imported by bug-fixer-ops.py) |
 | `bugbash_schema.py` | State machine validation (imported by bug-fixer-ops.py) |
 | `lens-init-feature/scripts/init-feature-ops.py create` | Express-track feature creation |
-| `bmad-lens-expressplan` | Expressplan execution delegation |
+| `lens-expressplan` | Expressplan execution delegation |
 | `scripts/light-preflight.py` | Entry gate |
 
 ## Error Recovery
@@ -204,7 +215,10 @@ If `--fix-all-new` is interrupted between Phase 3 (Inprogress commit) and Phase 
 **Recovery steps:**
 1. Run `bugbash-ops.py status-summary` to detect the orphaned state (non-zero Inprogress, no corresponding Fixed).
 2. Run `resolve-bugs --feature-id {featureId}` to confirm which slugs are affected.
-3. Delegate expressplan manually: load `bmad-lens-expressplan` with the Inprogress bug descriptions as context.
+3. Activate the `lens-expressplan` skill manually — do NOT run it as a shell command:
+   - Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-expressplan/SKILL.md`.
+   - Follow its `On Activation` section, running action `plan {featureId}`.
+   - Pass the Inprogress bug descriptions as planning context for QuickPlan.
 4. After expressplan completes, run `--complete {featureId}` to move bugs to Fixed.
 
 ### Phase 2 Failure (Feature Creation)

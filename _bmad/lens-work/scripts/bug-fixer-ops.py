@@ -7,11 +7,12 @@
 bug-fixer-ops.py — Bug discovery and status mutation operations for lens-bugbash.
 
 Commands:
-  discover-new        --governance-repo PATH
-  derive-feature-id   --slugs STR [STR ...]
-  move-to-inprogress  --governance-repo PATH --feature-id STR [--slugs STR ...]
-  move-to-fixed       --governance-repo PATH [--slugs STR ...]
-  resolve-bugs        --governance-repo PATH --feature-id STR
+  discover-new            --governance-repo PATH
+  derive-feature-id       --slugs STR [STR ...]
+  move-to-inprogress      --governance-repo PATH --feature-id STR [--slugs STR ...]
+  move-to-fixed           --governance-repo PATH [--slugs STR ...]
+  resolve-bugs            --governance-repo PATH --feature-id STR
+  collect-planning-input  --governance-repo PATH --feature-id STR
 
 Exit codes: 0=success, 1=validation/not-found error, 2=scope violation, 3=write error
 """
@@ -367,6 +368,60 @@ def cmd_resolve_bugs(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_collect_planning_input(args: argparse.Namespace) -> int:
+    governance_repo = Path(args.governance_repo).resolve()
+    assert_governance_repo_exists(governance_repo)
+
+    feature_id: str = args.feature_id
+    feature_id_error = _validate_feature_id(feature_id)
+    if feature_id_error:
+        print(f"ERROR: {feature_id_error}", file=sys.stderr)
+        return 1
+
+    inprogress_dir = governance_repo / "bugs" / "Inprogress"
+
+    bugs: list[dict] = []
+
+    if inprogress_dir.exists():
+        for md_file in sorted(inprogress_dir.glob("*.md")):
+            try:
+                assert_path_in_scope(md_file, governance_repo)
+            except ScopeViolationError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 2
+            content = md_file.read_text(encoding="utf-8")
+            fm = _parse_frontmatter(content)
+            fid = fm.get("featureId", "").strip('"')
+            if fid == feature_id:
+                bugs.append({
+                    "slug": fm.get("slug", md_file.stem),
+                    "title": fm.get("title", ""),
+                    "description": fm.get("description", ""),
+                })
+
+    parts: list[str] = []
+    for bug in bugs:
+        title = bug["title"]
+        description = bug["description"]
+        if title and description:
+            entry = f"{title}: {description}"
+        elif title:
+            entry = title
+        elif description:
+            entry = description
+        else:
+            continue
+        parts.append(entry)
+    planning_context = "\n".join(parts)
+
+    print(json.dumps({
+        "bugs": bugs,
+        "planning_context": planning_context,
+        "count": len(bugs),
+    }))
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -406,6 +461,14 @@ def _build_parser() -> argparse.ArgumentParser:
     rb.add_argument("--governance-repo", required=True)
     rb.add_argument("--feature-id", required=True)
 
+    # collect-planning-input
+    cpi = sub.add_parser(
+        "collect-planning-input",
+        help="Collect title+description from Inprogress bugs for a featureId.",
+    )
+    cpi.add_argument("--governance-repo", required=True)
+    cpi.add_argument("--feature-id", required=True)
+
     return parser
 
 
@@ -419,6 +482,7 @@ def main() -> int:
         "move-to-inprogress": cmd_move_to_inprogress,
         "move-to-fixed": cmd_move_to_fixed,
         "resolve-bugs": cmd_resolve_bugs,
+        "collect-planning-input": cmd_collect_planning_input,
     }
     fn = dispatch.get(args.command)
     if fn:

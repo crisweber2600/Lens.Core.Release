@@ -382,6 +382,117 @@ class TestResolveBugs:
 
 
 # ---------------------------------------------------------------------------
+# collect-planning-input
+# ---------------------------------------------------------------------------
+
+
+class TestCollectPlanningInput:
+    def test_returns_planning_context_for_matching_feature_id(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_ip = governance_repo / "bugs" / "Inprogress"
+        _make_bug_file(
+            bugs_ip, "slug-plan-aa1122", status="Inprogress",
+            feature_id="lens-dev-new-codebase-bugfix-plan",
+        )
+        result = _run([
+            "collect-planning-input",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-plan",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["count"] == 1
+        assert data["bugs"][0]["slug"] == "slug-plan-aa1122"
+        assert data["bugs"][0]["title"] == "Bug slug-plan-aa1122"
+        assert data["bugs"][0]["description"] == "Description of slug-plan-aa1122"
+        assert "Bug slug-plan-aa1122" in data["planning_context"]
+        assert "Description of slug-plan-aa1122" in data["planning_context"]
+
+    def test_excludes_bugs_with_different_feature_id(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_ip = governance_repo / "bugs" / "Inprogress"
+        _make_bug_file(
+            bugs_ip, "slug-match-bb2233", status="Inprogress",
+            feature_id="lens-dev-new-codebase-bugfix-target",
+        )
+        _make_bug_file(
+            bugs_ip, "slug-other-cc3344", status="Inprogress",
+            feature_id="lens-dev-new-codebase-bugfix-other",
+        )
+        result = _run([
+            "collect-planning-input",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-target",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["count"] == 1
+        slugs = [b["slug"] for b in data["bugs"]]
+        assert "slug-match-bb2233" in slugs
+        assert "slug-other-cc3344" not in slugs
+
+    def test_returns_empty_when_no_inprogress_bugs(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run([
+            "collect-planning-input",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-empty",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["count"] == 0
+        assert data["bugs"] == []
+        assert data["planning_context"] == ""
+
+    def test_concatenates_multiple_bugs(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_ip = governance_repo / "bugs" / "Inprogress"
+        _make_bug_file(
+            bugs_ip, "slug-alpha-dd4455", status="Inprogress",
+            feature_id="lens-dev-new-codebase-bugfix-multi",
+        )
+        _make_bug_file(
+            bugs_ip, "slug-beta-ee5566", status="Inprogress",
+            feature_id="lens-dev-new-codebase-bugfix-multi",
+        )
+        result = _run([
+            "collect-planning-input",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-multi",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["count"] == 2
+        ctx = data["planning_context"]
+        assert "Bug slug-alpha-dd4455" in ctx
+        assert "Bug slug-beta-ee5566" in ctx
+        # entries are newline-separated
+        assert "\n" in ctx
+
+    def test_exits_1_when_governance_repo_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "does-not-exist"
+        result = _run([
+            "collect-planning-input",
+            "--governance-repo", str(missing),
+            "--feature-id", "lens-dev-new-codebase-bugfix-x",
+        ])
+        assert result.returncode == 1
+
+    def test_exits_1_on_invalid_feature_id(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run([
+            "collect-planning-input",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "bad-id",
+        ])
+        assert result.returncode == 1
+        assert "must start with 'lens-dev-new-codebase-bugfix-'" in result.stderr
+
+
+# ---------------------------------------------------------------------------
 # derive-feature-id — regression: stub must fit within SAFE_ID_PATTERN (max 64 chars)
 # ---------------------------------------------------------------------------
 
