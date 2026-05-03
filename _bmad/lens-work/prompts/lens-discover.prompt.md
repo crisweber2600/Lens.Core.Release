@@ -10,7 +10,7 @@ Use this prompt as the entry controller for `/lens-discover`. Resolve config fir
 
 Before reading config or invoking discover:
 
-1. Confirm the `.github/prompts/lens-discover.prompt.md` stub already ran `uv run --script ./lens.core/_bmad/lens-work/scripts/light-preflight.py` successfully from the workspace root.
+1. Confirm the `.github/prompts/lens-discover.prompt.md` stub already ran `uv run --script ./lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py` successfully from the workspace root.
 2. If not, run that command now from the workspace root.
 3. If that command exits non-zero, stop and surface the failure.
 

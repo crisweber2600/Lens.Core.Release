@@ -17,6 +17,10 @@ from pathlib import Path
 def find_project_root() -> Path | None:
     current = Path.cwd().resolve()
     for candidate in [current, *current.parents]:
+        # Workspace-root pattern: lens.core/_bmad/lens-work/lifecycle.yaml present
+        if (candidate / "lens.core" / "_bmad" / "lens-work" / "lifecycle.yaml").is_file():
+            return candidate
+        # Standalone source-repo pattern: _bmad/ is a direct child
         if (candidate / "_bmad").is_dir():
             return candidate
     return None
