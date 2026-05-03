@@ -49,7 +49,11 @@ delegate to `bmad-lens-expressplan` for planning execution. You own the outcome 
 
 ## On Activation: --fix-all-new
 
-1. Run light-preflight.py via the stub; exit on non-zero.
+1. Run the light preflight from the exact CWD and path below; exit on non-zero:
+   ```bash
+   cd "{control_repo}/TargetProjects/lens-dev/new-codebase/lens.core.src"
+   uv run --script _bmad/lens-work/lens-preflight/scripts/light-preflight.py
+   ```
 2. Load this SKILL.md.
 3. Resolve `governance_repo`, `control_repo`, `username` from config.
 

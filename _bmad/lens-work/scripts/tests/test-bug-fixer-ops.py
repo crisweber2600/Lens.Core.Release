@@ -379,3 +379,44 @@ class TestResolveBugs:
         ])
         assert result.returncode == 1
         assert "must start with 'lens-dev-new-codebase-bugfix-'" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# derive-feature-id — regression: stub must fit within SAFE_ID_PATTERN (max 64 chars)
+# ---------------------------------------------------------------------------
+
+
+class TestDeriveFeatureIdLengthConstraint:
+    """Regression tests for story 2.1: derive-feature-id stub truncation fix."""
+
+    def test_derive_feature_id_respects_max_length(self):
+        """Feature ID must never exceed 64 chars regardless of input slug length."""
+        long_slug = "a-very-long-bugfix-description-that-exceeds-thirty-five-characters-easily"
+        result = _run(["derive-feature-id", "--slugs", long_slug])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        feature_id = data["feature_id"]
+        assert len(feature_id) <= 64, (
+            f"Feature ID too long: {len(feature_id)} chars — '{feature_id}'"
+        )
+
+    def test_derive_feature_id_single_short_slug_preserved(self):
+        """Short slugs should not be truncated."""
+        result = _run(["derive-feature-id", "--slugs", "short-slug"])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["feature_id"] == "lens-dev-new-codebase-bugfix-short-slug"
+
+    def test_derive_feature_id_batch_max_length(self):
+        """Batch stub from multiple long slugs must also fit within 64 chars."""
+        slugs = [
+            "extremely-long-first-slug-with-many-words",
+            "another-very-long-second-slug-here",
+        ]
+        result = _run(["derive-feature-id", "--slugs", *slugs])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        feature_id = data["feature_id"]
+        assert len(feature_id) <= 64, (
+            f"Batch feature ID too long: {len(feature_id)} chars — '{feature_id}'"
+        )
