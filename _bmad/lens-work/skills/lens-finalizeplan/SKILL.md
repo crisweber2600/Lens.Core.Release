@@ -97,7 +97,7 @@ uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/sc
    4. `lens-bmad-skill --skill bmad-create-story`
 2. Validate that bundle outputs exist in the resolved docs path: `epics.md`, `stories.md`, `implementation-readiness.md`, `sprint-status.yaml`, and story files under `stories/` or supported root story-file names.
 3. Commit and push the downstream bundle on `{featureId}` through `lens-git-orchestration`.
-4. Open or verify the final PR from `{featureId}` to `main` through `lens-git-orchestration create-pr`.
+4. Open or verify the final PR from `{featureId}` to `{featureId}-dev` through `lens-git-orchestration create-pr`.
 5. Only after the downstream bundle is pushed and the final PR exists, update `feature.yaml` phase to `finalizeplan-complete` through `lens-feature-yaml`.
 6. Signal `/dev` as the next action after the final PR is ready.
 
@@ -127,5 +127,5 @@ uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/sc
 
 - Step 1 produced or refreshed `finalizeplan-review.md`, did not fail the gate, and pushed `{featureId}-plan` when required.
 - Step 2 created or verified the `{featureId}-plan` -> `{featureId}` planning PR.
-- Step 3 generated the downstream bundle in the required wrapper order, pushed `{featureId}`, opened or verified the `{featureId}` -> `main` final PR, and only then updated `feature.yaml` to `finalizeplan-complete`.
+- Step 3 generated the downstream bundle in the required wrapper order, pushed `{featureId}`, opened or verified the `{featureId}` -> `{featureId}-dev` final PR, and only then updated `feature.yaml` to `finalizeplan-complete`.
 - No direct governance file creation occurred at any point.
