@@ -8,6 +8,7 @@ bug-fixer-ops.py — Bug discovery and status mutation operations for lens-bugba
 
 Commands:
   discover-new        --governance-repo PATH
+  derive-feature-id   --slugs STR [STR ...]
   move-to-inprogress  --governance-repo PATH --feature-id STR [--slugs STR ...]
   move-to-fixed       --governance-repo PATH [--slugs STR ...]
   resolve-bugs        --governance-repo PATH --feature-id STR
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -49,8 +51,58 @@ except ImportError:
     sys.exit(1)
 
 
+FEATURE_ID_PREFIX = "lens-dev-new-codebase-bugfix-"
+FEATURE_ID_PATTERN = re.compile(r"^lens-dev-new-codebase-bugfix-[a-z0-9]+(?:-[a-z0-9]+)*$")
+LEGACY_RANDOM_FEATURE_ID_PATTERN = re.compile(r"^lens-dev-new-codebase-bugfix-\d{13}-[0-9a-f]{4}$")
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _slug_to_component(value: str) -> str:
+    component = value.strip().lower()
+    component = re.sub(r"[^a-z0-9]+", "-", component)
+    return component.strip("-")
+
+
+def derive_feature_id_from_slugs(slugs: list[str]) -> tuple[str, str]:
+    """Derive deterministic feature id from bug slugs.
+
+    Uses lexicographic ordering to ensure deterministic output regardless of input order.
+    """
+    normalized = sorted(_slug_to_component(slug) for slug in slugs if _slug_to_component(slug))
+    if not normalized:
+        raise ValueError("At least one non-empty slug is required")
+
+    if len(normalized) == 1:
+        stub = normalized[0]
+    else:
+        stub = f"{normalized[0]}-batch-{len(normalized)}"
+
+    # Keep final featureId filename-safe and within SAFE_ID_PATTERN max (64 chars total).
+    _max_stub = 64 - len(FEATURE_ID_PREFIX)
+    stub = stub[:_max_stub].strip("-")
+    feature_id = f"{FEATURE_ID_PREFIX}{stub}"
+    return feature_id, stub
+
+
+def _validate_feature_id(feature_id: str) -> str | None:
+    if not feature_id.strip():
+        return "--feature-id is required and must not be empty."
+    if not feature_id.startswith(FEATURE_ID_PREFIX):
+        return f"--feature-id must start with '{FEATURE_ID_PREFIX}'."
+    if LEGACY_RANDOM_FEATURE_ID_PATTERN.match(feature_id):
+        return (
+            "--feature-id uses deprecated random timestamp/hex suffix; "
+            "derive it from bug slugs instead."
+        )
+    if not FEATURE_ID_PATTERN.match(feature_id):
+        return (
+            "--feature-id must match pattern "
+            "'lens-dev-new-codebase-bugfix-{slug[-slug...]}' using lowercase alnum and hyphen only."
+        )
+    return None
 
 
 def _parse_frontmatter(content: str) -> dict:
@@ -153,14 +205,26 @@ def cmd_discover_new(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_derive_feature_id(args: argparse.Namespace) -> int:
+    try:
+        feature_id, stub = derive_feature_id_from_slugs(args.slugs or [])
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps({"feature_id": feature_id, "stub": stub, "count": len(args.slugs or [])}))
+    return 0
+
+
 def cmd_move_to_inprogress(args: argparse.Namespace) -> int:
     governance_repo = Path(args.governance_repo).resolve()
     assert_governance_repo_exists(governance_repo)
 
     feature_id: str = args.feature_id
-    if not feature_id.strip():
+    feature_id_error = _validate_feature_id(feature_id)
+    if feature_id_error:
         print(
-            "ERROR: --feature-id is required and must not be empty.",
+            f"ERROR: {feature_id_error}",
             file=sys.stderr,
         )
         return 1
@@ -261,6 +325,11 @@ def cmd_resolve_bugs(args: argparse.Namespace) -> int:
     assert_governance_repo_exists(governance_repo)
 
     feature_id: str = args.feature_id
+    feature_id_error = _validate_feature_id(feature_id)
+    if feature_id_error:
+        print(f"ERROR: {feature_id_error}", file=sys.stderr)
+        return 1
+
     inprogress_dir = governance_repo / "bugs" / "Inprogress"
     fixed_dir = governance_repo / "bugs" / "Fixed"
 
@@ -314,6 +383,13 @@ def _build_parser() -> argparse.ArgumentParser:
     dn = sub.add_parser("discover-new", help="List all New bugs.")
     dn.add_argument("--governance-repo", required=True)
 
+    # derive-feature-id
+    dfi = sub.add_parser(
+        "derive-feature-id",
+        help="Derive deterministic feature id from bug slugs.",
+    )
+    dfi.add_argument("--slugs", nargs="+", default=[])
+
     # move-to-inprogress
     mi = sub.add_parser("move-to-inprogress", help="Move bugs from New -> Inprogress.")
     mi.add_argument("--governance-repo", required=True)
@@ -339,6 +415,7 @@ def main() -> int:
 
     dispatch = {
         "discover-new": cmd_discover_new,
+        "derive-feature-id": cmd_derive_feature_id,
         "move-to-inprogress": cmd_move_to_inprogress,
         "move-to-fixed": cmd_move_to_fixed,
         "resolve-bugs": cmd_resolve_bugs,

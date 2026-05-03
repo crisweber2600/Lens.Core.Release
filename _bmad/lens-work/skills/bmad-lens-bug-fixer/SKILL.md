@@ -64,22 +64,31 @@ delegate to `bmad-lens-expressplan` for planning execution. You own the outcome 
 7. Announce: `Discovered {count} New bugs`.
 
 ### Phase 2 — Feature Creation (before any status mutation)
-8. Generate timestamp: `{ms_timestamp}` = current Unix milliseconds; `{random4hex}` = 4 random hex chars.
-9. Compose slug: `bugfix-{ms_timestamp}-{random4hex}`.
-10. Delegate to `bmad-lens-init-feature` skill:
+8. Build a deterministic feature stub from discovered bug slugs (from Phase 1):
+   - Sort slugs lexicographically
+   - If one slug: `stub = {slug}`
+   - If multiple slugs: `stub = {first_slug}-batch-{count}`
+9. Derive feature ID via script:
+   ```bash
+   uv run --script _bmad/lens-work/scripts/bug-fixer-ops.py derive-feature-id \
+     --slugs {slug1} {slug2} ...
+   ```
+   Parse JSON and set `featureId = {feature_id}`.
+10. Derive a human-readable batch name from discovered bug slugs:
+    - Replace hyphens with spaces, title-case each slug, join with "; "
+    - E.g. `["preflight-failed", "reporter-bug"]` → `"Bugbash: Preflight Failed; Reporter Bug"`
+11. Delegate to `lens-new-feature` via `init-feature-ops.py create`:
     ```bash
-    uv run _bmad/lens-work/lens-init-feature/scripts/init-feature-ops.py create \
+    uv run --script _bmad/lens-work/lens-init-feature/scripts/init-feature-ops.py create \
       --governance-repo {governance_repo} \
       --control-repo {control_repo} \
-      --feature-id bugfix-{ms_timestamp}-{random4hex} \
+      --feature-id {featureId} \
       --domain lens-dev \
       --service new-codebase \
-      --name "Bugbash Batch Fix - {timestamp}" \
+      --name "{batch_name}" \
       --track express \
       --username {username}
     ```
-    > Note: Use the release module init-feature-ops.py if the target repo version lacks the `create` subcommand.
-11. Parse response; resolve `featureId = lens-dev-new-codebase-bugfix-{ms_timestamp}-{random4hex}`.
 12. Verify `index_updated == true`; if false: abort — all bugs remain in New; report error.
 13. If feature creation fails for any reason: stop; all bugs remain in New; print error and exit 1.
 
@@ -149,7 +158,7 @@ delegate to `bmad-lens-expressplan` for planning execution. You own the outcome 
 title: "..."
 description: "..."
 status: Inprogress
-featureId: "lens-dev-new-codebase-bugfix-{ms_timestamp}-{random4hex}"
+featureId: "lens-dev-new-codebase-bugfix-{derived_stub}"
 slug: "..."
 created_at: ...
 updated_at: ...
@@ -160,7 +169,7 @@ updated_at: ...
 
 | Skill / Script | Role |
 |----------------|------|
-| `scripts/bug-fixer-ops.py` | Discovery, move-to-inprogress, move-to-fixed, resolve-bugs |
+| `scripts/bug-fixer-ops.py` | Discovery, deterministic featureId derivation, move-to-inprogress, move-to-fixed, resolve-bugs |
 | `bugbash_scope_guard.py` | Path validation (imported by bug-fixer-ops.py) |
 | `bugbash_schema.py` | State machine validation (imported by bug-fixer-ops.py) |
 | `lens-init-feature/scripts/init-feature-ops.py create` | Express-track feature creation |

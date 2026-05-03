@@ -750,6 +750,388 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# CF-1: Valid tracks
+# ---------------------------------------------------------------------------
+VALID_TRACKS = frozenset({"quickplan", "full", "hotfix", "tech-change", "express", "expressplan"})
+
+
+def _starting_phase_for_track(track: str) -> str:
+    if track in ("express", "expressplan"):
+        return "expressplan"
+    return "preplan"
+
+
+def make_feature_yaml(
+    feature_id: str,
+    feature_slug: str,
+    domain: str,
+    service: str,
+    name: str,
+    track: str,
+    username: str,
+    timestamp: str,
+    description: str = "",
+) -> dict:
+    starting_phase = _starting_phase_for_track(track)
+    return {
+        "name": name,
+        "description": description,
+        "featureId": feature_id,
+        "featureSlug": feature_slug,
+        "domain": domain,
+        "service": service,
+        "phase": starting_phase,
+        "track": track,
+        "milestones": {
+            "businessplan": None,
+            "techplan": None,
+            "finalizeplan": None,
+            "dev-ready": None,
+            "dev-complete": None,
+        },
+        "team": [{"username": username, "role": "lead"}],
+        "dependencies": {"depends_on": [], "depended_by": []},
+        "target_repos": [],
+        "links": {"retrospective": None, "issues": [], "pull_request": None},
+        "priority": "medium",
+        "created": timestamp,
+        "updated": timestamp,
+        "phase_transitions": [{"phase": starting_phase, "timestamp": timestamp, "user": username}],
+        "docs": {
+            "path": f"docs/{domain}/{service}/{feature_id}",
+            "governance_docs_path": f"features/{domain}/{service}/{feature_id}/docs",
+        },
+    }
+
+
+def make_summary_md(feature_id: str, name: str, starting_phase: str, track: str, timestamp: str) -> str:
+    return (
+        "---\n"
+        f"featureId: {feature_id}\n"
+        f"name: {name}\n"
+        f"status: {starting_phase}\n"
+        f"track: {track}\n"
+        f"updated_at: {timestamp}\n"
+        "---\n"
+        "\n"
+        f"# {name}\n"
+        "\n"
+        "<!-- Auto-generated summary stub. Update when planning begins. -->\n"
+    )
+
+
+def _load_feature_index(gov_path: Path) -> dict:
+    index_path = gov_path / "feature-index.yaml"
+    if not index_path.exists():
+        return {"features": []}
+    with index_path.open(encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    if "features" not in data:
+        data["features"] = []
+    return data
+
+
+def _feature_index_has_id(index_data: dict, feature_id: str) -> bool:
+    for entry in index_data.get("features", []):
+        if entry.get("featureId") == feature_id or entry.get("id") == feature_id:
+            return True
+    return False
+
+
+def _make_index_entry(
+    feature_id: str,
+    feature_slug: str,
+    domain: str,
+    service: str,
+    name: str,
+    track: str,
+    username: str,
+    starting_phase: str,
+    timestamp: str,
+) -> dict:
+    return {
+        "featureId": feature_id,
+        "id": feature_id,
+        "name": name,
+        "featureSlug": feature_slug,
+        "domain": domain,
+        "service": service,
+        "status": starting_phase,
+        "track": track,
+        "owner": username,
+        "plan_branch": f"{feature_id}-plan",
+        "related_features": {"depends_on": [], "blocks": [], "related": []},
+        "created": timestamp,
+        "updated_at": timestamp,
+        "summary": "",
+    }
+
+
+# ---------------------------------------------------------------------------
+# CF-2: create subcommand — initialize a new feature
+# ---------------------------------------------------------------------------
+def cmd_create(args: argparse.Namespace) -> dict:
+    feature_id = args.feature_id
+    domain = args.domain
+    service = args.service
+    name = args.name if args.name else feature_id
+    track = args.track if args.track else "quickplan"
+    username = args.username if args.username else ""
+    governance_repo = args.governance_repo
+    control_repo = args.control_repo if args.control_repo else governance_repo
+    description = args.description if args.description else ""
+
+    if track not in VALID_TRACKS:
+        return {
+            "status": "fail",
+            "scope": "feature",
+            "dry_run": bool(args.dry_run),
+            "error": f"Invalid track: '{track}'. Must be one of: {', '.join(sorted(VALID_TRACKS))}.",
+        }
+
+    err = validate_safe_id_field(domain, "domain")
+    if err:
+        return {"status": "fail", "scope": "feature", "dry_run": bool(args.dry_run), "error": err}
+
+    err = validate_safe_id_field(service, "service")
+    if err:
+        return {"status": "fail", "scope": "feature", "dry_run": bool(args.dry_run), "error": err}
+
+    err = validate_safe_id_field(feature_id, "feature-id")
+    if err:
+        return {"status": "fail", "scope": "feature", "dry_run": bool(args.dry_run), "error": err}
+
+    gov_path = Path(governance_repo)
+    if not gov_path.is_dir():
+        return {
+            "status": "fail",
+            "scope": "feature",
+            "dry_run": bool(args.dry_run),
+            "error": f"Governance repo not found: {governance_repo}",
+        }
+
+    # Derive feature slug: strip "{domain}-{service}-" prefix if present
+    prefix = f"{domain}-{service}-"
+    feature_slug = feature_id[len(prefix):] if feature_id.startswith(prefix) else feature_id
+
+    starting_phase = _starting_phase_for_track(track)
+
+    feature_dir = gov_path / "features" / domain / service / feature_id
+    feature_yaml_path = feature_dir / "feature.yaml"
+    summary_md_path = feature_dir / "summary.md"
+    index_path = gov_path / "feature-index.yaml"
+    domain_marker_path = gov_path / "features" / domain / "domain.yaml"
+    service_marker_path = gov_path / "features" / domain / service / "service.yaml"
+    domain_const_path = gov_path / "constitutions" / domain / "constitution.md"
+    service_const_path = gov_path / "constitutions" / domain / service / "constitution.md"
+
+    # Build governance git path list (include parent markers if absent)
+    gov_rel_paths: list[str] = []
+    if not domain_marker_path.exists():
+        gov_rel_paths.append(domain_marker_path.relative_to(gov_path).as_posix())
+        gov_rel_paths.append(domain_const_path.relative_to(gov_path).as_posix())
+    if not service_marker_path.exists():
+        gov_rel_paths.append(service_marker_path.relative_to(gov_path).as_posix())
+        gov_rel_paths.append(service_const_path.relative_to(gov_path).as_posix())
+    gov_rel_paths.extend([
+        feature_yaml_path.relative_to(gov_path).as_posix(),
+        summary_md_path.relative_to(gov_path).as_posix(),
+        index_path.relative_to(gov_path).as_posix(),
+    ])
+
+    gov_steps = build_container_git_steps(
+        gov_rel_paths, f"feat(feature): add {domain}/{service}/{feature_id}"
+    )
+    governance_git_commands = [git_command_text(governance_repo, step) for step in gov_steps]
+
+    remaining_commands = [
+        (
+            f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/"
+            f"scripts/git-orchestration-ops.py create-feature-branches "
+            f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} --feature-id {shlex.quote(feature_id)}"
+        ),
+        (
+            f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-switch/"
+            f"scripts/switch-ops.py switch "
+            f"--governance-repo {shlex.quote(governance_repo)} --feature-id {shlex.quote(feature_id)} --control-repo {shlex.quote(control_repo)}"
+        ),
+    ]
+
+    # Duplicate detection
+    index_data = _load_feature_index(gov_path)
+    if _feature_index_has_id(index_data, feature_id):
+        return {
+            "status": "fail",
+            "scope": "feature",
+            "dry_run": bool(args.dry_run),
+            "error": f"Feature '{feature_id}' already exists in feature-index.yaml.",
+        }
+
+    if feature_yaml_path.exists():
+        return {
+            "status": "exists",
+            "scope": "feature",
+            "dry_run": bool(args.dry_run),
+            "feature_id": feature_id,
+            "feature_slug": feature_slug,
+            "path": str(feature_yaml_path),
+            "error": None,
+        }
+
+    if args.dry_run:
+        return {
+            "status": "pass",
+            "dry_run": True,
+            "scope": "feature",
+            "feature_id": feature_id,
+            "feature_slug": feature_slug,
+            "domain": domain,
+            "service": service,
+            "track": track,
+            "starting_phase": starting_phase,
+            "path": str(feature_yaml_path),
+            "summary_path": str(summary_md_path),
+            "index_path": str(index_path),
+            "error": None,
+            **build_container_result_fields(governance_git_commands, []),
+            "remaining_commands": remaining_commands,
+        }
+
+    if args.execute_governance_git and not args.dry_run:
+        try:
+            sync_governance_main(governance_repo)
+        except RuntimeError as exc:
+            return {
+                "status": "fail",
+                "scope": "feature",
+                "dry_run": False,
+                "error": f"Governance git preflight failed: {exc}",
+                **build_container_result_fields(governance_git_commands, []),
+            }
+
+    timestamp = now_iso()
+
+    if not domain_marker_path.exists():
+        try:
+            atomic_write_yaml(domain_marker_path, make_domain_yaml(domain, domain, username, timestamp))
+            domain_const_path.parent.mkdir(parents=True, exist_ok=True)
+            domain_const_path.write_text(make_domain_constitution_md(domain, domain), encoding="utf-8")
+        except OSError as exc:
+            return {"status": "fail", "scope": "feature", "dry_run": False,
+                    "error": f"Failed to create domain marker: {exc}"}
+
+    if not service_marker_path.exists():
+        try:
+            atomic_write_yaml(service_marker_path, make_service_yaml(domain, service, service, username, timestamp))
+            service_const_path.parent.mkdir(parents=True, exist_ok=True)
+            service_const_path.write_text(make_service_constitution_md(domain, service, service), encoding="utf-8")
+        except OSError as exc:
+            return {"status": "fail", "scope": "feature", "dry_run": False,
+                    "error": f"Failed to create service marker: {exc}"}
+
+    files_written: list[Path] = []
+
+    try:
+        atomic_write_yaml(
+            feature_yaml_path,
+            make_feature_yaml(feature_id, feature_slug, domain, service, name, track, username, timestamp, description),
+        )
+        files_written.append(feature_yaml_path)
+    except OSError as exc:
+        return {"status": "fail", "scope": "feature", "dry_run": False,
+                "error": f"Failed to write feature.yaml: {exc}"}
+
+    try:
+        summary_md_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_md_path.write_text(
+            make_summary_md(feature_id, name, starting_phase, track, timestamp), encoding="utf-8"
+        )
+        files_written.append(summary_md_path)
+    except OSError as exc:
+        return {"status": "fail", "scope": "feature", "dry_run": False,
+                "error": f"Failed to write summary.md: {exc}"}
+
+    # Re-read index (timestamp may differ) and append entry
+    index_data = _load_feature_index(gov_path)
+    new_entry = _make_index_entry(
+        feature_id, feature_slug, domain, service, name, track, username, starting_phase, timestamp
+    )
+    index_data["features"].append(new_entry)
+    try:
+        atomic_write_yaml(index_path, index_data)
+    except OSError as exc:
+        # Rollback: remove already-written feature files to avoid partial state
+        for written_path in files_written:
+            try:
+                written_path.unlink()
+            except OSError:
+                pass
+        return {"status": "fail", "scope": "feature", "dry_run": False,
+                "error": f"Failed to update feature-index.yaml: {exc}"}
+
+    governance_commit_sha: str | None = None
+    governance_git_executed = False
+    if args.execute_governance_git and not args.dry_run:
+        try:
+            for step in gov_steps[2:]:
+                run_git(governance_repo, step)
+            governance_commit_sha = current_head_sha(governance_repo)
+            governance_git_executed = True
+        except RuntimeError as exc:
+            return {
+                "status": "fail",
+                "scope": "feature",
+                "dry_run": False,
+                "feature_id": feature_id,
+                "path": str(feature_yaml_path),
+                "error": f"Governance git execution failed: {exc}",
+                **build_container_result_fields(
+                    governance_git_commands, [],
+                    governance_commit_sha=current_head_sha(governance_repo),
+                ),
+            }
+
+    is_express = track in ("express", "expressplan")
+    gh_commands: list[str] = []
+    if not is_express:
+        gh_commands = [
+            (
+                f"gh pr create --repo {shlex.quote(control_repo)} "
+                f"--head {shlex.quote(f'{feature_id}-plan')} --base {shlex.quote(feature_id)} "
+                f"--title {shlex.quote(f'[plan] {feature_id} — planning artifacts')} "
+                f"--body {shlex.quote('Auto-created by lens-init-feature')}"
+            )
+        ]
+
+    return {
+        "status": "pass",
+        "dry_run": False,
+        "scope": "feature",
+        "feature_id": feature_id,
+        "feature_slug": feature_slug,
+        "domain": domain,
+        "service": service,
+        "track": track,
+        "starting_phase": starting_phase,
+        "recommended_command": "/next",
+        "router_command": "/next",
+        "planning_pr_created": not is_express,
+        "gh_commands": gh_commands,
+        "path": str(feature_yaml_path),
+        "summary_path": str(summary_md_path),
+        "index_path": str(index_path),
+        "index_updated": True,
+        "error": None,
+        **build_container_result_fields(
+            governance_git_commands, [],
+            governance_git_executed=governance_git_executed,
+            governance_commit_sha=governance_commit_sha,
+        ),
+        "remaining_commands": remaining_commands,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Lens init-feature ops")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -777,6 +1159,19 @@ def build_parser() -> argparse.ArgumentParser:
     create_service.add_argument("--execute-governance-git", action="store_true")
     create_service.add_argument("--dry-run", action="store_true")
 
+    create = subparsers.add_parser("create", help="Initialize a new feature")
+    create.add_argument("--governance-repo", required=True)
+    create.add_argument("--control-repo")
+    create.add_argument("--feature-id", required=True)
+    create.add_argument("--domain", required=True)
+    create.add_argument("--service", required=True)
+    create.add_argument("--name")
+    create.add_argument("--description", default="")
+    create.add_argument("--track", default="quickplan")
+    create.add_argument("--username", default="")
+    create.add_argument("--execute-governance-git", action="store_true")
+    create.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -784,7 +1179,9 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.command == "create-domain":
+    if args.command == "create":
+        result = cmd_create(args)
+    elif args.command == "create-domain":
         result = cmd_create_domain(args)
     elif args.command == "create-service":
         result = cmd_create_service(args)

@@ -104,6 +104,68 @@ class TestDiscoverNew:
 
 
 # ---------------------------------------------------------------------------
+# derive-feature-id
+# ---------------------------------------------------------------------------
+
+
+class TestDeriveFeatureId:
+    def test_single_slug_is_deterministic(self):
+        result = _run([
+            "derive-feature-id",
+            "--slugs", "reporter-fixed-bug",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["stub"] == "reporter-fixed-bug"
+        assert data["feature_id"] == (
+            "lens-dev-new-codebase-bugfix-reporter-fixed-bug"
+        )
+
+    def test_long_slug_truncated_to_safe_id_limit(self):
+        # slug with 40 chars gets capped to 35 to keep total feature_id <= 64 chars
+        result = _run([
+            "derive-feature-id",
+            "--slugs", "preflight-failed-and-reporter-fixed-bug",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        # stub is trimmed to 35 chars (64 - len("lens-dev-new-codebase-bugfix-"))
+        assert data["stub"] == "preflight-failed-and-reporter-fixed"
+        assert data["feature_id"] == (
+            "lens-dev-new-codebase-bugfix-preflight-failed-and-reporter-fixed"
+        )
+        assert len(data["feature_id"]) <= 64
+
+    def test_multiple_slugs_is_order_independent(self):
+        result_a = _run([
+            "derive-feature-id",
+            "--slugs",
+            "z-last-bug",
+            "a-first-bug",
+            "m-middle-bug",
+        ])
+        result_b = _run([
+            "derive-feature-id",
+            "--slugs",
+            "m-middle-bug",
+            "z-last-bug",
+            "a-first-bug",
+        ])
+        assert result_a.returncode == 0
+        assert result_b.returncode == 0
+        data_a = json.loads(result_a.stdout.strip())
+        data_b = json.loads(result_b.stdout.strip())
+        assert data_a["stub"] == "a-first-bug-batch-3"
+        assert data_a["feature_id"] == "lens-dev-new-codebase-bugfix-a-first-bug-batch-3"
+        assert data_a["feature_id"] == data_b["feature_id"]
+
+    def test_requires_non_empty_slug_list(self):
+        result = _run(["derive-feature-id"])
+        assert result.returncode == 1
+        assert "At least one non-empty slug is required" in result.stderr
+
+
+# ---------------------------------------------------------------------------
 # move-to-inprogress
 # ---------------------------------------------------------------------------
 
@@ -178,6 +240,19 @@ class TestMoveToInprogress:
             "--slugs", "any-slug",
         ])
         assert result.returncode == 1
+
+    def test_rejects_legacy_random_feature_id(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_new = governance_repo / "bugs" / "New"
+        _make_bug_file(bugs_new, "slug-random-reject-1122", status="New")
+        result = _run([
+            "move-to-inprogress",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-1777828805636-46cf",
+            "--slugs", "slug-random-reject-1122",
+        ])
+        assert result.returncode == 1
+        assert "deprecated random timestamp/hex suffix" in result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -293,3 +368,14 @@ class TestResolveBugs:
         assert result.returncode == 0
         data = json.loads(result.stdout.strip())
         assert "fixed-slug-cc4455dd" in data["already_fixed"]
+
+    def test_resolve_rejects_invalid_feature_id_format(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run([
+            "resolve-bugs",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "bugfix-plain-invalid",
+        ])
+        assert result.returncode == 1
+        assert "must start with 'lens-dev-new-codebase-bugfix-'" in result.stderr
