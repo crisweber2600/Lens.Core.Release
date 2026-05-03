@@ -313,7 +313,7 @@ jobs:
           find build-output/.github/skills -mindepth 1 -maxdepth 1 -type d -name 'lens-*' -exec rm -rf {} +
 
           COPIED=0
-          for skill_dir in build-output/_bmad/lens-work/lens-*; do
+          for skill_dir in build-output/_bmad/lens-work/skills/lens-*; do
             [ -d "$skill_dir" ] || continue
             [ -f "$skill_dir/SKILL.md" ] || continue
 

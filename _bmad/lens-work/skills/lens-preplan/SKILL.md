@@ -41,7 +41,7 @@ You guide the user from raw feature intent to a grounded product brief. You keep
 6. Check for the review-ready fast path by delegating to the shared validator:
 
 ```bash
-uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-phase-artifacts.py \
+uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-phase-artifacts.py \
    --phase preplan \
    --contract review-ready \
    --lifecycle-path {lifecycle_contract} \

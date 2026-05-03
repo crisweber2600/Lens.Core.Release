@@ -9,7 +9,7 @@ Covers the complete-ops.py CLI contract:
 
 All tests use fixture data — no real governance repo is accessed.
 
-Run: uv run --with pytest pytest _bmad/lens-work/lens-complete/scripts/tests/test-complete-ops.py -q
+Run: uv run --with pytest pytest _bmad/lens-work/skills/lens-complete/scripts/tests/test-complete-ops.py -q
 """
 
 from __future__ import annotations
