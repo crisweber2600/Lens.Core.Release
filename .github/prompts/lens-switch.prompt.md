@@ -1,5 +1,5 @@
 ---
-mode: ask
+agent: agent
 ---
 
 # lens-switch

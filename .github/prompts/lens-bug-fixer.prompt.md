@@ -1,5 +1,5 @@
 ---
-mode: ask
+agent: agent
 ---
 
 FIRST, run the preflight gate from the workspace root:
