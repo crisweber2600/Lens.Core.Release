@@ -1,0 +1,295 @@
+"""
+Tests for bug-fixer-ops.py — Story 2.1-2.4 regression tests.
+Covers: discover-new, move-to-inprogress, move-to-fixed, resolve-bugs
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+import textwrap
+from pathlib import Path
+
+import pytest
+
+SCRIPT = (
+    Path(__file__).parent.parent / "bug-fixer-ops.py"
+)
+
+
+def test_pyyaml_is_importable():
+    """FINDING-PD04: pyyaml must be available; script raises ImportError otherwise."""
+    import importlib
+    assert importlib.util.find_spec("yaml") is not None, (
+        "pyyaml is not installed — run via `uv run --script bug-fixer-ops.py` "
+        "or install pyyaml>=6.0 in the active environment"
+    )
+
+
+def _run(args: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _make_bug_file(
+    parent_dir: Path,
+    slug: str,
+    status: str = "New",
+    feature_id: str = "",
+) -> Path:
+    """Create a minimal bug markdown file and return the path."""
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    content = textwrap.dedent(f"""\
+        ---
+        title: "Bug {slug}"
+        description: "Description of {slug}"
+        status: "{status}"
+        slug: "{slug}"
+        featureId: "{feature_id}"
+        created_at: "2025-01-01T00:00:00Z"
+        updated_at: "2025-01-01T00:00:00Z"
+        ---
+
+        ## Chat Log
+
+        Chat log here.
+    """)
+    path = parent_dir / f"{slug}.md"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+# ---------------------------------------------------------------------------
+# discover-new
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverNew:
+    def test_discover_new_returns_empty_when_no_bugs_dir(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run(["discover-new", "--governance-repo", str(governance_repo)])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["count"] == 0
+        assert data["bugs"] == []
+
+    def test_discover_new_returns_bugs_in_new_folder(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_new = governance_repo / "bugs" / "New"
+        _make_bug_file(bugs_new, "login-crash-abc12345", status="New")
+        _make_bug_file(bugs_new, "logout-hang-def67890", status="New")
+        result = _run(["discover-new", "--governance-repo", str(governance_repo)])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert data["count"] == 2
+        slugs = [b["slug"] for b in data["bugs"]]
+        assert "login-crash-abc12345" in slugs
+        assert "logout-hang-def67890" in slugs
+
+    def test_discover_new_exits_1_when_governance_repo_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "does-not-exist"
+        result = _run(["discover-new", "--governance-repo", str(missing)])
+        assert result.returncode == 1
+
+    def test_help_exits_0(self):
+        result = _run(["--help"])
+        assert result.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# move-to-inprogress
+# ---------------------------------------------------------------------------
+
+
+class TestMoveToInprogress:
+    def test_moves_bug_from_new_to_inprogress(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_new = governance_repo / "bugs" / "New"
+        _make_bug_file(bugs_new, "test-slug-aabb1122", status="New")
+        result = _run([
+            "move-to-inprogress",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-test",
+            "--slugs", "test-slug-aabb1122",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert "test-slug-aabb1122" in data["moved"]
+        assert data["failed"] == []
+        # source is gone, dest exists
+        assert not (governance_repo / "bugs" / "New" / "test-slug-aabb1122.md").exists()
+        dest = governance_repo / "bugs" / "Inprogress" / "test-slug-aabb1122.md"
+        assert dest.exists()
+
+    def test_frontmatter_updated_on_inprogress_move(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_new = governance_repo / "bugs" / "New"
+        _make_bug_file(bugs_new, "slug-fronty-cc334455", status="New")
+        _run([
+            "move-to-inprogress",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-test",
+            "--slugs", "slug-fronty-cc334455",
+        ])
+        dest = governance_repo / "bugs" / "Inprogress" / "slug-fronty-cc334455.md"
+        content = dest.read_text(encoding="utf-8")
+        assert "Inprogress" in content
+        assert "lens-dev-new-codebase-bugfix-test" in content
+
+    def test_missing_slug_reported_in_failed(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run([
+            "move-to-inprogress",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-test",
+            "--slugs", "nonexistent-slug",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert "nonexistent-slug" in [f["slug"] for f in data["failed"]]
+        assert data["moved"] == []
+
+    def test_exits_1_when_governance_repo_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "does-not-exist"
+        result = _run([
+            "move-to-inprogress",
+            "--governance-repo", str(missing),
+            "--feature-id", "lens-dev-new-codebase-bugfix-test",
+            "--slugs", "any-slug",
+        ])
+        assert result.returncode == 1
+
+    def test_exits_1_when_feature_id_empty(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run([
+            "move-to-inprogress",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "",
+            "--slugs", "any-slug",
+        ])
+        assert result.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# move-to-fixed
+# ---------------------------------------------------------------------------
+
+
+class TestMoveToFixed:
+    def test_moves_bug_from_inprogress_to_fixed(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_ip = governance_repo / "bugs" / "Inprogress"
+        _make_bug_file(bugs_ip, "ip-slug-ffgg8899", status="Inprogress", feature_id="lens-dev-new-codebase-bugfix-test")
+        result = _run([
+            "move-to-fixed",
+            "--governance-repo", str(governance_repo),
+            "--slugs", "ip-slug-ffgg8899",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert "ip-slug-ffgg8899" in data["moved"]
+        assert data["failed"] == []
+        assert not (governance_repo / "bugs" / "Inprogress" / "ip-slug-ffgg8899.md").exists()
+        dest = governance_repo / "bugs" / "Fixed" / "ip-slug-ffgg8899.md"
+        assert dest.exists()
+
+    def test_frontmatter_updated_on_fixed_move(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_ip = governance_repo / "bugs" / "Inprogress"
+        _make_bug_file(bugs_ip, "slug-fixfm-aabb", status="Inprogress")
+        _run([
+            "move-to-fixed",
+            "--governance-repo", str(governance_repo),
+            "--slugs", "slug-fixfm-aabb",
+        ])
+        dest = governance_repo / "bugs" / "Fixed" / "slug-fixfm-aabb.md"
+        content = dest.read_text(encoding="utf-8")
+        assert "Fixed" in content
+
+    def test_missing_inprogress_slug_reported_in_failed(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run([
+            "move-to-fixed",
+            "--governance-repo", str(governance_repo),
+            "--slugs", "missing-ip-slug",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert "missing-ip-slug" in [f["slug"] for f in data["failed"]]
+
+    def test_exits_1_when_governance_repo_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "does-not-exist"
+        result = _run([
+            "move-to-fixed",
+            "--governance-repo", str(missing),
+            "--slugs", "any-slug",
+        ])
+        assert result.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# resolve-bugs
+# ---------------------------------------------------------------------------
+
+
+class TestResolveBugs:
+    def test_resolve_finds_inprogress_bugs_by_feature_id(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_ip = governance_repo / "bugs" / "Inprogress"
+        _make_bug_file(bugs_ip, "res-slug-aa1122bb", status="Inprogress",
+                       feature_id="lens-dev-new-codebase-bugfix-resolve")
+        result = _run([
+            "resolve-bugs",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-resolve",
+        ])
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert "res-slug-aa1122bb" in data["resolved"]
+
+    def test_resolve_returns_error_when_no_bugs_found(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        governance_repo.mkdir()
+        result = _run([
+            "resolve-bugs",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-nonexistent",
+        ])
+        assert result.returncode == 1
+
+    def test_resolve_exits_1_when_governance_repo_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "does-not-exist"
+        result = _run([
+            "resolve-bugs",
+            "--governance-repo", str(missing),
+            "--feature-id", "lens-dev-new-codebase-bugfix-x",
+        ])
+        assert result.returncode == 1
+
+    def test_resolve_reports_already_fixed(self, tmp_path):
+        governance_repo = tmp_path / "gov"
+        bugs_fixed = governance_repo / "bugs" / "Fixed"
+        _make_bug_file(bugs_fixed, "fixed-slug-cc4455dd", status="Fixed",
+                       feature_id="lens-dev-new-codebase-bugfix-done")
+        result = _run([
+            "resolve-bugs",
+            "--governance-repo", str(governance_repo),
+            "--feature-id", "lens-dev-new-codebase-bugfix-done",
+        ])
+        # Returns 0 because already_fixed is non-empty
+        assert result.returncode == 0
+        data = json.loads(result.stdout.strip())
+        assert "fixed-slug-cc4455dd" in data["already_fixed"]
