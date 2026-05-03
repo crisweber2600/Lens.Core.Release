@@ -1,16 +1,9 @@
 ---
-description: 'On-demand workspace preflight sync and validation'
+description: Shared preflight gate for Lens prompt starts.
 ---
 
-# lens-preflight (Stub)
+# /preflight
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load _bmad/lens-work/skills/bmad-lens-preflight/SKILL.md and follow it exactly.
 
-```
-Run the shared preflight script from the workspace root:
-
-uv run ./lens.core/_bmad/lens-work/scripts/preflight.py
-
-This command runs release/control preflight checks and .github sync.
-Do not run onboarding scaffold or write-config flows for this command.
-```
+This prompt is a routing stub only. Do not add prompt-local preflight logic.

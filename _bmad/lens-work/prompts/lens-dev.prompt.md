@@ -1,11 +1,9 @@
 ---
-description: 'Dev phase — epic implementation loop with repo-scoped working branches, delegated task execution, and final review gates.'
+description: Dev phase conductor for epic and story implementation.
 ---
 
-# lens-dev (Stub)
+# /dev
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load _bmad/lens-work/skills/bmad-lens-dev/SKILL.md and follow it exactly.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-dev/SKILL.md
-```
+This prompt is a routing stub only. Do not add prompt-local implementation logic.

@@ -1,0 +1,23 @@
+code: "lens"
+name: "Lens Workbench Init Feature"
+description: "Self-registering skill module for new-domain/new-service/new-feature initialization flows in Lens Workbench."
+module_version: "1.0.0"
+standalone: true
+module_greeting: "Lens init-feature skill registered. You can run setup/configure anytime to update config."
+governance_repo_path:
+  prompt: "Path to your local governance repository root"
+  default: "{project-root}/TargetProjects/lens/Lens.Core.Governance"
+  result: "{value}"
+target_projects_path:
+  prompt: "Root path for local target project clones"
+  default: "{project-root}/TargetProjects"
+  result: "{value}"
+output_folder:
+  prompt: "Output docs folder"
+  default: "{project-root}/docs"
+  result: "{value}"
+personal_output_folder:
+  prompt: "Path to local personal Lens context folder"
+  default: "{project-root}/.lens/personal"
+  result: "{value}"
+post_install_notes: "Review .claude-plugin/marketplace.json fields (owner, license, homepage, repository) before distribution."

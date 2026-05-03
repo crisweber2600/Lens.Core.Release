@@ -1,0 +1,83 @@
+# next-routing-edge-cases.yaml
+# Edge-case and paused-state fixtures for next-ops.py suggest.
+#
+# Paused-state behavior (M1 gate — Decision: Option A)
+# When feature.yaml has phase=paused, next-ops.py returns:
+#   status=blocked, blockers=["feature is paused; use the pause-resume skill or the retained recovery path"]
+# This matches E2-S1 Paused-State Decision: Option A
+# Rationale: No pause-resume skill exists in the target repo; blocker report is transparent and safe.
+#
+# format_version: 1
+# runner_hint: Load lifecycle.yaml from bmadconfig.yaml release_repo_root at test time.
+#              Create a temporary feature.yaml with the given input fields and call
+#              `next-ops.py suggest --feature-id <id> --governance-repo <tmp>`.
+
+format_version: 1
+description: "Paused-state and edge-case routing fixtures"
+
+fixtures:
+  - name: "paused feature → blocked (Option A)"
+    description: >
+      Feature with phase=paused must return status=blocked with the standard pause message.
+      Paused-State Decision: Option A (see E2-S1 Dev Notes).
+      No route is emitted — blockers must include the pause message.
+    input:
+      phase: paused
+      track: full
+    expected:
+      status: blocked
+      blockers:
+        - "feature is paused; use the pause-resume skill or the retained recovery path"
+      recommendation: ""
+      warnings: []
+
+  - name: "warnings-only: feature with explicit warnings, no blockers"
+    description: >
+      Feature with a warnings field in feature.yaml and no dependency blockers.
+      status=unblocked, warnings populated from feature.yaml.warnings.
+    input:
+      phase: preplan
+      track: full
+      feature_fields:
+        warnings:
+          - "This feature has a pending architecture review; proceed with caution"
+    expected:
+      status: unblocked
+      recommendation: "/businessplan"
+      blockers: []
+      warnings:
+        - "This feature has a pending architecture review; proceed with caution"
+
+  - name: "unknown phase → fail"
+    description: "A phase not present in lifecycle.yaml phases must return status=fail with a descriptive message"
+    input:
+      phase: nonexistent-phase-xyz
+      track: full
+    expected:
+      status: fail
+      error_contains: "Unknown phase"
+      recommendation: ""
+      blockers: []
+
+  - name: "unknown track → fail"
+    description: "A track not present in lifecycle.yaml tracks must return status=fail with a descriptive message"
+    input:
+      phase: preplan
+      track: nonexistent-track-xyz
+    expected:
+      status: fail
+      error_contains: "Unknown track"
+      recommendation: ""
+      blockers: []
+
+  - name: "missing feature.yaml → fail"
+    description: >
+      When feature.yaml does not exist for the given feature-id, next-ops.py must return
+      status=fail with a descriptive message naming the feature-id.
+    input:
+      feature_id: feature-that-does-not-exist-xyz
+    expected:
+      status: fail
+      error_contains: "feature.yaml not found for feature"
+      recommendation: ""
+      blockers: []

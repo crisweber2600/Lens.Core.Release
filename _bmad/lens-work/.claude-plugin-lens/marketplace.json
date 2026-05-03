@@ -1,0 +1,26 @@
+{
+  "name": "lens",
+  "owner": {
+    "name": ""
+  },
+  "license": "",
+  "homepage": "",
+  "repository": "",
+  "keywords": [
+    "bmad"
+  ],
+  "plugins": [
+    {
+      "name": "lens",
+      "source": "./",
+      "description": "Self-registering skill module for new-domain/new-service/new-feature initialization flows in Lens Workbench.",
+      "version": "1.0.0",
+      "author": {
+        "name": ""
+      },
+      "skills": [
+        "./bmad-lens-init-feature"
+      ]
+    }
+  ]
+}

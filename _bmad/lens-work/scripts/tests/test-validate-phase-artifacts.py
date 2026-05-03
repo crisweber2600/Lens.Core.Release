@@ -153,6 +153,27 @@ class TestValidatePhaseArtifactsStoryFiles:
         assert payload["contract"] == "review-ready"
         assert payload["status"] == "pass"
 
+    def test_phase_artifacts_accepts_legacy_express_review_alias(self, tmp_path):
+        docs_root = tmp_path / "docs"
+        docs_root.mkdir()
+        (docs_root / "business-plan.md").write_text("# Business\n", encoding="utf-8")
+        (docs_root / "tech-plan.md").write_text("# Tech\n", encoding="utf-8")
+        (docs_root / "sprint-plan.md").write_text("# Sprint\n", encoding="utf-8")
+        (docs_root / "expressplan-review.md").write_text("# Legacy Review\n", encoding="utf-8")
+
+        result = _run(
+            "--phase", "expressplan",
+            "--contract", "phase-artifacts",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--json",
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "pass"
+        assert "expressplan-adversarial-review" in payload["found_list"]
+
     def test_accepts_research_documents_in_research_subdir(self, tmp_path):
         docs_root = tmp_path / "docs"
         docs_root.mkdir()

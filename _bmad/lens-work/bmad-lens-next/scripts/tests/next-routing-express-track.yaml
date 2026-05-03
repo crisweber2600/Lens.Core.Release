@@ -1,0 +1,80 @@
+# next-routing-express-track.yaml
+# Parity fixture: all express-track phase routing transitions.
+# The key case is expressplan-complete → /finalizeplan which explicitly exercises
+# the auto_advance_to field in lifecycle.yaml (not a hardcoded string).
+#
+# format_version: 1
+# runner_hint: Load lifecycle.yaml from bmadconfig.yaml release_repo_root at test time.
+#              Create a temporary feature.yaml with the given input fields and call
+#              `next-ops.py suggest --feature-id <id> --governance-repo <tmp>`.
+
+format_version: 1
+description: "Express-track phase routing parity fixtures"
+track: express
+
+fixtures:
+  - name: "expressplan → /finalizeplan"
+    description: "Feature on express track at expressplan should advance to finalizeplan via auto_advance_to"
+    input:
+      phase: expressplan
+      track: express
+    expected:
+      status: unblocked
+      recommendation: "/finalizeplan"
+      blockers: []
+      warnings: []
+
+  - name: "expressplan-complete → /finalizeplan"
+    description: >
+      expressplan-complete normalizes to expressplan's auto_advance_to = /finalizeplan.
+      This case MUST be verified against the live lifecycle.yaml expressplan.auto_advance_to
+      field — do not hardcode /finalizeplan in the test runner assertion; read it from
+      lifecycle.yaml at test time.
+    input:
+      phase: expressplan-complete
+      track: express
+    expected:
+      status: unblocked
+      recommendation: "/finalizeplan"
+      blockers: []
+      warnings: []
+
+  - name: "finalizeplan (express) → /dev"
+    description: "Feature on express track at finalizeplan should advance to dev"
+    input:
+      phase: finalizeplan
+      track: express
+    expected:
+      status: unblocked
+      recommendation: "/dev"
+      blockers: []
+      warnings: []
+
+  - name: "finalizeplan-complete (express) → /dev"
+    description: "finalizeplan-complete on express track normalizes to finalizeplan auto_advance_to = /dev"
+    input:
+      phase: finalizeplan-complete
+      track: express
+    expected:
+      status: unblocked
+      recommendation: "/dev"
+      blockers: []
+      warnings: []
+
+  - name: "express track with active blockers"
+    description: >
+      Feature on express track with a dependency in an early phase.
+      status=blocked, recommendation is still populated (the intended target phase).
+    input:
+      phase: finalizeplan-complete
+      track: express
+      dependencies:
+        depends_on_phases:
+          # simulates a dependency at a non-complete phase
+          - feature_id: test-dep-feature
+            phase: preplan
+    expected:
+      status: blocked
+      recommendation: "/dev"
+      blockers_nonempty: true
+      warnings: []

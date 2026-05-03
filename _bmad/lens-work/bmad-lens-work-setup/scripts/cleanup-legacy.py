@@ -3,10 +3,12 @@
 # dependencies = []
 # ///
 """
-cleanup-legacy.py — Post-install cleanup for lens-work module upgrades.
+cleanup-legacy.py — Remove legacy lens-work artifacts.
 
-Safely removes legacy file patterns that have been replaced by
-the new BMad Builder folder structure.
+Cleans up:
+- Old flat skill files at the module root level (skills/*.md)
+- Legacy data/ directories that have been superseded
+- Any other deprecated file patterns from older module versions
 """
 
 import argparse
@@ -14,59 +16,68 @@ import sys
 from pathlib import Path
 
 
-LEGACY_FLAT_SKILLS = [
-    "skills/checklist.md",
-    "skills/constitution.md",
-    "skills/git-orchestration.md",
-    "skills/git-state.md",
-    "skills/sensing.md",
+LEGACY_PATTERNS = [
+    # Flat skill files at module root (replaced by subdirectory structure)
+    "*.skill.md",
+    "*.agent.md",
 ]
 
-LEGACY_DATA_DIRS = [
-    "workflows/router/dev/data",
+LEGACY_DIRS = [
+    # Legacy data/ dir (renamed to resources/ in newer versions)
+    "data",
 ]
 
 
-def cleanup_legacy(module_dir: Path) -> None:
-    removed = 0
+def cleanup_legacy(module_dir: Path, dry_run: bool = False) -> None:
+    removed_files = []
+    removed_dirs = []
 
-    # Remove flat skill files (replaced by skills/{name}/SKILL.md)
-    for skill_file in LEGACY_FLAT_SKILLS:
-        target = module_dir / skill_file
-        if target.exists():
-            target.unlink()
-            print(f"  Removed legacy skill file: {skill_file}")
-            removed += 1
+    # Remove legacy flat files
+    for pattern in LEGACY_PATTERNS:
+        for path in module_dir.glob(pattern):
+            if path.is_file():
+                removed_files.append(path)
+                if not dry_run:
+                    path.unlink()
 
-    # Remove legacy data/ directories (renamed to resources/)
-    for data_dir in LEGACY_DATA_DIRS:
-        target = module_dir / data_dir
-        if target.exists() and target.is_dir():
-            # Only remove if empty (contents should have been moved to resources/)
-            try:
-                target.rmdir()
-                print(f"  Removed empty legacy directory: {data_dir}")
-                removed += 1
-            except OSError:
-                print(f"  ⚠️ Legacy directory not empty, skipping: {data_dir}")
+    # Remove empty legacy directories
+    for dir_name in LEGACY_DIRS:
+        dir_path = module_dir / dir_name
+        if dir_path.is_dir():
+            # Only remove if empty
+            if not any(dir_path.iterdir()):
+                removed_dirs.append(dir_path)
+                if not dry_run:
+                    dir_path.rmdir()
+            else:
+                print(f"⚠️  Skipping non-empty legacy dir: {dir_path}")
 
-    if removed == 0:
-        print("✅ No legacy artifacts found — module is clean")
+    prefix = "[DRY RUN] " if dry_run else ""
+    for f in removed_files:
+        print(f"{prefix}🗑️  Removed: {f}")
+    for d in removed_dirs:
+        print(f"{prefix}🗑️  Removed dir: {d}")
+
+    if not removed_files and not removed_dirs:
+        print("✅ No legacy artifacts found — nothing to remove.")
     else:
-        print(f"✅ Cleaned up {removed} legacy artifact(s)")
+        total = len(removed_files) + len(removed_dirs)
+        action = "Would remove" if dry_run else "Removed"
+        print(f"✅ {action} {total} legacy artifact(s).")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Clean up legacy lens-work artifacts")
-    parser.add_argument("--module-dir", required=True, help="Path to lens-work module root")
+    parser = argparse.ArgumentParser(description="Cleanup legacy lens-work artifacts")
+    parser.add_argument("--module-dir", required=True, help="Path to the lens-work module directory")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be removed without removing")
     args = parser.parse_args()
 
-    module_path = Path(args.module_dir)
-    if not module_path.exists():
-        print(f"❌ Module directory not found: {module_path}", file=sys.stderr)
+    module_dir = Path(args.module_dir)
+    if not module_dir.is_dir():
+        print(f"❌ Module directory not found: {module_dir}", file=sys.stderr)
         sys.exit(1)
 
-    cleanup_legacy(module_path)
+    cleanup_legacy(module_dir, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

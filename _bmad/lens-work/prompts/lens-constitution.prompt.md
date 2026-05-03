@@ -1,11 +1,9 @@
 ---
-description: 'Governance rules resolution with 4-level additive hierarchy'
+description: Constitution resolver for track and governance rules.
 ---
 
-# lens-constitution (Stub)
+# /constitution
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load _bmad/lens-work/skills/bmad-lens-constitution/SKILL.md and follow it exactly.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-constitution/SKILL.md
-```
+This prompt is a routing stub only. Do not add prompt-local governance logic.

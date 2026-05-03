@@ -1,0 +1,3 @@
+module,skill,display-name,menu-code,description,action,args,phase,after,before,required,output-location,outputs
+lens,bmad-lens-init-feature,Configure Init Feature,SU,Registers and updates module configuration for init-feature skill,configure,"[setup|configure]",anytime,,,false,output_folder,"updated bmadconfig.yaml and module-help.csv entries"
+lens,bmad-lens-init-feature,Create Domain,ND,Creates governance domain marker and constitution plus context tracking,create-domain,"[--execute-governance-git] [--dry-run]",anytime,bmad-lens-init-feature:configure,,false,governance_repo_path,"domain.yaml; constitution.md; context.yaml"

@@ -1,0 +1,926 @@
+# =============================================================================
+# Build full BMAD release with lens-work custom module → Lens.Core.Release
+# GitHub Copilot assets are embedded in lens.coreced by preflight.
+# Pipeline:
+#   1. Validate lens-work source
+#   2. Install full BMAD framework (core + all modules + all IDEs)
+#   3. Overlay lens-work custom module into the install
+#   4. Run lens-work _module-installer to generate its IDE adapters
+#   5. Post-process: rename .xml→.yaml (no-op for v6.2.0+), config.yaml→bmadconfig.yaml
+#   6. Fix copilot-instructions.md with correct project config
+#   7. Push full payload to lens.coreeta
+# =============================================================================
+
+name: Promote to Release
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "_bmad/lens-work/**"
+      - ".github/agents/**"
+      - ".github/instructions/**"
+      - ".github/prompts/**"
+      - ".github/skills/**"
+      - ".github/workflows/promote-to-release.yml"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  # ── Determine which matrix entries to run based on the pushed branch ──
+  determine-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set matrix for branch
+        id: set-matrix
+        run: |
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo 'matrix={"config":[{"release_branch":"alpha","bmad_spec":"bmad-method@6.2.2"}]}' >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref_name }}" == "develop" ]]; then
+            echo 'matrix={"config":[{"release_branch":"develop","bmad_spec":"bmad-method@6.2.2"},{"release_branch":"develop-latestbmad","bmad_spec":"bmad-method"}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo "Unsupported branch: ${{ github.ref_name }} — skipping"
+            echo 'matrix={"config":[]}' >> "$GITHUB_OUTPUT"
+          fi
+
+  promote-release:
+    needs: determine-matrix
+    if: ${{ needs.determine-matrix.outputs.matrix != '{"config":[]}' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: promote-to-release-${{ matrix.config.release_branch }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.determine-matrix.outputs.matrix) }}
+
+    steps:
+      # ── 1. Checkout source repo ──────────────────────────────────────
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ── 2. Read module version ───────────────────────────────────────
+      - name: Read module version
+        id: version
+        run: |
+          VERSION=$(grep '^module_version:' _bmad/lens-work/module.yaml \
+            | sed 's/module_version: *"\?\([^"]*\)"\?/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Module version: $VERSION"
+
+      # ── 3. Validate lens-work source ─────────────────────────────────
+      - name: Validate declarative-only constraint
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          echo "Scanning for disallowed executable files..."
+
+          # _module-installer/ is the official BMAD installer pattern — exempt
+          # scripts/ is the BMad Builder standard location for skill Python scripts — exempt
+          EXECUTABLES=$(find _bmad/lens-work/ -type f \( \
+            -name "*.js" -o -name "*.py" -o -name "*.ts" -o \
+            -name "*.rb" -o -name "*.go" -o -name "*.rs" -o \
+            -name "*.java" -o -name "*.exe" -o -name "*.bat" -o \
+            -name "*.cmd" \
+          \) -not -path "*/_module-installer/*" \
+             -not -path "*/scripts/*" \
+          2>/dev/null || true)
+
+          ROGUE_SCRIPTS=$(find _bmad/lens-work/ -type f \( \
+            -name "*.sh" -o -name "*.ps1" \
+          \) -not -path "*/scripts/*" 2>/dev/null || true)
+
+          if [ -n "$EXECUTABLES" ] || [ -n "$ROGUE_SCRIPTS" ]; then
+            echo "::error::Disallowed executable files found in module payload"
+            [ -n "$EXECUTABLES" ] && echo "$EXECUTABLES"
+            [ -n "$ROGUE_SCRIPTS" ] && echo "$ROGUE_SCRIPTS"
+            exit 1
+          fi
+          echo "✅ No disallowed executable files found"
+
+      - name: Validate required files
+        run: |
+          REQUIRED=(
+            "_bmad/lens-work/lifecycle.yaml"
+            "_bmad/lens-work/module.yaml"
+            "_bmad/lens-work/module-help.csv"
+            "_bmad/lens-work/README.md"
+          )
+          MISSING=0
+          for f in "${REQUIRED[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required file: $f"
+              MISSING=1
+            else
+              echo "✅ $f"
+            fi
+          done
+          if [ "$MISSING" -eq 1 ]; then exit 1; fi
+
+      - name: Validate source lens-switch prompt stub
+        run: |
+          PROMPT=".github/prompts/lens-switch.prompt.md"
+
+          grep -q "light-preflight.py" "$PROMPT" || {
+            echo "::error::lens-switch source prompt stub must run light-preflight.py"
+            exit 1
+          }
+
+          grep -q "FIRST, run" "$PROMPT" || {
+            echo "::error::lens-switch source prompt stub must require running preflight before loading the release prompt"
+            exit 1
+          }
+
+          grep -q "ONLY AFTER a successful prompt-start sync" "$PROMPT" || {
+            echo "::error::lens-switch source prompt stub must block release-prompt loading until preflight succeeds"
+            exit 1
+          }
+
+          grep -q "vscode_askQuestions" "$PROMPT" || {
+            echo "::error::lens-switch source prompt stub must preserve the question-tool hint"
+            exit 1
+          }
+
+          grep -q "lens.core/_bmad/lens-work/prompts/lens-switch.prompt.md" "$PROMPT" || {
+            echo "::error::lens-switch source prompt stub must point at the module prompt entry"
+            exit 1
+          }
+
+          echo "✅ lens-switch source prompt stub includes prompt-start sync and correct module routing"
+
+      # ── 4. Setup Node.js ─────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── 5+6. Prepare release repo while preserving alpha history ──────
+      - name: Prepare release repo (preserve alpha history)
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          # Strategy:
+          # 1) If alpha exists and is related to beta, commit directly to alpha.
+          # 2) Otherwise, recreate alpha from beta.
+          mkdir release-repo
+          cd release-repo
+          git init
+          git remote add origin \
+            "https://x-access-token:${{ secrets.RELEASE_REPO_TOKEN }}@github.com/${{ github.repository_owner }}/Lens.Core.Release.git"
+          if ! git fetch --prune --no-tags origin \
+            +refs/heads/beta:refs/remotes/origin/beta; then
+            echo "::error::Failed to fetch beta branch from Lens.Core.Release"
+            exit 1
+          fi
+
+          # alpha is optional (first publish or manual cleanup may remove it).
+          if git ls-remote --exit-code --heads origin alpha >/dev/null 2>&1; then
+            if ! git fetch --prune --no-tags origin \
+              +refs/heads/alpha:refs/remotes/origin/alpha; then
+              echo "::error::alpha exists remotely but could not be fetched"
+              exit 1
+            fi
+          fi
+
+          if ! git show-ref --verify --quiet refs/remotes/origin/beta; then
+            echo "::error::Failed to fetch beta branch from Lens.Core.Release"
+            exit 1
+          fi
+
+          if git show-ref --verify --quiet refs/remotes/origin/alpha; then
+            if git merge-base refs/remotes/origin/alpha refs/remotes/origin/beta >/dev/null 2>&1; then
+              git checkout -B alpha refs/remotes/origin/alpha
+              echo "ALPHA_UPDATE_MODE=direct" >> "$GITHUB_ENV"
+              echo "✅ Using existing alpha branch (direct commit mode)"
+            else
+              echo "::warning::alpha and beta histories are unrelated; rebuilding alpha from beta"
+              git checkout -B alpha refs/remotes/origin/beta
+              echo "ALPHA_UPDATE_MODE=from_beta_reset" >> "$GITHUB_ENV"
+              echo "✅ Recreated alpha from beta (history repair mode)"
+            fi
+          else
+            git checkout -B alpha refs/remotes/origin/beta
+            echo "ALPHA_UPDATE_MODE=from_beta_new" >> "$GITHUB_ENV"
+            echo "✅ Alpha branch will be created from beta"
+          fi
+
+      # ── 5+6b. Prepare release repo for develop branches ─────────────
+      - name: Prepare release repo (develop branch)
+        if: matrix.config.release_branch != 'alpha'
+        run: |
+          RELEASE_BRANCH="${{ matrix.config.release_branch }}"
+          mkdir release-repo
+          cd release-repo
+          git init
+          git remote add origin \
+            "https://x-access-token:${{ secrets.RELEASE_REPO_TOKEN }}@github.com/${{ github.repository_owner }}/Lens.Core.Release.git"
+          # Fetch target branch if it exists; otherwise create orphan
+          if git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null 2>&1; then
+            git fetch --prune --no-tags origin \
+              "+refs/heads/$RELEASE_BRANCH:refs/remotes/origin/$RELEASE_BRANCH"
+            git checkout -B "$RELEASE_BRANCH" "refs/remotes/origin/$RELEASE_BRANCH"
+            echo "✅ Checked out existing $RELEASE_BRANCH branch"
+          else
+            git checkout --orphan "$RELEASE_BRANCH"
+            git rm -rf . 2>/dev/null || true
+            echo "✅ Created orphan $RELEASE_BRANCH branch (first publish)"
+          fi
+
+      - name: Prepare clean build workspace
+        run: |
+          rm -rf build-output
+          mkdir -p build-output
+          echo "✅ build-output prepared as non-git install workspace"
+
+      # ── 7. Install full BMAD framework ───────────────────────────────
+      - name: Fetch BMB module source (no longer in external-official-modules.yaml)
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          # bmad-builder npm package contains the BMB module source at /src/
+          # The BMAD installer needs --custom-content pointing to the dir with module.yaml
+          mkdir -p /tmp/bmb-src
+          npm pack bmad-builder@latest --pack-destination /tmp/bmb-src 2>/dev/null
+          tar xzf /tmp/bmb-src/bmad-builder-*.tgz -C /tmp/bmb-src
+          BMB_SRC="/tmp/bmb-src/package/src"
+          echo "BMB_SRC=$BMB_SRC" >> "$GITHUB_ENV"
+          echo "✅ BMB source at $BMB_SRC (code=$(grep '^code:' $BMB_SRC/module.yaml))"
+
+      - name: Install BMAD framework (all modules + IDEs)
+        working-directory: build-output
+        run: |
+          INSTALL_ARGS=(
+            --directory .
+            --modules "core,bmm,bmb,cis,gds,tea,wds"
+            --tools "github-copilot,cursor,claude-code"
+            --action install
+            --user-name "CrisWeber"
+            --communication-language "English"
+            --document-output-language "English"
+            --output-folder "docs"
+            --yes
+          )
+          if [ -n "$BMB_SRC" ]; then
+            INSTALL_ARGS+=(--custom-content "$BMB_SRC")
+          fi
+          npx ${{ matrix.config.bmad_spec }} install "${INSTALL_ARGS[@]}"
+
+          echo "✅ BMAD framework installed"
+
+      - name: Bootstrap develop build-output from source
+        if: matrix.config.release_branch != 'alpha'
+        run: |
+          mkdir -p build-output/_bmad
+          cp -r _bmad/lens-work build-output/_bmad/lens-work
+
+          mkdir -p build-output/.github
+          cp -r .github/* build-output/.github/
+
+          mkdir -p build-output/_bmad/_config
+          if [ -d release-repo/_bmad/_config ]; then
+            cp -r release-repo/_bmad/_config/. build-output/_bmad/_config/
+          fi
+
+          if [ ! -f build-output/_bmad/_config/manifest.yaml ]; then
+            printf 'modules: []\n' > build-output/_bmad/_config/manifest.yaml
+          fi
+
+          echo "✅ Develop bootstrap complete (_bmad/lens-work + .github/* copied; _bmad/_config seeded)"
+
+      - name: Register lens-work module in develop config
+        if: matrix.config.release_branch != 'alpha'
+        run: |
+          python3 -m pip install --quiet pyyaml
+
+          python3 build-output/_bmad/lens-work/bmad-lens-work-setup/scripts/merge-config.py \
+            --module-yaml build-output/_bmad/lens-work/module.yaml \
+            --target-config build-output/_bmad/_config/manifest.yaml
+
+          python3 build-output/_bmad/lens-work/bmad-lens-work-setup/scripts/merge-help-csv.py \
+            --module-csv build-output/_bmad/lens-work/module-help.csv \
+            --target-csv build-output/_bmad/_config/bmad-help.csv
+
+      - name: Cleanup legacy lens-work artifacts for develop
+        if: matrix.config.release_branch != 'alpha'
+        run: |
+          python3 build-output/_bmad/lens-work/bmad-lens-work-setup/scripts/cleanup-legacy.py \
+            --module-dir build-output/_bmad/lens-work
+
+      # ── 8. Overlay lens-work custom module ───────────────────────────
+      - name: Overlay lens-work custom module
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          # Copy lens-work into _bmad/ as a custom module
+          mkdir -p build-output/_bmad/
+          cp -r _bmad/lens-work/ build-output/_bmad/lens-work/
+
+          # Also register in _config/custom/ (BMAD convention for custom modules)
+          mkdir -p build-output/_bmad/_config/custom/lens-work/
+          cp -r _bmad/lens-work/ build-output/_bmad/_config/custom/lens-work/
+
+          echo "✅ lens-work custom module overlaid"
+
+      # ── 9. Run lens-work installer for IDE adapters ──────────────────
+      - name: Install lens-work IDE adapters
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          node -e "
+            const installer = require('./build-output/_bmad/lens-work/_module-installer/installer.js');
+            const path = require('path');
+
+            installer.install({
+              projectRoot: path.resolve('build-output'),
+              config: {
+                target_projects_path: '../TargetProjects',
+                default_git_remote: 'github'
+              },
+              installedIDEs: ['github-copilot', 'cursor', 'claude-code', 'codex'],
+              logger: {
+                log:   (m) => console.log(m),
+                warn:  (m) => console.warn('⚠️ ' + m),
+                error: (m) => console.error('❌ ' + m)
+              },
+              updateMode: true
+            }).then(ok => {
+              if (!ok) process.exit(1);
+              console.log('✅ lens-work IDE adapters installed');
+            }).catch(err => {
+              console.error(err);
+              process.exit(1);
+            });
+          "
+
+      # ── 10. Sync source .github agents into release payload ──────────
+      - name: Sync source .github agents
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          mkdir -p build-output/.github/agents
+
+          SRC_COUNT=0
+          for src in .github/agents/*.md; do
+            [ -f "$src" ] || continue
+            cp "$src" "build-output/.github/agents/$(basename "$src")"
+            SRC_COUNT=$((SRC_COUNT + 1))
+          done
+
+          echo "✅ Synced $SRC_COUNT source agent markdown file(s) into release payload"
+
+      # ── 10.5 Overlay source .github skill stubs into release payload ─
+      # The lens-work installer (step 9) now converts all published BMAD
+      # skills into redirect stubs from skill-manifest.csv. Source .github/
+      # skill stubs overlay the generated set so manual lens-work edits win.
+      - name: Overlay source .github skill stubs
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          mkdir -p build-output/.github/skills
+
+          SRC_COUNT=0
+          for skill_dir in .github/skills/*/; do
+            [ -d "$skill_dir" ] || continue
+            skill_name=$(basename "$skill_dir")
+            mkdir -p "build-output/.github/skills/$skill_name"
+            cp "$skill_dir/SKILL.md" "build-output/.github/skills/$skill_name/SKILL.md"
+            SRC_COUNT=$((SRC_COUNT + 1))
+          done
+
+          # Strip any non-SKILL.md files left by the BMAD framework install
+          # (e.g. bmad-agent-builder/assets/ added by the bmb module).
+          # Validator requires .github/skills to contain only SKILL.md stubs.
+          find build-output/.github/skills -mindepth 2 -type f ! -name 'SKILL.md' -delete
+          find build-output/.github/skills -mindepth 2 -maxdepth 2 -type d -empty -delete
+
+          echo "✅ Overlaid $SRC_COUNT source skill stub(s) into release payload"
+
+      # ── 10.6 Overlay source .github prompt stubs into release payload ─
+      # The lens-work installer (step 9) generates GitHub Copilot prompt
+      # stubs, but the canonical release payload lives in source .github/
+      # so manual stub edits win and any deleted stubs are removed.
+      - name: Overlay source .github prompt stubs
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          mkdir -p build-output/.github/prompts
+
+          # Remove only source-managed prompt families before overlay.
+          # Preserve installer-generated prompts that have no source equivalent.
+          SRC_COUNT=0
+          for src in .github/prompts/*.prompt.md; do
+            [ -f "$src" ] || continue
+            cp "$src" "build-output/.github/prompts/$(basename "$src")"
+            SRC_COUNT=$((SRC_COUNT + 1))
+          done
+
+          echo "✅ Overlaid $SRC_COUNT source prompt stub(s) into release payload (installer stubs preserved)"
+
+      # ── 10.7 Overlay source .github instructions into release payload ─
+      - name: Overlay source .github instructions
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          mkdir -p build-output/.github/instructions
+
+          SRC_COUNT=0
+          for src in .github/instructions/*.instructions.md; do
+            [ -f "$src" ] || continue
+            cp "$src" "build-output/.github/instructions/$(basename "$src")"
+            SRC_COUNT=$((SRC_COUNT + 1))
+          done
+
+          echo "✅ Overlaid $SRC_COUNT source instruction file(s) into release payload"
+
+      # ── 11. Post-process: .xml→.yaml + config.yaml→bmadconfig.yaml ──
+      - name: Post-process XML and config file names
+        run: |
+          cd build-output
+
+          echo "=== Step 1: Rename .xml files to .yaml (v6.2.0: may be a no-op) ==="
+          XML_FILES=$(find . -name '*.xml' -type f -not -path './.git/*' || true)
+          if [ -z "$XML_FILES" ]; then
+            echo "ℹ️ No .xml files found (expected for v6.2.0+ installs)"
+          else
+            echo "$XML_FILES" | while IFS= read -r f; do
+              target="${f%.xml}.yaml"
+              if [ -f "$target" ]; then
+                echo "⚠️ Skipping (target exists): $f"
+              else
+                mv "$f" "$target"
+                echo "  $f → $target"
+              fi
+            done
+          fi
+
+          echo ""
+          echo "=== Step 2: Update .xml references → .yaml ==="
+          find . -type f -not -path './.git/*' -not -path './.github/*' \( \
+            -name '*.md' -o -name '*.yaml' -o -name '*.yml' -o \
+            -name '*.csv' -o -name '*.json' -o -name '*.txt' -o \
+            -name '*.js' \
+          \) -print0 | xargs -0 grep -rl '\.xml' 2>/dev/null | while IFS= read -r f; do
+            sed -i 's/\.xml\b/.yaml/g' "$f"
+            echo "  Updated: $f"
+          done
+
+          echo ""
+          echo "=== Step 3: Rename config.yaml → bmadconfig.yaml ==="
+          find . -name 'config.yaml' -type f -not -path './.git/*' -not -path './.github/*' | while IFS= read -r f; do
+            dir=$(dirname "$f")
+            mv "$f" "$dir/bmadconfig.yaml"
+            echo "  $f → $dir/bmadconfig.yaml"
+          done
+
+          echo ""
+          echo "=== Step 4: Update config.yaml references → bmadconfig.yaml ==="
+          find . -type f -not -path './.git/*' -not -path './.github/*' \( \
+            -name '*.md' -o -name '*.yaml' -o -name '*.yml' -o \
+            -name '*.csv' -o -name '*.json' -o -name '*.txt' -o \
+            -name '*.js' \
+          \) -print0 | xargs -0 grep -rl '\bconfig\.yaml\b' 2>/dev/null | while IFS= read -r f; do
+            sed -i 's/\bconfig\.yaml\b/bmadconfig.yaml/g' "$f"
+            echo "  Updated: $f"
+          done
+
+          echo ""
+          echo "=== Verification ==="
+          XML_COUNT=$(find . -name '*.xml' -type f -not -path './.git/*' -not -path './.github/*' | wc -l)
+          CFG_COUNT=$(find . -name 'config.yaml' -type f -not -path './.git/*' -not -path './.github/*' | wc -l)
+          echo "Remaining .xml files: $XML_COUNT"
+          echo "Remaining config.yaml files: $CFG_COUNT"
+          if [ "$XML_COUNT" -gt 0 ] || [ "$CFG_COUNT" -gt 0 ]; then
+            echo "::warning::Some files were not converted"
+          fi
+          echo "✅ Post-processing complete"
+
+      # ── 12. Fix copilot-instructions.md project name ─────────────────
+      - name: Patch copilot-instructions.md
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          INSTRUCTIONS="build-output/.github/copilot-instructions.md"
+          if [ -f "$INSTRUCTIONS" ]; then
+            # Fix the project name (BMAD CLI uses directory name)
+            sed -i 's/- \*\*Project\*\*: build-output/- **Project**: Lens.Core.Release/' "$INSTRUCTIONS"
+            sed -i -E 's#- \*\*Output Folder\*\*: .*#- **Output Folder**: docs#' "$INSTRUCTIONS"
+            echo "✅ copilot-instructions.md patched"
+          fi
+
+      # ── 13. Validate release .github payload ─────────────────────────
+      - name: Validate embedded .github payload
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          REQUIRED=(
+            "build-output/.github/agents/bmad-agent-lens-work-lens.agent.md"
+            "build-output/.github/lens-work-instructions.md"
+          )
+
+          MISSING=0
+          for f in "${REQUIRED[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required release .github artifact: $f"
+              MISSING=1
+            else
+              echo "✅ $f"
+            fi
+          done
+
+          for src in .github/agents/*.md; do
+            [ -f "$src" ] || continue
+            target="build-output/.github/agents/$(basename "$src")"
+            if [ ! -f "$target" ]; then
+              echo "::error::Missing published agent file: $target"
+              MISSING=1
+            else
+              echo "✅ $target"
+            fi
+          done
+
+          for src in .github/prompts/*.md; do
+            [ -f "$src" ] || continue
+            target="build-output/.github/prompts/$(basename "$src")"
+            if [ ! -f "$target" ]; then
+              echo "::error::Missing published prompt file: $target"
+              MISSING=1
+            elif ! cmp -s "$src" "$target"; then
+              echo "::error::Published prompt file differs from source: $target"
+              MISSING=1
+            elif ! grep -q 'light-preflight.py' "$src"; then
+              echo "::error::Source prompt missing shared preflight template: $src"
+              MISSING=1
+            elif ! grep -q 'FIRST, run' "$src"; then
+              echo "::error::Source prompt missing ordered preflight execution requirement: $src"
+              MISSING=1
+            elif ! grep -q 'ONLY AFTER a successful prompt-start sync' "$src"; then
+              echo "::error::Source prompt missing post-preflight release-prompt gate: $src"
+              MISSING=1
+            elif ! grep -q 'vscode_askQuestions' "$src"; then
+              echo "::error::Source prompt missing question-tool guidance: $src"
+              MISSING=1
+            elif ! grep -q "lens.core/_bmad/lens-work/prompts/$(basename "$src")" "$src"; then
+              echo "::error::Source prompt delegates to the wrong release prompt: $src"
+              MISSING=1
+            else
+              echo "✅ $target"
+            fi
+          done
+
+          for src in .github/instructions/*.instructions.md; do
+            [ -f "$src" ] || continue
+            target="build-output/.github/instructions/$(basename "$src")"
+            if [ ! -f "$target" ]; then
+              echo "::error::Missing published instruction file: $target"
+              MISSING=1
+            elif ! cmp -s "$src" "$target"; then
+              echo "::error::Published instruction file differs from source: $target"
+              MISSING=1
+            else
+              echo "✅ $target"
+            fi
+          done
+
+          LEGACY_PROMPTS=$(find build-output/.github/prompts -maxdepth 1 -type f -name 'lens-work*.prompt.md' -print)
+          if [ -n "$LEGACY_PROMPTS" ]; then
+            echo "::error::Legacy lens-work prompt aliases were published"
+            printf '%s\n' "$LEGACY_PROMPTS"
+            MISSING=1
+          fi
+
+          if [ -e "build-output/.github/.git" ]; then
+            echo "::error::build-output/.github contains .git; .github must be embedded content, not a nested clone"
+            MISSING=1
+          fi
+
+          MANIFEST_SKILLS=$(mktemp)
+          SOURCE_SKILLS=$(mktemp)
+          EXPECTED_SKILLS=$(mktemp)
+          PUBLISHED_SKILLS=$(mktemp)
+
+          sed -n '2,$ s/^"\([^"]*\)".*/\1/p' build-output/_bmad/_config/skill-manifest.csv | sort -u > "$MANIFEST_SKILLS"
+          find .github/skills -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -u > "$SOURCE_SKILLS"
+          cat "$MANIFEST_SKILLS" "$SOURCE_SKILLS" | sed '/^$/d' | sort -u > "$EXPECTED_SKILLS"
+          find build-output/.github/skills -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -u > "$PUBLISHED_SKILLS"
+
+          EXPECTED_SKILL_COUNT=$(wc -l < "$EXPECTED_SKILLS")
+          GITHUB_SKILL_COUNT=$(wc -l < "$PUBLISHED_SKILLS")
+          if [ "$GITHUB_SKILL_COUNT" -ne "$EXPECTED_SKILL_COUNT" ]; then
+            echo "::error::.github/skills count ($GITHUB_SKILL_COUNT) != expected BMAD+lens-work stub count ($EXPECTED_SKILL_COUNT)"
+            MISSING=1
+          else
+            echo "✅ .github/skills ($GITHUB_SKILL_COUNT) matches expected BMAD+lens-work stub count ($EXPECTED_SKILL_COUNT)"
+          fi
+
+          if ! diff -u "$EXPECTED_SKILLS" "$PUBLISHED_SKILLS" >/tmp/github-skill-diff.txt; then
+            echo "::error::.github/skills published set differs from expected BMAD+lens-work skill stubs"
+            cat /tmp/github-skill-diff.txt
+            MISSING=1
+          fi
+
+          EXTRA_SKILL_FILES=$(find build-output/.github/skills -type f ! -name 'SKILL.md' -print)
+          if [ -n "$EXTRA_SKILL_FILES" ]; then
+            echo "::error::Published .github/skills contains non-stub files"
+            echo "$EXTRA_SKILL_FILES"
+            MISSING=1
+          fi
+
+          if ! node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          function parseCsvLine(line) {
+            const values = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let index = 0; index < line.length; index++) {
+              const char = line[index];
+
+              if (inQuotes) {
+                if (char === '"') {
+                  if (line[index + 1] === '"') {
+                    current += '"';
+                    index++;
+                  } else {
+                    inQuotes = false;
+                  }
+                } else {
+                  current += char;
+                }
+                continue;
+              }
+
+              if (char === ',') {
+                values.push(current);
+                current = '';
+                continue;
+              }
+
+              if (char === '"') {
+                inQuotes = true;
+                continue;
+              }
+
+              current += char;
+            }
+
+            values.push(current);
+            return values;
+          }
+
+          const manifestPath = path.join('build-output', '_bmad', '_config', 'skill-manifest.csv');
+          const skillsDir = path.join('build-output', '.github', 'skills');
+          const lines = fs.readFileSync(manifestPath, 'utf8').split(/\r?\n/).filter(Boolean);
+          const headers = parseCsvLine(lines[0]);
+          const headerIndex = Object.fromEntries(headers.map((header, index) => [header, index]));
+          let failed = false;
+
+          for (const line of lines.slice(1)) {
+            const row = parseCsvLine(line);
+            const name = row[headerIndex.canonicalId];
+            const installToBmad = row[headerIndex.install_to_bmad];
+            const redirectPath = `lens.core/${row[headerIndex.path]}`;
+            if (!name || installToBmad !== 'true') {
+              continue;
+            }
+
+            const skillFile = path.join(skillsDir, name, 'SKILL.md');
+            if (!fs.existsSync(skillFile)) {
+              console.error(`::error::Missing published BMAD skill stub: ${skillFile}`);
+              failed = true;
+              continue;
+            }
+
+            const content = fs.readFileSync(skillFile, 'utf8');
+            if (!content.includes('(Stub)')) {
+              console.error(`::error::Published BMAD skill is not marked as a stub: ${skillFile}`);
+              failed = true;
+            }
+
+            if (!content.includes('Read and follow all instructions in:')) {
+              console.error(`::error::Published BMAD skill does not contain a redirect instruction: ${skillFile}`);
+              failed = true;
+            }
+
+            if (!content.includes(redirectPath)) {
+              console.error(`::error::Published BMAD skill does not redirect to ${redirectPath}: ${skillFile}`);
+              failed = true;
+            }
+          }
+
+          process.exit(failed ? 1 : 0);
+          NODE
+          then
+            MISSING=1
+          fi
+
+          for src in .github/skills/*/SKILL.md; do
+            [ -f "$src" ] || continue
+            skill_name=$(basename "$(dirname "$src")")
+            target="build-output/.github/skills/$skill_name/SKILL.md"
+
+            if [ ! -f "$target" ]; then
+              echo "::error::Missing published skill stub: $target"
+              MISSING=1
+              continue
+            fi
+
+            if ! cmp -s "$src" "$target"; then
+              echo "::error::Published skill stub differs from source: $target"
+              MISSING=1
+            else
+              echo "✅ $target matches source stub"
+            fi
+
+            if ! grep -q '(Stub)' "$target"; then
+              echo "::error::Published skill is not marked as a stub: $target"
+              MISSING=1
+            fi
+
+            if ! grep -q 'Read and follow all instructions in:' "$target"; then
+              echo "::error::Published skill does not redirect to module content: $target"
+              MISSING=1
+            fi
+
+            if ! grep -q 'lens.core/_bmad/lens-work/skills/' "$target"; then
+              echo "::error::Published skill does not redirect to lens-work skill content: $target"
+              MISSING=1
+            fi
+          done
+
+          SOURCE_PROMPT_COUNT=$(find .github/prompts -maxdepth 1 -type f -name '*.prompt.md' | wc -l)
+          GITHUB_COUNT=$(find build-output/.github/prompts -maxdepth 1 -type f -name '*.prompt.md' | wc -l)
+          if [ "$GITHUB_COUNT" -lt "$SOURCE_PROMPT_COUNT" ]; then
+            echo "::error::.github/prompts count ($GITHUB_COUNT) is less than source stub count ($SOURCE_PROMPT_COUNT)"
+            MISSING=1
+          else
+            EXTRA_PROMPT_COUNT=$((GITHUB_COUNT - SOURCE_PROMPT_COUNT))
+            echo "✅ .github/prompts includes all source stubs ($SOURCE_PROMPT_COUNT) plus $EXTRA_PROMPT_COUNT preserved installer-generated prompt(s)"
+          fi
+
+          for src in .github/prompts/*.prompt.md; do
+            [ -f "$src" ] || continue
+            target="build-output/.github/prompts/$(basename "$src")"
+
+            if [ ! -f "$target" ]; then
+              echo "::error::Missing published prompt stub: $target"
+              MISSING=1
+              continue
+            fi
+
+            if ! cmp -s "$src" "$target"; then
+              echo "::error::Published prompt stub differs from source: $target"
+              MISSING=1
+            else
+              echo "✅ $target matches source stub"
+            fi
+
+            if ! grep -q '(Stub)' "$target"; then
+              echo "::error::Published prompt is not marked as a stub: $target"
+              MISSING=1
+            fi
+
+            if ! grep -Eqi 'read and follow all instructions in: *`?lens\.core/_bmad/lens-work/prompts/' "$target"; then
+              echo "::error::Published prompt does not redirect to lens.core module content: $target"
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" -eq 1 ]; then
+            exit 1
+          fi
+
+      # ── 14. Add manifest entry for lens-work ─────────────────────────
+      - name: Update BMAD manifest with lens-work
+        if: matrix.config.release_branch == 'alpha'
+        run: |
+          MANIFEST="build-output/_bmad/_config/manifest.yaml"
+          if [ -f "$MANIFEST" ]; then
+            if ! grep -q "name: lens-work" "$MANIFEST"; then
+              VERSION="${{ steps.version.outputs.version }}"
+              NOW="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
+              printf '\n  - name: lens-work\n    version: "%s"\n    installDate: "%s"\n    lastUpdated: "%s"\n    source: custom\n    npmPackage: null\n    repoUrl: null\n' \
+                "$VERSION" "$NOW" "$NOW" >> "$MANIFEST"
+              echo "lens-work added to manifest"
+            else
+              echo "lens-work already in manifest"
+            fi
+          fi
+
+      # ── 15. Commit & push to alpha ───────────────────────────────────
+      - name: Commit and push to alpha
+        if: matrix.config.release_branch == 'alpha'
+        working-directory: release-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          rsync -a --delete --exclude '.git' ../build-output/ ./
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            case "${ALPHA_UPDATE_MODE:-direct}" in
+              from_beta_reset)
+                git push --force-with-lease origin alpha
+                echo "✅ Repaired alpha from beta (no payload delta)"
+                ;;
+              from_beta_new)
+                git push --set-upstream origin alpha
+                echo "✅ Created alpha from beta (no payload delta)"
+                ;;
+              *)
+                echo "No changes to promote — skipping"
+                ;;
+            esac
+            echo "has_changes=false" >> "$GITHUB_ENV"
+          else
+            git commit -m "[PROMOTE] Full BMAD + lens-work v${{ steps.version.outputs.version }}"
+            case "${ALPHA_UPDATE_MODE:-direct}" in
+              from_beta_reset)
+                # Force only when replacing a broken, unrelated alpha history.
+                git push --force-with-lease origin alpha
+                echo "✅ Reset alpha from beta and pushed payload"
+                ;;
+              from_beta_new)
+                git push --set-upstream origin alpha
+                echo "✅ Created alpha from beta and pushed payload"
+                ;;
+              *)
+                git push origin alpha
+                echo "✅ Committed directly to alpha"
+                ;;
+            esac
+
+            echo "has_changes=true" >> "$GITHUB_ENV"
+          fi
+
+      # ── 15b. Commit & push to develop branch ────────────────────────
+      - name: Commit and push to develop branch
+        if: matrix.config.release_branch != 'alpha'
+        working-directory: release-repo
+        run: |
+          RELEASE_BRANCH="${{ matrix.config.release_branch }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          rsync -a --delete --exclude '.git' ../build-output/ ./
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to promote — skipping"
+            echo "has_changes=false" >> "$GITHUB_ENV"
+          else
+            git commit -m "[PROMOTE] Full BMAD + lens-work v${{ steps.version.outputs.version }} → $RELEASE_BRANCH"
+            git push --set-upstream origin "$RELEASE_BRANCH"
+            echo "✅ Pushed to $RELEASE_BRANCH"
+            echo "has_changes=true" >> "$GITHUB_ENV"
+          fi
+
+      # ── 16. Create PR alpha → beta ──────────────────────────────────
+      - name: Verify alpha and beta ancestry
+        if: matrix.config.release_branch == 'alpha'
+        working-directory: release-repo
+        run: |
+          git fetch --no-tags origin \
+            +refs/heads/alpha:refs/remotes/origin/alpha \
+            +refs/heads/beta:refs/remotes/origin/beta
+
+          if git merge-base refs/remotes/origin/alpha refs/remotes/origin/beta >/dev/null 2>&1; then
+            echo "✅ Verified: alpha and beta share ancestry"
+          else
+            echo "::error::alpha and beta are unrelated after promotion push"
+            echo "::error::This run is blocked to prevent creating an invalid PR state"
+            exit 1
+          fi
+
+      - name: Create PR alpha → beta
+        if: env.has_changes == 'true' && matrix.config.release_branch == 'alpha'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          OPEN_PRS=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository_owner }}/Lens.Core.Release/pulls?head=${{ github.repository_owner }}:alpha&base=beta&state=open")
+          PR_COUNT=$(echo "$OPEN_PRS" | jq 'length')
+
+          if [ "$PR_COUNT" -gt 0 ]; then
+            PR_URL=$(echo "$OPEN_PRS" | jq -r '.[0].html_url')
+            echo "::notice::PR already exists: $PR_URL"
+          else
+            PR_RESPONSE=$(curl -s -X POST \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository_owner }}/Lens.Core.Release/pulls" \
+              -d "$(jq -n \
+                --arg title "[PROMOTE] Full BMAD + lens-work v${{ steps.version.outputs.version }}" \
+                --arg body "Full BMAD framework + lens-work custom module build.\n\n**lens-work version:** ${{ steps.version.outputs.version }}\n**Source commit:** ${{ github.sha }}\n**Triggered by:** ${{ github.actor }}\n\n**Included:**\n- BMAD core + bmm + bmb + cis + gds + tea + wds\n- lens-work custom module\n- IDE adapters: GitHub Copilot, Cursor, Claude Code, Codex\n- Embedded .github payload (agents/prompts/instructions) with lens-work prompts only\n\n**Release repo:** Lens.Core.Release" \
+                --arg head "alpha" \
+                --arg base "beta" \
+                '{title: $title, body: $body, head: $head, base: $base}')")
+
+            PR_URL=$(echo "$PR_RESPONSE" | jq -r '.html_url // empty')
+
+            if [ -n "$PR_URL" ]; then
+              echo "✅ PR created: $PR_URL"
+            else
+              echo "::error::Failed to create PR"
+              echo "$PR_RESPONSE" | jq .
+              exit 1
+            fi
+          fi

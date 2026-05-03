@@ -3,10 +3,13 @@
 # dependencies = []
 # ///
 """
-merge-help-csv.py — Anti-zombie CSV merge for lens-work module.
+merge-help-csv.py — Anti-zombie CSV merge for the lens module.
 
-Removes all existing lens-work rows from the target help CSV,
+Removes all existing lens rows from the target help CSV,
 then appends the current module's help entries.
+
+The module identifier is derived dynamically from column 0 of the
+first data row in the module CSV (e.g. "Lens") to avoid hardcoding.
 """
 
 import argparse
@@ -19,23 +22,42 @@ def merge_help_csv(module_csv_path: Path, target_csv_path: Path) -> None:
     # Read module CSV
     with open(module_csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.reader(f)
-        module_header = next(reader)
+        try:
+            module_header = next(reader)
+        except StopIteration:
+            print("⚠️ Module CSV is empty — nothing to merge.")
+            return
         module_rows = list(reader)
 
-    module_code = "lens-work"
+    if not module_rows:
+        print("⚠️ Module CSV has no data rows — nothing to merge.")
+        return
+
+    # Derive module identifier from first non-empty data row (column 0)
+    first_non_empty = next((row for row in module_rows if row and row[0].strip()), None)
+    if first_non_empty is None:
+        print("⚠️ Module CSV has no non-empty data rows — nothing to merge.")
+        return
+    module_name = first_non_empty[0]
 
     # Read target CSV (or create if empty)
     if target_csv_path.exists():
         with open(target_csv_path, "r", encoding="utf-8", newline="") as f:
             reader = csv.reader(f)
-            target_header = next(reader)
-            target_rows = list(reader)
+            try:
+                target_header = next(reader)
+            except StopIteration:
+                # Target exists but is completely empty — treat as no header/rows
+                target_header = module_header
+                target_rows = []
+            else:
+                target_rows = list(reader)
     else:
         target_header = module_header
         target_rows = []
 
-    # Anti-zombie: remove existing module rows (column 0 = module)
-    filtered_rows = [row for row in target_rows if not row or row[0] != module_code]
+    # Anti-zombie: remove existing module rows (column 0 = module name)
+    filtered_rows = [row for row in target_rows if not row or row[0] != module_name]
 
     # Append current module rows
     filtered_rows.extend(module_rows)
@@ -46,11 +68,11 @@ def merge_help_csv(module_csv_path: Path, target_csv_path: Path) -> None:
         writer.writerow(target_header)
         writer.writerows(filtered_rows)
 
-    print(f"✅ {len(module_rows)} help entries for '{module_code}' merged into {target_csv_path}")
+    print(f"✅ {len(module_rows)} help entries for '{module_name}' merged into {target_csv_path}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Merge lens-work help CSV")
+    parser = argparse.ArgumentParser(description="Merge lens module help CSV")
     parser.add_argument("--module-csv", required=True, help="Path to module-help.csv")
     parser.add_argument("--target-csv", required=True, help="Path to target help CSV")
     args = parser.parse_args()

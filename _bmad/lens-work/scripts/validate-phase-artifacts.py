@@ -66,6 +66,11 @@ def artifact_candidates(docs_root: Path, name: str) -> list[Path]:
             candidates = [docs_root / "sprint-status.yaml", docs_root / "sprint-backlog.md"]
         case "story-files":
             candidates = story_file_candidates(docs_root)
+        case "expressplan-adversarial-review":
+            candidates = [
+                docs_root / "expressplan-adversarial-review.md",
+                docs_root / "expressplan-review.md",
+            ]
         case "review-report":
             candidates = [
                 docs_root / "review-report.md",
@@ -74,6 +79,7 @@ def artifact_candidates(docs_root: Path, name: str) -> list[Path]:
                 docs_root / "businessplan-adversarial-review.md",
                 docs_root / "techplan-adversarial-review.md",
                 docs_root / "expressplan-adversarial-review.md",
+                docs_root / "expressplan-review.md",
                 docs_root / "finalizeplan-review.md",
             ]
         case _:

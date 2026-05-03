@@ -1,11 +1,9 @@
 ---
-description: 'Next-action routing and auto-delegation based on feature state'
+description: 'Next command — resolve and delegate to the current feature's recommended phase skill.'
 ---
 
-# lens-next (Stub)
+# /next
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load `_bmad/lens-work/skills/bmad-lens-next/SKILL.md` and follow it exactly.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-next/SKILL.md
-```
+This prompt is only a redirect. Do not add prompt-local planning, routing, or phase logic.

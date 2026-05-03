@@ -1,5 +1,9 @@
-mode: agent
-description: "Migrate control repo schema to current version or route legacy branches to lens-migrate"
+---
+description: Module upgrade and schema migration flow.
+---
 
-Load and follow the skill at: `lens.core/_bmad/lens-work/skills/bmad-lens-upgrade/SKILL.md`
+# /upgrade
 
+Load _bmad/lens-work/skills/bmad-lens-upgrade/SKILL.md and follow it exactly.
+
+This prompt is a routing stub only. Do not add prompt-local migration logic.

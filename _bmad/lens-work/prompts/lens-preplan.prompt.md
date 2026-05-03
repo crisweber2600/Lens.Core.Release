@@ -2,10 +2,8 @@
 description: 'PrePlan phase — brainstorm, research, and product brief for a feature.'
 ---
 
-# lens-preplan (Stub)
+# /preplan
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load `_bmad/lens-work/skills/bmad-lens-preplan/SKILL.md` and follow it exactly.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-preplan/SKILL.md
-```
+This prompt is only a redirect. Do not add prompt-local business logic.

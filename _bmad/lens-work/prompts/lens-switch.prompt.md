@@ -24,16 +24,16 @@ Before reading config or invoking `switch-ops.py`:
 ## Resolution Rules
 
 1. Attempt to read `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`. If it exists, resolve:
-	 - `{release_repo_root}` from `release_repo_root` (default: `lens.core`)
-	 - `{governance_repo}` from `governance_repo_path`
-	 - `{personal_output_folder}` from `personal_output_folder`
+    - `{release_repo_root}` from `release_repo_root` (default: `lens.core`)
+    - `{governance_repo}` from `governance_repo_path`
+    - `{personal_output_folder}` from `personal_output_folder`
 2. If `{project-root}/.lens/governance-setup.yaml` exists and contains `governance_repo_path`, prefer that value over `bmadconfig.yaml`.
-3. If any values remain unset, use these defaults:
-	 - `{release_repo_root}` = `lens.core`
-	 - `{governance_repo}` = `{project-root}/TargetProjects/lens/lens-governance`
-	 - `{control_repo}` = `{project-root}`
-	 - `{personal_output_folder}` = `{project-root}/.lens/personal`
-4. Missing config is normal. Do not search the workspace for alternate config files or script locations.
+3. If `{governance_repo}` remains unset, stop with `config_missing` and tell the user: `Run /lens-onboard to set up governance config.`
+4. If non-governance values remain unset, use these defaults:
+    - `{release_repo_root}` = `lens.core`
+    - `{control_repo}` = `{project-root}`
+    - `{personal_output_folder}` = `{project-root}/.lens/personal`
+5. Do not search the workspace for alternate config files or script locations.
 
 ## Execution
 
@@ -41,19 +41,19 @@ Before reading config or invoking `switch-ops.py`:
 
 ```bash
 uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/bmad-lens-switch/scripts/switch-ops.py \
-	switch \
-	--governance-repo {governance_repo} \
-	--feature-id {feature_id} \
-	--control-repo {control_repo} \
-	--personal-folder {personal_output_folder}
+   switch \
+   --governance-repo {governance_repo} \
+   --feature-id {feature_id} \
+   --control-repo {control_repo} \
+   --personal-folder {personal_output_folder}
 ```
 
 - Otherwise run:
 
 ```bash
 uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/bmad-lens-switch/scripts/switch-ops.py \
-	list \
-	--governance-repo {governance_repo}
+   list \
+   --governance-repo {governance_repo}
 ```
 
 ## Menu Control

@@ -1,15 +1,30 @@
+---
+description: lens new-service release prompt
 mode: agent
-description: "Initialize a new service within a domain"
+---
 
-Load and follow the skill at: `lens.core/_bmad/lens-work/skills/bmad-lens-init-feature/SKILL.md`
+# /new-service
 
-The user wants to initialize a new **service** — not a feature. This means:
-1. Create the service marker at `{governance_repo}/features/{domain}/{service}/service.yaml` (and parent `domain.yaml` if absent)
-2. Create a service-level `constitution.md` at `{governance_repo}/constitutions/{domain}/{service}/constitution.md` inheriting from the domain constitution (create domain constitution too if absent)
-3. If `{target_projects_path}` is configured, scaffold `{target_projects_path}/{domain}/{service}/` by passing `--target-projects-root {target_projects_path}` to the `create-service` subcommand
-4. If `{output_folder}` is configured, scaffold `{output_folder}/{domain}/{service}/` by passing `--docs-root {output_folder}` to the `create-service` subcommand
-5. Pass `--personal-folder {personal_output_folder}` to the `create-service` subcommand so that `context.yaml` is written to the personal folder with the new domain and service as the active context
-6. Do NOT create feature branches or feature.yaml — service initialization is governance-only
+Load `_bmad/lens-work/skills/bmad-lens-init-feature/SKILL.md` and execute intent `create-service`.
 
-Use the `create-service` subcommand of `skills/bmad-lens-init-feature/scripts/init-feature-ops.py` with `--execute-governance-git`.
-Report governance git success, include the returned `governance_commit_sha` when present, and only surface any `remaining_git_commands` for manual workspace scaffold follow-up.
+Runtime config to resolve before invocation:
+- governance_repo
+- target_projects_path (optional)
+- output_folder (optional)
+- personal_output_folder (required)
+
+The user wants to initialize a new service container, not a feature. The flow must:
+1. Resolve or ask for the parent domain when not supplied by active context
+2. Ask for the service display name
+3. Derive a safe service slug using the same normalization pattern as `new-domain`
+4. Confirm the slug with edit/cancel options before invoking the script
+5. Create `{governance_repo}/features/{domain}/{service}/service.yaml`
+6. Create `{governance_repo}/constitutions/{domain}/{service}/constitution.md`
+7. If the parent domain marker or constitution is absent, create them first by calling `create-domain` helpers — do not re-implement domain creation inline
+8. Pass `--target-projects-root {target_projects_path}` when configured
+9. Pass `--docs-root {output_folder}` when configured
+10. Pass `--personal-folder {personal_output_folder}` so `context.yaml` is written with the active domain and service
+11. Pass `--execute-governance-git` so governance `main` is pulled, written, committed, and pushed by the script
+12. Do not create feature branches, feature.yaml, summary.md, feature-index entries, or lifecycle artifacts
+
+Report `governance_commit_sha` when present. Surface `remaining_git_commands` only for manual workspace scaffold follow-up. Do not implement service writes in this prompt; delegate to the skill script.

@@ -1,11 +1,16 @@
 ---
-description: 'BusinessPlan phase — PRD creation and UX design for a feature.'
+description: 'BusinessPlan phase — PRD creation and UX design for a feature'
 ---
 
-# lens-businessplan (Stub)
+# /businessplan
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load `_bmad/lens-work/skills/bmad-lens-businessplan/SKILL.md` and execute it.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-businessplan/SKILL.md
-```
+Runtime config to resolve before invocation:
+- governance_repo
+- control_repo
+- feature_id
+
+The BusinessPlan phase publishes reviewed PrePlan artifacts to governance, then delegates PRD and UX authoring through `bmad-lens-bmad-skill`. The skill handles interactive vs batch mode, review-ready fast paths, and auto-delegation from `/next`. This release prompt does not add confirmation logic; all workflow orchestration is delegated to the skill.
+
+Do not implement BusinessPlan logic in this prompt. Read the skill and follow its instructions.

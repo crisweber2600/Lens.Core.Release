@@ -1,11 +1,9 @@
 ---
-description: 'FinalizePlan phase — review, bundled planning outputs, and PR handoff for a feature.'
+description: 'FinalizePlan phase - final review, downstream bundle, and PR handoff.'
 ---
 
-# lens-finalizeplan (Stub)
+# /finalizeplan
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load `_bmad/lens-work/skills/bmad-lens-finalizeplan/SKILL.md` and follow it exactly.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-finalizeplan/SKILL.md
-```
+This prompt is only a redirect. Do not add prompt-local business logic.

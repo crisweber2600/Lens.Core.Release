@@ -1,11 +1,9 @@
 ---
-description: 'Feature splitting workflow'
+description: 'Split a feature safely by validating the boundary, creating the new feature shell, and moving stories when requested.'
 ---
 
-# lens-split-feature (Stub)
+# /split-feature
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+Load `_bmad/lens-work/skills/bmad-lens-split-feature/SKILL.md` and follow it exactly.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-split-feature/SKILL.md
-```
+This prompt is only a redirect. Do not add prompt-local planning, governance writes, or file mutation logic.

@@ -1,0 +1,103 @@
+# next-routing-full-track.yaml
+# Parity fixture: all full-track phase routing transitions.
+# Each case specifies the feature phase/track and the expected next-ops.py suggest output.
+# DO NOT hardcode lifecycle phase lists here — a conforming test runner must resolve
+# lifecycle.yaml from the live installed path at test time.
+#
+# format_version: 1
+# runner_hint: Load lifecycle.yaml from bmadconfig.yaml release_repo_root at test time.
+#              Create a temporary feature.yaml with the given input fields and call
+#              `next-ops.py suggest --feature-id <id> --governance-repo <tmp>`.
+
+format_version: 1
+description: "Full-track phase routing parity fixtures"
+track: full
+
+fixtures:
+  - name: "preplan → /businessplan"
+    description: "Feature on full track at preplan should advance to businessplan"
+    input:
+      phase: preplan
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/businessplan"
+      blockers: []
+      warnings: []
+
+  - name: "preplan-complete → /businessplan"
+    description: "Phase suffix -complete is normalized: preplan-complete resolves via preplan's auto_advance_to"
+    input:
+      phase: preplan-complete
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/businessplan"
+      blockers: []
+      warnings: []
+
+  - name: "businessplan → /techplan"
+    description: "Feature on full track at businessplan should advance to techplan"
+    input:
+      phase: businessplan
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/techplan"
+      blockers: []
+      warnings: []
+
+  - name: "businessplan-complete → /techplan"
+    description: "businessplan-complete normalizes to businessplan auto_advance_to"
+    input:
+      phase: businessplan-complete
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/techplan"
+      blockers: []
+      warnings: []
+
+  - name: "techplan → /finalizeplan"
+    description: "Feature on full track at techplan should advance to finalizeplan"
+    input:
+      phase: techplan
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/finalizeplan"
+      blockers: []
+      warnings: []
+
+  - name: "techplan-complete → /finalizeplan"
+    description: "techplan-complete normalizes to techplan auto_advance_to"
+    input:
+      phase: techplan-complete
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/finalizeplan"
+      blockers: []
+      warnings: []
+
+  - name: "finalizeplan → /dev"
+    description: "Feature on full track at finalizeplan should advance to dev"
+    input:
+      phase: finalizeplan
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/dev"
+      blockers: []
+      warnings: []
+
+  - name: "finalizeplan-complete → /dev"
+    description: "finalizeplan-complete normalizes to finalizeplan auto_advance_to = /dev"
+    input:
+      phase: finalizeplan-complete
+      track: full
+    expected:
+      status: unblocked
+      recommendation: "/dev"
+      blockers: []
+      warnings: []

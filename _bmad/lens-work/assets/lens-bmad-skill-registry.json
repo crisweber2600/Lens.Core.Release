@@ -1,173 +1,111 @@
 {
-  "version": 1,
-  "skills": [
-    {
-      "id": "bmad-brainstorming",
-      "command": "/bmad-brainstorming",
-      "promptFile": "lens-bmad-brainstorming.prompt.md",
+  "version": "1.0.0",
+  "skills": {
+    "bmad-brainstorming": {
       "displayName": "BMAD Brainstorming",
-      "description": "Run guided brainstorming with Lens domain, service, feature, governance, and repo context.",
-      "entryPath": "lens.core/_bmad/core/bmad-brainstorming/SKILL.md",
       "contextMode": "feature-optional",
       "outputMode": "planning-docs",
       "phaseHints": ["preplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-brainstorming/SKILL.md"
     },
-    {
-      "id": "bmad-product-brief",
-      "command": "/bmad-product-brief",
-      "promptFile": "lens-bmad-product-brief.prompt.md",
+    "bmad-product-brief": {
       "displayName": "BMAD Product Brief",
-      "description": "Create or refine a product brief with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/1-analysis/bmad-product-brief/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["preplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-product-brief/SKILL.md"
     },
-    {
-      "id": "bmad-domain-research",
-      "command": "/bmad-domain-research",
-      "promptFile": "lens-bmad-domain-research.prompt.md",
+    "bmad-domain-research": {
       "displayName": "BMAD Domain Research",
-      "description": "Run domain research with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/1-analysis/research/bmad-domain-research/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["preplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-domain-research/SKILL.md"
     },
-    {
-      "id": "bmad-market-research",
-      "command": "/bmad-market-research",
-      "promptFile": "lens-bmad-market-research.prompt.md",
+    "bmad-market-research": {
       "displayName": "BMAD Market Research",
-      "description": "Run market research with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/1-analysis/research/bmad-market-research/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["preplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-market-research/SKILL.md"
     },
-    {
-      "id": "bmad-technical-research",
-      "command": "/bmad-technical-research",
-      "promptFile": "lens-bmad-technical-research.prompt.md",
+    "bmad-technical-research": {
       "displayName": "BMAD Technical Research",
-      "description": "Run technical research with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/1-analysis/research/bmad-technical-research/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["preplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-technical-research/SKILL.md"
     },
-    {
-      "id": "bmad-create-prd",
-      "command": "/bmad-create-prd",
-      "promptFile": "lens-bmad-create-prd.prompt.md",
+    "bmad-create-prd": {
       "displayName": "BMAD Create PRD",
-      "description": "Create or refine a PRD with Lens-aware domain, service, feature, governance, and output-path context.",
-      "entryPath": "lens.core/_bmad/bmm/2-plan-workflows/bmad-create-prd/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["businessplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-create-prd/SKILL.md"
     },
-    {
-      "id": "bmad-create-ux-design",
-      "command": "/bmad-create-ux-design",
-      "promptFile": "lens-bmad-create-ux-design.prompt.md",
+    "bmad-create-ux-design": {
       "displayName": "BMAD Create UX Design",
-      "description": "Create UX design deliverables with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/2-plan-workflows/bmad-create-ux-design/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["businessplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-create-ux-design/SKILL.md"
     },
-    {
-      "id": "bmad-create-architecture",
-      "command": "/bmad-create-architecture",
-      "promptFile": "lens-bmad-create-architecture.prompt.md",
+    "bmad-create-architecture": {
       "displayName": "BMAD Create Architecture",
-      "description": "Create architecture deliverables with Lens-aware feature, repo, and governance context.",
-      "entryPath": "lens.core/_bmad/bmm/3-solutioning/bmad-create-architecture/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["techplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-create-architecture/SKILL.md"
     },
-    {
-      "id": "bmad-create-epics-and-stories",
-      "command": "/bmad-create-epics-and-stories",
-      "promptFile": "lens-bmad-create-epics-and-stories.prompt.md",
+    "bmad-lens-quickplan": {
+      "displayName": "Lens QuickPlan Internal",
+      "surface": "internal",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["expressplan"],
+      "entryPath": "skills/bmad-lens-quickplan/SKILL.md"
+    },
+    "bmad-create-epics-and-stories": {
       "displayName": "BMAD Create Epics and Stories",
-      "description": "Generate epics and stories with Lens-aware feature scope, governance, and artifact paths.",
-      "entryPath": "lens.core/_bmad/bmm/3-solutioning/bmad-create-epics-and-stories/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["finalizeplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-create-epics-and-stories/SKILL.md"
     },
-    {
-      "id": "bmad-check-implementation-readiness",
-      "command": "/bmad-check-implementation-readiness",
-      "promptFile": "lens-bmad-check-implementation-readiness.prompt.md",
+    "bmad-check-implementation-readiness": {
       "displayName": "BMAD Implementation Readiness",
-      "description": "Run implementation readiness checks with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/3-solutioning/bmad-check-implementation-readiness/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["finalizeplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-check-implementation-readiness/SKILL.md"
     },
-    {
-      "id": "bmad-sprint-planning",
-      "command": "/bmad-sprint-planning",
-      "promptFile": "lens-bmad-sprint-planning.prompt.md",
+    "bmad-sprint-planning": {
       "displayName": "BMAD Sprint Planning",
-      "description": "Generate sprint tracking with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/4-implementation/bmad-sprint-planning/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["finalizeplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-sprint-planning/SKILL.md"
     },
-    {
-      "id": "bmad-create-story",
-      "command": "/bmad-create-story",
-      "promptFile": "lens-bmad-create-story.prompt.md",
+    "bmad-create-story": {
       "displayName": "BMAD Create Story",
-      "description": "Create story files with Lens-aware feature scope, governance context, and docs-path output.",
-      "entryPath": "lens.core/_bmad/bmm/4-implementation/bmad-create-story/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["finalizeplan"],
-      "helpCategory": "planning"
+      "entryPath": "skills/bmad-create-story/SKILL.md"
     },
-    {
-      "id": "bmad-quick-dev",
-      "command": "/bmad-quick-dev",
-      "promptFile": "lens-bmad-quick-dev.prompt.md",
+    "bmad-quick-dev": {
       "displayName": "BMAD Quick Dev",
-      "description": "Run quick dev with Lens feature scope, target repo resolution, and write-boundary guidance.",
-      "entryPath": "lens.core/_bmad/bmm/4-implementation/bmad-quick-dev/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "implementation-target",
       "phaseHints": ["dev"],
-      "helpCategory": "implementation"
+      "entryPath": "skills/bmad-quick-dev/SKILL.md"
     },
-    {
-      "id": "bmad-code-review",
-      "command": "/bmad-code-review",
-      "promptFile": "lens-bmad-code-review.prompt.md",
+    "bmad-code-review": {
       "displayName": "BMAD Code Review",
-      "description": "Run code review with Lens feature scope, target repo resolution, and governance-aware review context.",
-      "entryPath": "lens.core/_bmad/bmm/4-implementation/bmad-code-review/SKILL.md",
       "contextMode": "feature-required",
       "outputMode": "implementation-target",
       "phaseHints": ["dev"],
-      "helpCategory": "implementation"
+      "entryPath": "skills/bmad-code-review/SKILL.md"
     }
-  ]
+  }
 }

@@ -1,37 +1,25 @@
-# LENS Workbench Configuration
-# Source template for BMAD agent activation and workflow defaults
-# Version: 2.0.0
+# Lens Workbench target module configuration
+schema_version: 1
+module_code: lens
 
-# GitHub account username — set to your GitHub username (run: gh auth status)
-# This is the single source of truth; all module configs resolve user_name from here.
-github_username: your-github-username
+# Governance and topology defaults
+governance_repo_path: "{project-root}/../../../lens/lens-governance"
+control_topology: 3-branch
+target_projects_path: "{project-root}/../../.."
+default_git_remote: origin
+lifecycle_contract: "{module-root}/lifecycle.yaml"
 
-project_name: bmad.lens.bmad
-user_skill_level: intermediate
+# Target repo development defaults
+default_branch: develop
+target_branch_strategy: "feature/{featureStub}"
+github_username: ""
 
-# Fallback only when Lens feature context is unavailable.
-# Lens-wrapped planning workflows stage artifacts under feature.yaml.docs.path first.
-planning_artifacts: "{project-root}/docs/planning-artifacts"
-implementation_artifacts: "{project-root}/docs/implementation-artifacts"
-project_knowledge: "{project-root}/docs"
-
-# Lens-work module defaults
-release_repo_root: lens.core
-target_projects_path: "{project-root}/TargetProjects"
-default_git_remote: github
-lifecycle_contract: "{project-root}/lens.core/_bmad/lens-work/lifecycle.yaml"
-initiative_output_folder: "{project-root}/docs/lens-work/initiatives"
-personal_output_folder: "{project-root}/.lens/personal"
-
-# Default model for prompt files — change this to update all prompts at once
-default_model: "Claude Sonnet 4.6 (copilot)"
-
-# Governance — resolved by /onboard, used during activation health checks
-governance_repo_path: "{project-root}/TargetProjects/lens/lens-governance"
-target_repos: []
-
-# Core Configuration Values
-user_name: "${github_username}"
-communication_language: English
-document_output_language: English
-output_folder: "{project-root}/docs"
+user_config:
+  path: "{module-root}/config.user.yaml"
+  overridable_fields:
+    - github_username
+    - default_branch
+    - target_branch_strategy
+    - governance_repo_path
+    - target_projects_path
+    - default_git_remote

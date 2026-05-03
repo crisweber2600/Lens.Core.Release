@@ -1,11 +1,10 @@
 ---
-description: 'TechPlan phase — architecture and technical design for a feature.'
+description: 'lens techplan release prompt'
+mode: agent
 ---
 
-# lens-techplan (Stub)
+# /techplan
 
-> **This is a stub.** Load and execute the full prompt from the release module.
+> **This is a stub.** Load and execute the full skill.
 
-```
-Read and follow all instructions in: lens.core/_bmad/lens-work/skills/bmad-lens-techplan/SKILL.md
-```
+Read and follow all instructions in: `_bmad/lens-work/skills/bmad-lens-techplan/SKILL.md`

@@ -1,421 +1,61 @@
-# LENS Workbench Module Configuration v4.0
-# Source repo — CI/CD promotes to lens.core
-
-code: lens
-name: "LENS Workbench"
-module_version: "4.0.0"
-description: "AI-guided lifecycle orchestration with feature-first branching and streamlined governance. Includes Lens Next skills alongside legacy lens-work workflows."
-header: "Guided lifecycle router with git-orchestrated discipline"
-subheader: "Phase-aware orchestration for BMAD workflows with automated branch topology"
-default_selected: false
-module_greeting: |
-  Welcome to **LENS Workbench** — your guided lifecycle router.
-  Type `/help` to see available commands, or `/next` to load the best next step for your current initiative.
-
-# Module Type
+code: "lens"
+name: "Lens Workbench"
+description: "LENS lifecycle workbench — feature context switching, initialization, planning, and governance."
+module_version: "5.4.31"
 type: standalone
-global: false
-
-# Lifecycle Contract
-lifecycle:
-  file: lifecycle.yaml
-  schema_version: 4
-
-# Dependencies
-dependencies:
-  - core
-
-optional_dependencies:
-  - cis
-  - tea
-
-# Skills — Lens Next (v4.0+)
-skills:
-  - id: bmad-lens-feature-yaml
-    file: skills/bmad-lens-feature-yaml/SKILL.md
-    description: "Feature YAML lifecycle operations and validation"
-  - id: bmad-lens-git-state
-    file: skills/bmad-lens-git-state/SKILL.md
-    description: "Read-only git queries for the Lens 2-branch feature model"
-  - id: bmad-lens-git-orchestration
-    file: skills/bmad-lens-git-orchestration/SKILL.md
-    description: "Git write operations for the Lens 2-branch feature model"
-  - id: bmad-lens-constitution
-    file: skills/bmad-lens-constitution/SKILL.md
-    description: "Governance rules resolution with 4-level additive hierarchy"
-  - id: bmad-lens-theme
-    file: skills/bmad-lens-theme/SKILL.md
-    description: "Theme loading and persona overlay system"
-  - id: bmad-lens-init-feature
-    file: skills/bmad-lens-init-feature/SKILL.md
-    description: "Feature initialization with 2-branch topology, feature YAML, and PR"
-  - id: bmad-lens-target-repo
-    file: skills/bmad-lens-target-repo/SKILL.md
-    description: "Provision and register feature target repos in GitHub, TargetProjects, and governance metadata"
-  - id: bmad-lens-quickplan
-    file: skills/bmad-lens-quickplan/SKILL.md
-    description: "End-to-end planning pipeline from business plan through FinalizePlan"
-  - id: bmad-lens-log-problem
-    file: skills/bmad-lens-log-problem/SKILL.md
-    description: "Problem capture and logging for Lens features"
-  - id: bmad-lens-next
-    file: skills/bmad-lens-next/SKILL.md
-    description: "Next-action recommendation based on feature state"
-  - id: bmad-lens-batch
-    file: skills/bmad-lens-batch/SKILL.md
-    description: "Universal two-pass batch intake and resume flow for planning targets"
-  - id: bmad-lens-switch
-    file: skills/bmad-lens-switch/SKILL.md
-    description: "Feature context switcher"
-  - id: bmad-lens-help
-    file: skills/bmad-lens-help/SKILL.md
-    description: "Contextual help system for Lens"
-  - id: bmad-lens-pause-resume
-    file: skills/bmad-lens-pause-resume/SKILL.md
-    description: "Pause and resume features with state preservation"
-  - id: bmad-lens-retrospective
-    file: skills/bmad-lens-retrospective/SKILL.md
-    description: "Retrospective analyst for Lens features"
-  - id: bmad-lens-complete
-    file: skills/bmad-lens-complete/SKILL.md
-    description: "Feature lifecycle endpoint — retrospective, archive, and close"
-  - id: bmad-lens-move-feature
-    file: skills/bmad-lens-move-feature/SKILL.md
-    description: "Feature relocation to a new domain/service"
-  - id: bmad-lens-split-feature
-    file: skills/bmad-lens-split-feature/SKILL.md
-    description: "Feature splitting workflow"
-  - id: bmad-lens-dashboard
-    file: skills/bmad-lens-dashboard/SKILL.md
-    description: "Cross-feature dashboard generator with dependency graphs"
-  - id: bmad-lens-discover
-    file: skills/bmad-lens-discover/SKILL.md
-    description: "Sync TargetProjects with governance repo inventory"
-  - id: bmad-lens-onboard
-    file: skills/bmad-lens-onboard/SKILL.md
-    description: "Primary onboarding flow for shared preflight and role-aware next-step guidance"
-  - id: bmad-lens-migrate
-    file: skills/bmad-lens-migrate/SKILL.md
-    description: "Migration bridge between LENS v3 and Lens Next"
-  - id: bmad-lens-document-project
-    file: skills/bmad-lens-document-project/SKILL.md
-    description: "Document active feature/project with domain/service/feature scoped output in control and governance repos"
-
-  # Lens Next Phase Skills (v4.0 — lifecycle phase conductors)
-  - id: bmad-lens-preplan
-    file: skills/bmad-lens-preplan/SKILL.md
-    description: "PrePlan phase — brainstorm, research, and product brief for a feature"
-  - id: bmad-lens-businessplan
-    file: skills/bmad-lens-businessplan/SKILL.md
-    description: "BusinessPlan phase — PRD creation and UX design for a feature"
-  - id: bmad-lens-techplan
-    file: skills/bmad-lens-techplan/SKILL.md
-    description: "TechPlan phase — architecture and technical design for a feature"
-  - id: bmad-lens-finalizeplan
-    file: skills/bmad-lens-finalizeplan/SKILL.md
-    description: "FinalizePlan phase — review, bundled planning outputs, and PR handoff for a feature"
-  - id: bmad-lens-expressplan
-    file: skills/bmad-lens-expressplan/SKILL.md
-    description: "ExpressPlan phase — all planning artifacts in one session for a feature"
-
-  # Lens Next Review Skills (v4.0)
-  - id: bmad-lens-adversarial-review
-    file: skills/bmad-lens-adversarial-review/SKILL.md
-    description: "Lifecycle adversarial review gate with party-mode blind-spot challenge"
-
-  # Lens Next Migration Skills (v4.0)
-  - id: bmad-lens-dev
-    file: skills/bmad-lens-dev/SKILL.md
-    description: "Dev phase — epic-level story implementation loop with branch management"
-  - id: bmad-lens-bmad-skill
-    file: skills/bmad-lens-bmad-skill/SKILL.md
-    description: "Unified BMAD skill wrapper — Lens context resolver for registered BMAD skills"
-  - id: bmad-lens-sensing
-    file: skills/bmad-lens-sensing/SKILL.md
-    description: "Cross-initiative overlap detection with constitutional gate enforcement"
-  - id: bmad-lens-audit
-    file: skills/bmad-lens-audit/SKILL.md
-    description: "Cross-initiative compliance audit dashboard"
-  - id: bmad-lens-approval-status
-    file: skills/bmad-lens-approval-status/SKILL.md
-    description: "Promotion PR approval status aggregation"
-  - id: bmad-lens-module-management
-    file: skills/bmad-lens-module-management/SKILL.md
-    description: "Module version checking and self-service upgrade guidance"
-  - id: bmad-lens-rollback
-    file: skills/bmad-lens-rollback/SKILL.md
-    description: "Safe phase rollback with confirmation gates and audit trail"
-  - id: bmad-lens-upgrade
-    file: skills/bmad-lens-upgrade/SKILL.md
-    description: "Schema migration between control repo versions"
-  - id: bmad-lens-profile
-    file: skills/bmad-lens-profile/SKILL.md
-    description: "View and edit onboarding profile"
-
-# Module Installer (BMAD standard contract)
-installer: _module-installer/installer.js
-
-# Scripts (cross-platform, no CLI dependencies beyond git+curl)
-scripts:
-  - id: install
-    files:
-      - scripts/install.py
-    description: "Standalone installer — alternative to _module-installer/installer.js"
-  - id: store-github-pat
-    files:
-      - scripts/store-github-pat.py
-    description: "Secure PAT collection into environment variables (run outside AI context)"
-  - id: create-pr
-    files:
-      - scripts/create-pr.py
-    description: "PR creation via REST API with provider detection"
-  - id: setup-control-repo
-    files:
-      - scripts/setup-control-repo.py
-    description: "Control repo bootstrapping — clone governance and target repos"
-
-# Installation Questions
-install_questions:
-  target-projects-path:
-    prompt: "Path to TargetProjects folder (where repos are cloned)"
-    default: "../TargetProjects"
-    result: "{project-root}/{value}"
-  default-git-remote:
-    prompt: "Default git remote provider"
-    default: "github"
-    result: "{value}"
-    single-select:
-      - value: "github"
-        label: "GitHub"
-      - value: "gitlab"
-        label: "GitLab"
-      - value: "azure-devops"
-        label: "Azure DevOps"
-  ides:
-    prompt: "IDE adapters to install"
-    default: ["github-copilot"]
-    result: "{value}"
-    multi-select:
-      - value: "github-copilot"
-        label: "GitHub Copilot (VS Code)"
-      - value: "cursor"
-        label: "Cursor"
-      - value: "claude"
-        label: "Claude Code"
-      - value: "codex"
-        label: "Codex CLI"
-      - value: "opencode"
-        label: "OpenCode"
-
-# Prompts — Lens Next only
 prompts:
-  - lens-onboard.prompt.md
   - lens-preflight.prompt.md
-  - lens-init-feature.prompt.md
-  - lens-new-domain.prompt.md
-  - lens-new-service.prompt.md
-  - lens-new-feature.prompt.md
-  - lens-new-project.prompt.md
-  - lens-target-repo.prompt.md
-  - lens-preplan.prompt.md
-  - lens-expressplan.prompt.md
-  - lens-businessplan.prompt.md
-  - lens-techplan.prompt.md
-  - lens-adversarial-review.prompt.md
-  - lens-finalizeplan.prompt.md
-  - lens-dev.prompt.md
   - lens-complete.prompt.md
-  - lens-retrospective.prompt.md
-  - lens-log-problem.prompt.md
-  - lens-move-feature.prompt.md
-  - lens-split-feature.prompt.md
-  - lens-next.prompt.md
-  - lens-batch.prompt.md
-  - lens-switch.prompt.md
   - lens-constitution.prompt.md
-  - lens-sensing.prompt.md
-  - lens-audit.prompt.md
-  - lens-approval-status.prompt.md
-  - lens-help.prompt.md
-  - lens-bmad-brainstorming.prompt.md
-  - lens-bmad-product-brief.prompt.md
-  - lens-bmad-domain-research.prompt.md
-  - lens-bmad-market-research.prompt.md
-  - lens-bmad-technical-research.prompt.md
-  - lens-bmad-create-prd.prompt.md
-  - lens-bmad-create-ux-design.prompt.md
-  - lens-bmad-create-architecture.prompt.md
-  - lens-bmad-create-epics-and-stories.prompt.md
-  - lens-bmad-check-implementation-readiness.prompt.md
-  - lens-bmad-sprint-planning.prompt.md
-  - lens-bmad-create-story.prompt.md
-  - lens-bmad-quick-dev.prompt.md
-  - lens-bmad-code-review.prompt.md
-  - lens-bmad-document-project.prompt.md
-  - lens-module-management.prompt.md
-  - lens-upgrade.prompt.md
-  - lens-rollback.prompt.md
-  - lens-pause-resume.prompt.md
-  - lens-profile.prompt.md
-  - lens-dashboard.prompt.md
+  - lens-dev.prompt.md
   - lens-discover.prompt.md
-  - lens-feature-yaml.prompt.md
-  - lens-git-orchestration.prompt.md
-  - lens-git-state.prompt.md
-  - lens-migrate.prompt.md
-  - lens-theme.prompt.md
-  - lens-quickplan.prompt.md
+  - lens-expressplan.prompt.md
+  - lens-new-domain.prompt.md
+  - lens-new-feature.prompt.md
+  - lens-new-service.prompt.md
+  - lens-next.prompt.md
+  - lens-split-feature.prompt.md
+  - lens-switch.prompt.md
+  - lens-techplan.prompt.md
+  - lens-finalizeplan.prompt.md
+  - lens-upgrade.prompt.md
+  - lens-businessplan.prompt.md
+  - lens-preplan.prompt.md
+skills:
+  - bmad-lens-adversarial-review
+  - bmad-lens-batch
+  - bmad-lens-bmad-skill
+  - bmad-lens-businessplan
+  - bmad-lens-complete
+  - bmad-lens-constitution
+  - bmad-lens-dev
+  - bmad-lens-discover
+  - bmad-lens-expressplan
+  - bmad-lens-feature-yaml
+  - bmad-lens-finalizeplan
+  - bmad-lens-git-orchestration
+  - bmad-lens-git-state
+  - bmad-lens-init-feature
+  - bmad-lens-new-domain
+  - bmad-lens-next
+  - bmad-lens-preflight
+  - bmad-lens-preplan
+  - bmad-lens-split-feature
+  - bmad-lens-switch
+  - bmad-lens-techplan
+  - bmad-lens-upgrade
+  - bmad-lens-new-domain
+  - bmad-lens-new-service
+  - bmad-lens-new-feature
+  # DEFERRED: bmad-lens-document-project — skill absent in new-codebase.
+  # Full specification available in old-codebase: skills/bmad-lens-document-project/SKILL.md.
+  # Scope: feature-aware output path routing, governance docs copy, prompt stub, module.yaml registration.
+  # Schedule for next release cycle.
 
-# IDE Adapter Layers
-# Generated by _module-installer/installer.js (or standalone scripts/install.py)
-# Each IDE gets thin stubs that reference module content by path
-adapters:
-  github-copilot:
-    dir: .github/
-    agent: .github/agents/bmad-agent-lens-work-lens.agent.md
-    instructions: .github/lens-work-instructions.md
-    stub_prompts:
-      - .github/prompts/lens-onboard.prompt.md
-      - .github/prompts/lens-preflight.prompt.md
-      - .github/prompts/lens-init-feature.prompt.md
-      - .github/prompts/lens-new-domain.prompt.md
-      - .github/prompts/lens-new-service.prompt.md
-      - .github/prompts/lens-new-feature.prompt.md
-      - .github/prompts/lens-new-project.prompt.md
-      - .github/prompts/lens-target-repo.prompt.md
-      - .github/prompts/lens-preplan.prompt.md
-      - .github/prompts/lens-expressplan.prompt.md
-      - .github/prompts/lens-businessplan.prompt.md
-      - .github/prompts/lens-techplan.prompt.md
-      - .github/prompts/lens-finalizeplan.prompt.md
-      - .github/prompts/lens-dev.prompt.md
-      - .github/prompts/lens-complete.prompt.md
-      - .github/prompts/lens-retrospective.prompt.md
-      - .github/prompts/lens-log-problem.prompt.md
-      - .github/prompts/lens-move-feature.prompt.md
-      - .github/prompts/lens-split-feature.prompt.md
-      - .github/prompts/lens-next.prompt.md
-      - .github/prompts/lens-batch.prompt.md
-      - .github/prompts/lens-switch.prompt.md
-      - .github/prompts/lens-constitution.prompt.md
-      - .github/prompts/lens-sensing.prompt.md
-      - .github/prompts/lens-audit.prompt.md
-      - .github/prompts/lens-approval-status.prompt.md
-      - .github/prompts/lens-help.prompt.md
-      - .github/prompts/lens-bmad-brainstorming.prompt.md
-      - .github/prompts/lens-bmad-product-brief.prompt.md
-      - .github/prompts/lens-bmad-domain-research.prompt.md
-      - .github/prompts/lens-bmad-market-research.prompt.md
-      - .github/prompts/lens-bmad-technical-research.prompt.md
-      - .github/prompts/lens-bmad-create-prd.prompt.md
-      - .github/prompts/lens-bmad-create-ux-design.prompt.md
-      - .github/prompts/lens-bmad-create-architecture.prompt.md
-      - .github/prompts/lens-bmad-create-epics-and-stories.prompt.md
-      - .github/prompts/lens-bmad-check-implementation-readiness.prompt.md
-      - .github/prompts/lens-bmad-sprint-planning.prompt.md
-      - .github/prompts/lens-bmad-create-story.prompt.md
-      - .github/prompts/lens-bmad-quick-dev.prompt.md
-      - .github/prompts/lens-bmad-code-review.prompt.md
-      - .github/prompts/lens-bmad-document-project.prompt.md
-      - .github/prompts/lens-module-management.prompt.md
-      - .github/prompts/lens-upgrade.prompt.md
-      - .github/prompts/lens-rollback.prompt.md
-      - .github/prompts/lens-pause-resume.prompt.md
-      - .github/prompts/lens-profile.prompt.md
-      - .github/prompts/lens-dashboard.prompt.md
-      - .github/prompts/lens-discover.prompt.md
-      - .github/prompts/lens-feature-yaml.prompt.md
-      - .github/prompts/lens-git-orchestration.prompt.md
-      - .github/prompts/lens-git-state.prompt.md
-      - .github/prompts/lens-migrate.prompt.md
-      - .github/prompts/lens-theme.prompt.md
-      - .github/prompts/lens-quickplan.prompt.md
-  cursor:
-    dir: .cursor/
-    commands:
-      - .cursor/commands/bmad-lens-onboard.md
-      - .cursor/commands/bmad-lens-preflight.md
-      - .cursor/commands/bmad-lens-init-feature.md
-      - .cursor/commands/bmad-lens-target-repo.md
-      - .cursor/commands/bmad-lens-preplan.md
-      - .cursor/commands/bmad-lens-businessplan.md
-      - .cursor/commands/bmad-lens-techplan.md
-      - .cursor/commands/bmad-lens-adversarial-review.md
-      - .cursor/commands/bmad-lens-finalizeplan.md
-      - .cursor/commands/bmad-lens-dev.md
-      - .cursor/commands/bmad-lens-next.md
-      - .cursor/commands/bmad-lens-batch.md
-      - .cursor/commands/bmad-lens-switch.md
-      - .cursor/commands/bmad-lens-help.md
-      - .cursor/commands/bmad-lens-constitution.md
-      - .cursor/commands/bmad-lens-audit.md
-      - .cursor/commands/bmad-lens-sensing.md
-      - .cursor/commands/bmad-lens-module-management.md
-      - .cursor/commands/bmad-lens-discover.md
-  claude:
-    dir: .claude/
-    commands:
-      - .claude/commands/bmad-lens-onboard.md
-      - .claude/commands/bmad-lens-preflight.md
-      - .claude/commands/bmad-lens-init-feature.md
-      - .claude/commands/bmad-lens-target-repo.md
-      - .claude/commands/bmad-lens-preplan.md
-      - .claude/commands/bmad-lens-businessplan.md
-      - .claude/commands/bmad-lens-techplan.md
-      - .claude/commands/bmad-lens-adversarial-review.md
-      - .claude/commands/bmad-lens-finalizeplan.md
-      - .claude/commands/bmad-lens-dev.md
-      - .claude/commands/bmad-lens-next.md
-      - .claude/commands/bmad-lens-batch.md
-      - .claude/commands/bmad-lens-switch.md
-      - .claude/commands/bmad-lens-help.md
-      - .claude/commands/bmad-lens-constitution.md
-      - .claude/commands/bmad-lens-audit.md
-      - .claude/commands/bmad-lens-sensing.md
-      - .claude/commands/bmad-lens-module-management.md
-      - .claude/commands/bmad-lens-discover.md
-  codex:
-    dir: ./
-    agents_md: AGENTS.md
-    commands:
-      - .codex/commands/bmad-lens-onboard.md
-      - .codex/commands/bmad-lens-preflight.md
-      - .codex/commands/bmad-lens-init-feature.md
-      - .codex/commands/bmad-lens-target-repo.md
-      - .codex/commands/bmad-lens-preplan.md
-      - .codex/commands/bmad-lens-businessplan.md
-      - .codex/commands/bmad-lens-techplan.md
-      - .codex/commands/bmad-lens-adversarial-review.md
-      - .codex/commands/bmad-lens-finalizeplan.md
-      - .codex/commands/bmad-lens-dev.md
-      - .codex/commands/bmad-lens-next.md
-      - .codex/commands/bmad-lens-batch.md
-      - .codex/commands/bmad-lens-switch.md
-      - .codex/commands/bmad-lens-help.md
-      - .codex/commands/bmad-lens-constitution.md
-      - .codex/commands/bmad-lens-audit.md
-      - .codex/commands/bmad-lens-sensing.md
-      - .codex/commands/bmad-lens-module-management.md
-      - .codex/commands/bmad-lens-discover.md
-  opencode:
-    dir: .opencode/
-    commands:
-      - .opencode/commands/bmad-lens-onboard.md
-      - .opencode/commands/bmad-lens-preflight.md
-      - .opencode/commands/bmad-lens-init-feature.md
-      - .opencode/commands/bmad-lens-target-repo.md
-      - .opencode/commands/bmad-lens-preplan.md
-      - .opencode/commands/bmad-lens-businessplan.md
-      - .opencode/commands/bmad-lens-techplan.md
-      - .opencode/commands/bmad-lens-adversarial-review.md
-      - .opencode/commands/bmad-lens-finalizeplan.md
-      - .opencode/commands/bmad-lens-dev.md
-      - .opencode/commands/bmad-lens-next.md
-      - .opencode/commands/bmad-lens-batch.md
-      - .opencode/commands/bmad-lens-switch.md
-      - .opencode/commands/bmad-lens-help.md
-      - .opencode/commands/bmad-lens-constitution.md
-      - .opencode/commands/bmad-lens-audit.md
-      - .opencode/commands/bmad-lens-sensing.md
-      - .opencode/commands/bmad-lens-module-management.md
-      - .opencode/commands/bmad-lens-discover.md
+# Internal skills are not exposed as public commands or prompt stubs.
+# They are invoked programmatically by other skills only.
+internal_skills:
+  - name: bmad-lens-quickplan
+    classification: internal
+    invoked_by: bmad-lens-bmad-skill
+    description: "Internal express planning pipeline for ExpressPlan. Has no public prompt stub."

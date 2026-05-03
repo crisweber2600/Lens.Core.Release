@@ -1,66 +1,71 @@
 installation:
   version: 6.2.2
-  installDate: 2026-04-21T22:54:45.780Z
-  lastUpdated: 2026-04-21T22:54:45.780Z
+  installDate: 2026-04-21 22:54:45.780000+00:00
+  lastUpdated: 2026-04-21 22:54:45.780000+00:00
 modules:
-  - name: core
-    version: 6.2.2
-    installDate: 2026-04-21T22:54:43.876Z
-    lastUpdated: 2026-04-21T22:54:43.876Z
-    source: built-in
-    npmPackage: null
-    repoUrl: null
-  - name: bmm
-    version: 6.2.2
-    installDate: 2026-04-21T22:54:36.977Z
-    lastUpdated: 2026-04-21T22:54:43.876Z
-    source: built-in
-    npmPackage: null
-    repoUrl: null
-  - name: bmb
-    version: 1.1.0
-    installDate: 2026-04-21T22:54:37.518Z
-    lastUpdated: 2026-04-21T22:54:44.246Z
-    source: external
-    npmPackage: bmad-builder
-    repoUrl: https://github.com/bmad-code-org/bmad-builder
-  - name: cis
-    version: 0.1.9
-    installDate: 2026-04-21T22:54:38.419Z
-    lastUpdated: 2026-04-21T22:54:44.620Z
-    source: external
-    npmPackage: bmad-creative-intelligence-suite
-    repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
-  - name: gds
-    version: 0.2.2
-    installDate: 2026-04-21T22:54:39.499Z
-    lastUpdated: 2026-04-21T22:54:44.985Z
-    source: external
-    npmPackage: bmad-game-dev-studio
-    repoUrl: https://github.com/bmad-code-org/bmad-module-game-dev-studio.git
-  - name: tea
-    version: 1.7.2
-    installDate: 2026-04-21T22:54:40.945Z
-    lastUpdated: 2026-04-21T22:54:45.375Z
-    source: external
-    npmPackage: bmad-method-test-architecture-enterprise
-    repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
-  - name: wds
-    version: 0.3.1
-    installDate: 2026-04-21T22:54:42.364Z
-    lastUpdated: 2026-04-21T22:54:45.780Z
-    source: external
-    npmPackage: bmad-method-wds-expansion
-    repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion
+- name: core
+  version: 6.2.2
+  installDate: 2026-04-21 22:54:43.876000+00:00
+  lastUpdated: 2026-04-21 22:54:43.876000+00:00
+  source: built-in
+  npmPackage: null
+  repoUrl: null
+- name: bmm
+  version: 6.2.2
+  installDate: 2026-04-21 22:54:36.977000+00:00
+  lastUpdated: 2026-04-21 22:54:43.876000+00:00
+  source: built-in
+  npmPackage: null
+  repoUrl: null
+- name: bmb
+  version: 1.1.0
+  installDate: 2026-04-21 22:54:37.518000+00:00
+  lastUpdated: 2026-04-21 22:54:44.246000+00:00
+  source: external
+  npmPackage: bmad-builder
+  repoUrl: https://github.com/bmad-code-org/bmad-builder
+- name: cis
+  version: 0.1.9
+  installDate: 2026-04-21 22:54:38.419000+00:00
+  lastUpdated: 2026-04-21 22:54:44.620000+00:00
+  source: external
+  npmPackage: bmad-creative-intelligence-suite
+  repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
+- name: gds
+  version: 0.2.2
+  installDate: 2026-04-21 22:54:39.499000+00:00
+  lastUpdated: 2026-04-21 22:54:44.985000+00:00
+  source: external
+  npmPackage: bmad-game-dev-studio
+  repoUrl: https://github.com/bmad-code-org/bmad-module-game-dev-studio.git
+- name: tea
+  version: 1.7.2
+  installDate: 2026-04-21 22:54:40.945000+00:00
+  lastUpdated: 2026-04-21 22:54:45.375000+00:00
+  source: external
+  npmPackage: bmad-method-test-architecture-enterprise
+  repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
+- name: wds
+  version: 0.3.1
+  installDate: 2026-04-21 22:54:42.364000+00:00
+  lastUpdated: 2026-04-21 22:54:45.780000+00:00
+  source: external
+  npmPackage: bmad-method-wds-expansion
+  repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion
+- code: lens
+  name: Lens Workbench
+  module_version: 5.4.31
+  type: standalone
+  description: "LENS lifecycle workbench \u2014 feature context switching, initialization,\
+    \ planning, and governance."
 ides:
-  - github-copilot
-  - cursor
-  - claude-code
-
-  - name: lens-work
-    version: "4.0.0"
-    installDate: "2026-04-21T22:54:48.000Z"
-    lastUpdated: "2026-04-21T22:54:48.000Z"
-    source: custom
-    npmPackage: null
-    repoUrl: null
+- github-copilot
+- cursor
+- claude-code
+- name: lens-work
+  version: 4.0.0
+  installDate: '2026-04-21T22:54:48.000Z'
+  lastUpdated: '2026-04-21T22:54:48.000Z'
+  source: custom
+  npmPackage: null
+  repoUrl: null
