@@ -18,9 +18,9 @@ TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
 MODULE_YAML = MODULE_ROOT / "module.yaml"
 SKILL_REGISTRY = MODULE_ROOT / "assets" / "lens-bmad-skill-registry.json"
-QUICKPLAN_SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-quickplan" / "SKILL.md"
+QUICKPLAN_SKILL_MD = MODULE_ROOT / "skills" / "lens-quickplan" / "SKILL.md"
 
-QUICKPLAN_SKILL_ID = "bmad-lens-quickplan"
+QUICKPLAN_SKILL_ID = "lens-quickplan"
 
 
 def _module_data() -> dict:
@@ -103,10 +103,10 @@ def test_skill_md_declares_internal():
 
 
 def test_skill_md_names_invoker():
-    """SKILL.md must specify the invoker (bmad-lens-bmad-skill)."""
+    """SKILL.md must specify the invoker (lens-bmad-skill)."""
     text = _skill_md_text()
-    assert "bmad-lens-bmad-skill" in text, (
-        "SKILL.md must identify 'bmad-lens-bmad-skill' as the invoker for QuickPlan"
+    assert "lens-bmad-skill" in text, (
+        "SKILL.md must identify 'lens-bmad-skill' as the invoker for QuickPlan"
     )
 
 

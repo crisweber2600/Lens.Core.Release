@@ -18,7 +18,7 @@ TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
 MODULE_YAML = MODULE_ROOT / "module.yaml"
 MODULE_HELP = MODULE_ROOT / "module-help.csv"
-SETUP_MODULE_HELP = MODULE_ROOT / "bmad-lens-work-setup" / "assets" / "module-help.csv"
+SETUP_MODULE_HELP = MODULE_ROOT / "lens-work-setup" / "assets" / "module-help.csv"
 
 
 def _read_text(path: Path) -> str:

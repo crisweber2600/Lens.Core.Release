@@ -28,6 +28,6 @@ If governance config is missing, stop and tell the user to run Lens onboarding o
 
 After config is resolved, read and follow:
 
-`lens.core/_bmad/lens-work/skills/bmad-lens-discover/SKILL.md`
+`lens.core/_bmad/lens-work/skills/lens-discover/SKILL.md`
 
 Pass through user arguments such as `--headless`, `-H`, or `--dry-run` to the skill behavior.

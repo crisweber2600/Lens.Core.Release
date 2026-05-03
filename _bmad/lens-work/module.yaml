@@ -22,40 +22,40 @@ prompts:
   - lens-businessplan.prompt.md
   - lens-preplan.prompt.md
 skills:
-  - bmad-lens-adversarial-review
-  - bmad-lens-batch
-  - bmad-lens-bmad-skill
-  - bmad-lens-businessplan
-  - bmad-lens-complete
-  - bmad-lens-constitution
-  - bmad-lens-dev
-  - bmad-lens-discover
-  - bmad-lens-expressplan
-  - bmad-lens-feature-yaml
-  - bmad-lens-finalizeplan
-  - bmad-lens-git-orchestration
-  - bmad-lens-git-state
-  - bmad-lens-init-feature
-  - bmad-lens-new-domain
-  - bmad-lens-next
-  - bmad-lens-preflight
-  - bmad-lens-preplan
-  - bmad-lens-split-feature
-  - bmad-lens-switch
-  - bmad-lens-techplan
-  - bmad-lens-upgrade
-  - bmad-lens-new-domain
-  - bmad-lens-new-service
-  - bmad-lens-new-feature
-  # DEFERRED: bmad-lens-document-project — skill absent in new-codebase.
-  # Full specification available in old-codebase: skills/bmad-lens-document-project/SKILL.md.
+  - lens-adversarial-review
+  - lens-batch
+  - lens-bmad-skill
+  - lens-businessplan
+  - lens-complete
+  - lens-constitution
+  - lens-dev
+  - lens-discover
+  - lens-expressplan
+  - lens-feature-yaml
+  - lens-finalizeplan
+  - lens-git-orchestration
+  - lens-git-state
+  - lens-init-feature
+  - lens-new-domain
+  - lens-next
+  - lens-preflight
+  - lens-preplan
+  - lens-split-feature
+  - lens-switch
+  - lens-techplan
+  - lens-upgrade
+  - lens-new-domain
+  - lens-new-service
+  - lens-new-feature
+  # DEFERRED: lens-document-project — skill absent in new-codebase.
+  # Full specification available in old-codebase: skills/lens-document-project/SKILL.md.
   # Scope: feature-aware output path routing, governance docs copy, prompt stub, module.yaml registration.
   # Schedule for next release cycle.
 
 # Internal skills are not exposed as public commands or prompt stubs.
 # They are invoked programmatically by other skills only.
 internal_skills:
-  - name: bmad-lens-quickplan
+  - name: lens-quickplan
     classification: internal
-    invoked_by: bmad-lens-bmad-skill
+    invoked_by: lens-bmad-skill
     description: "Internal express planning pipeline for ExpressPlan. Has no public prompt stub."

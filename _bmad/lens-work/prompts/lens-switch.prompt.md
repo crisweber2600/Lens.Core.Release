@@ -19,7 +19,7 @@ Before reading config or invoking `switch-ops.py`:
 
 - Module config: `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`
 - Optional governance override: `{project-root}/.lens/governance-setup.yaml`
-- Switch script: `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-switch/scripts/switch-ops.py`
+- Switch script: `{project-root}/lens.core/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py`
 
 ## Resolution Rules
 
@@ -40,7 +40,7 @@ Before reading config or invoking `switch-ops.py`:
 - If the user supplied an explicit feature id, run:
 
 ```bash
-uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/bmad-lens-switch/scripts/switch-ops.py \
+uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
    switch \
    --governance-repo {governance_repo} \
    --feature-id {feature_id} \
@@ -51,7 +51,7 @@ uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/bmad-l
 - Otherwise run:
 
 ```bash
-uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/bmad-lens-switch/scripts/switch-ops.py \
+uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
    list \
    --governance-repo {governance_repo}
 ```
@@ -73,4 +73,4 @@ After a successful switch:
 - if `branch_switched` is false, surface the returned branch error without guessing a fallback
 - if `stale` is true, surface the stale warning inline
 - load only the returned `context_to_load` paths that exist on disk
-- consult `lens.core/_bmad/lens-work/skills/bmad-lens-switch/SKILL.md` only if you need field semantics for the returned payload; do not load it before the first command
+- consult `lens.core/_bmad/lens-work/skills/lens-switch/SKILL.md` only if you need field semantics for the returned payload; do not load it before the first command

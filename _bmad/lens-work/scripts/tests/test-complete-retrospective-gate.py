@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["pytest>=8.0", "pyyaml>=6.0"]
 # ///
-"""Tests for bmad-lens-complete SKILL.md retrospective-first discipline (E4-S4)."""
+"""Tests for lens-complete SKILL.md retrospective-first discipline (E4-S4)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import yaml
 
 TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
-COMPLETE_SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-complete" / "SKILL.md"
+COMPLETE_SKILL_MD = MODULE_ROOT / "skills" / "lens-complete" / "SKILL.md"
 
 
 def _skill_text() -> str:
@@ -38,7 +38,7 @@ def test_retrospective_is_blocking_not_advisory():
         re.IGNORECASE,
     )
     assert advisory_retro is None, (
-        "retrospective.md must NOT be described as advisory in bmad-lens-complete SKILL.md"
+        "retrospective.md must NOT be described as advisory in lens-complete SKILL.md"
     )
 
 
@@ -68,15 +68,15 @@ def test_retrospective_must_have_approved_status():
 
 
 # ---------------------------------------------------------------------------
-# Error messages guide user to bmad-lens-retrospective
+# Error messages guide user to lens-retrospective
 # ---------------------------------------------------------------------------
 
 
 def test_missing_retrospective_error_directs_to_retrospective_skill():
-    """Error message for missing retrospective directs user to bmad-lens-retrospective."""
+    """Error message for missing retrospective directs user to lens-retrospective."""
     text = _skill_text()
-    assert "bmad-lens-retrospective" in text, (
-        "Error message must direct user to 'bmad-lens-retrospective' skill"
+    assert "lens-retrospective" in text, (
+        "Error message must direct user to 'lens-retrospective' skill"
     )
 
 
@@ -116,5 +116,5 @@ def test_document_project_remains_advisory():
     """document-project missing remains advisory (warn, not fail) — unchanged from original."""
     text = _skill_text()
     assert re.search(r"document.project.*advisory|document.project.*warn", text, re.IGNORECASE), (
-        "document-project missing should remain advisory (warn) in bmad-lens-complete SKILL.md"
+        "document-project missing should remain advisory (warn) in lens-complete SKILL.md"
     )

@@ -4,14 +4,14 @@ description: 'Feature initializer entry controller'
 
 # lens-new-feature
 
-Use this prompt as the entry controller for `/lens-new-feature`. It must delegate to the `bmad-lens-init-feature` skill and must not create governance files, branches, or feature records inline.
+Use this prompt as the entry controller for `/lens-new-feature`. It must delegate to the `lens-init-feature` skill and must not create governance files, branches, or feature records inline.
 
 ## Prompt-Start Sync
 
 Before reading config or invoking `init-feature-ops.py`:
 
-1. Check whether this invocation already includes a successful run of `uv run ./lens.core/_bmad/lens-work/skills/bmad-lens-preflight/scripts/light-preflight.py` from the workspace root.
-2. If not, run `uv run ./lens.core/_bmad/lens-work/skills/bmad-lens-preflight/scripts/light-preflight.py` now from the workspace root.
+1. Check whether this invocation already includes a successful run of `uv run ./lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py` from the workspace root.
+2. If not, run `uv run ./lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py` now from the workspace root.
 3. If that command exits non-zero, stop and surface the failure.
 4. Do not resolve config paths, read governance state, or execute `init-feature-ops.py` until the shared prompt-start sync has succeeded.
 
@@ -19,8 +19,8 @@ Before reading config or invoking `init-feature-ops.py`:
 
 - Module config: `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`
 - Optional governance override: `{project-root}/.lens/governance-setup.yaml`
-- Init-feature skill: `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-init-feature/SKILL.md`
-- Init-feature script: `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-init-feature/scripts/init-feature-ops.py`
+- Init-feature skill: `{project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/SKILL.md`
+- Init-feature script: `{project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py`
 
 ## Resolution Rules
 
@@ -39,7 +39,7 @@ Before reading config or invoking `init-feature-ops.py`:
 
 ## Execution
 
-1. Load `{project-root}/{release_repo_root}/_bmad/lens-work/skills/bmad-lens-init-feature/SKILL.md`.
+1. Load `{project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-init-feature/SKILL.md`.
 2. Execute the skill intent `create` for a new feature.
 3. If `init-feature-ops.py` does not expose the `create` subcommand in this installed version, stop with:
 
@@ -47,7 +47,7 @@ Before reading config or invoking `init-feature-ops.py`:
 not_yet_implemented: `/lens-new-feature` requires the `init-feature-ops.py create` subcommand. The prompt is published, but the runtime create implementation must be restored by the lens-dev-new-codebase-new-feature dev phase before this command can create features.
 ```
 
-4. When the `create` subcommand is available, the skill must perform the progressive-disclosure flow from `bmad-lens-init-feature`, including explicit track selection and featureId confirmation before any write.
+4. When the `create` subcommand is available, the skill must perform the progressive-disclosure flow from `lens-init-feature`, including explicit track selection and featureId confirmation before any write.
 
 ## Scope Boundaries
 

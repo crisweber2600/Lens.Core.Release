@@ -107,7 +107,7 @@ def test_load_lens_config_rejects_missing_required_fields(tmp_path: Path):
 
 def test_find_module_config_walks_parent_directories_without_search_tools(tmp_path: Path):
     module_root = tmp_path / "repo" / "_bmad" / "lens-work"
-    deep_path = module_root / "skills" / "bmad-lens-example" / "scripts"
+    deep_path = module_root / "skills" / "lens-example" / "scripts"
     deep_path.mkdir(parents=True)
     config = module_root / "bmadconfig.yaml"
     config.write_text(

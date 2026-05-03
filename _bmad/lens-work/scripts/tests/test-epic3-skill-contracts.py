@@ -18,10 +18,10 @@ SKILLS_ROOT = MODULE_ROOT / "skills"
 MODULE_YAML = MODULE_ROOT / "module.yaml"
 
 REQUIRED_SKILLS = [
-    "bmad-lens-dev",
-    "bmad-lens-split-feature",
-    "bmad-lens-upgrade",
-    "bmad-lens-constitution",
+    "lens-dev",
+    "lens-split-feature",
+    "lens-upgrade",
+    "lens-constitution",
 ]
 
 

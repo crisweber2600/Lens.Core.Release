@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["pytest>=8.0", "pyyaml>=6.0"]
 # ///
-"""Integration tests for bmad-lens-dev SKILL.md conductor contract (E4-S1)."""
+"""Integration tests for lens-dev SKILL.md conductor contract (E4-S1)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import yaml
 
 TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
-DEV_SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-dev" / "SKILL.md"
+DEV_SKILL_MD = MODULE_ROOT / "skills" / "lens-dev" / "SKILL.md"
 
 
 def _skill_text() -> str:
@@ -31,7 +31,7 @@ def test_required_inputs_named():
     """The skill declares all three required inputs."""
     text = _skill_text()
     for field in ("feature_id", "governance_repo", "control_repo"):
-        assert field in text, f"Required input '{field}' missing from bmad-lens-dev SKILL.md"
+        assert field in text, f"Required input '{field}' missing from lens-dev SKILL.md"
 
 
 def test_output_contract_includes_story_commits():
@@ -186,10 +186,10 @@ def test_skill_is_orchestration_only():
 
 
 def test_integration_points_include_git_orchestration():
-    """Integration points reference bmad-lens-git-orchestration."""
+    """Integration points reference lens-git-orchestration."""
     text = _skill_text()
-    assert "bmad-lens-git-orchestration" in text, (
-        "SKILL.md must list bmad-lens-git-orchestration in integration points"
+    assert "lens-git-orchestration" in text, (
+        "SKILL.md must list lens-git-orchestration in integration points"
     )
 
 

@@ -45,11 +45,11 @@ You must fully embody this agent's persona and follow all activation instruction
       <principles>- Delegate to real skills, not placeholder workflows. - Use /lens-help for discovery and /lens-next for single-step routing. - Keep the shell minimal and avoid duplicating the full command catalog, including preplan and other phase commands. - Ground guidance in lifecycle.yaml and module-help.csv when available.</principles>
    </persona>
    <menu>
-      <item cmd="HP or fuzzy match on help or commands" exec="{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-help/SKILL.md">[HP] Help: Show contextual command guidance from the real skill surface</item>
-      <item cmd="NX or fuzzy match on next" exec="{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-next/SKILL.md">[NX] Next: Route to the single best next lifecycle action</item>
-      <item cmd="OB or fuzzy match on onboard or setup" exec="{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-onboard/SKILL.md">[OB] Onboard: Bootstrap and validate this workspace</item>
-      <item cmd="SW or fuzzy match on switch or switch feature" exec="{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-switch/SKILL.md">[SW] Switch: Switch the active Lens feature context</item>
-      <item cmd="NF or fuzzy match on new-feature or new feature" exec="{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-init-feature/SKILL.md">[NF] New Feature: Create a new feature with the feature initializer skill</item>
+      <item cmd="HP or fuzzy match on help or commands" exec="{project-root}/lens.core/_bmad/lens-work/skills/lens-help/SKILL.md">[HP] Help: Show contextual command guidance from the real skill surface</item>
+      <item cmd="NX or fuzzy match on next" exec="{project-root}/lens.core/_bmad/lens-work/skills/lens-next/SKILL.md">[NX] Next: Route to the single best next lifecycle action</item>
+      <item cmd="OB or fuzzy match on onboard or setup" exec="{project-root}/lens.core/_bmad/lens-work/skills/lens-onboard/SKILL.md">[OB] Onboard: Bootstrap and validate this workspace</item>
+      <item cmd="SW or fuzzy match on switch or switch feature" exec="{project-root}/lens.core/_bmad/lens-work/skills/lens-switch/SKILL.md">[SW] Switch: Switch the active Lens feature context</item>
+      <item cmd="NF or fuzzy match on new-feature or new feature" exec="{project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/SKILL.md">[NF] New Feature: Create a new feature with the feature initializer skill</item>
       <item cmd="CH or fuzzy match on chat">[CH] Chat with the Agent about anything</item>
       <item cmd="DA or fuzzy match on exit, leave, goodbye or dismiss agent">[DA] Dismiss Agent</item>
    </menu>

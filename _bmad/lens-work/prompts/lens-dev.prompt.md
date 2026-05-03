@@ -4,6 +4,6 @@ description: Dev phase conductor for epic and story implementation.
 
 # /dev
 
-Load {project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-dev/SKILL.md and follow it exactly.
+Load {project-root}/lens.core/_bmad/lens-work/skills/lens-dev/SKILL.md and follow it exactly.
 
 This prompt is a routing stub only. Do not add prompt-local implementation logic.
