@@ -5,7 +5,7 @@ mode: agent
 
 # /new-domain
 
-Load `_bmad/lens-work/skills/bmad-lens-init-feature/SKILL.md` and execute intent `create-domain`.
+Load `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-init-feature/SKILL.md` and execute intent `create-domain`.
 
 Runtime config to resolve before invocation:
 - governance_repo

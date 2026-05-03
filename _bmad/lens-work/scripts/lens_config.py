@@ -108,7 +108,7 @@ def normalize_absolute_path(
 
 
 def project_root_for_config(config_path: Path) -> Path:
-    """Return the target project root for `_bmad/lens-work/bmadconfig.yaml`."""
+    """Return the target project root for `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`."""
     try:
         return config_path.resolve(strict=False).parents[2]
     except IndexError as exc:

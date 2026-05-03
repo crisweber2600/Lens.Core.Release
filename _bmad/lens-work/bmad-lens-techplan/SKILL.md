@@ -33,7 +33,7 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 
 ## On Activation
 
-1. Load config from `_bmad/lens-work/module.yaml` and resolve the module root.
+1. Load config from `{project-root}/lens.core/_bmad/lens-work/module.yaml` and resolve the module root.
 2. Resolve `{governance_repo}` from `.lens/governance-setup.yaml`.
 3. Resolve `{featureId}` from `.lens/personal/context.yaml` or from `--feature-id` argument.
 4. Load `feature.yaml` for the feature from `{governance_repo}/features/{domain}/{service}/{featureId}/feature.yaml`.
@@ -45,28 +45,28 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 
 8. Publish reviewed businessplan artifacts to governance before architecture authoring begins by running the publish hook:
 
-   Load `_bmad/lens-work/skills/bmad-lens-git-orchestration/SKILL.md` and invoke:
+   Load `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-git-orchestration/SKILL.md` and invoke:
    `bmad-lens-git-orchestration publish-to-governance --phase businessplan`
 
    If the hook exits non-zero, stop and surface the error.
 
 9. Load domain constitution for governance context by running:
 
-   Load `_bmad/lens-work/skills/bmad-lens-constitution/SKILL.md` and invoke:
+   Load `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-constitution/SKILL.md` and invoke:
    `bmad-lens-constitution resolve --governance-dir {governance_repo}`
 
    If the constitution is missing, note it and continue.
 
 10. Verify that the businessplan adversarial review artifact exists with `status: responses-recorded`.
 
-    Load `_bmad/lens-work/skills/bmad-lens-adversarial-review/SKILL.md` and invoke:
+    Load `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-adversarial-review/SKILL.md` and invoke:
     `bmad-lens-adversarial-review --phase businessplan --source phase-complete`
 
     If the gate reports fail, stop and do not proceed to architecture authoring.
 
 11. Delegate architecture authoring to the Lens BMAD wrapper.
 
-    Load `_bmad/lens-work/skills/bmad-lens-bmad-skill/SKILL.md` and invoke:
+    Load `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-bmad-skill/SKILL.md` and invoke:
     `bmad-lens-bmad-skill --skill bmad-create-architecture`
 
     Pass context: `featureId`, `prd_path`, `staged_docs_path`, `governance_repo`.

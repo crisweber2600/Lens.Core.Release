@@ -1,6 +1,6 @@
 # Lens Workbench Configuration
 
-The committed module defaults live in `_bmad/lens-work/bmadconfig.yaml`. Local user values may be supplied in `_bmad/lens-work/config.user.yaml`; that file is personal workspace state and must not be committed.
+The committed module defaults live in `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`. Local user values may be supplied in `{project-root}/lens.core/_bmad/lens-work/config.user.yaml`; that file is personal workspace state and must not be committed.
 
 ## Required Module Fields
 
@@ -33,4 +33,4 @@ default_branch: develop
 target_branch_strategy: "feature/{featureStub}-{github_username}"
 ```
 
-Path values may use `{project-root}` for the target repo root and `{module-root}` for `_bmad/lens-work`. Loaders normalize paths to absolute OS-native paths before writes or publish operations.
+Path values may use `{project-root}` for the target repo root and `{module-root}` for `{project-root}/lens.core/_bmad/lens-work`. Loaders normalize paths to absolute OS-native paths before writes or publish operations.

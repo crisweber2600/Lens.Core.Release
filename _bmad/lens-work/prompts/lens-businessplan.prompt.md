@@ -4,7 +4,7 @@ description: 'BusinessPlan phase — PRD creation and UX design for a feature'
 
 # /businessplan
 
-Load `_bmad/lens-work/skills/bmad-lens-businessplan/SKILL.md` and execute it.
+Load `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-businessplan/SKILL.md` and execute it.
 
 Runtime config to resolve before invocation:
 - governance_repo
