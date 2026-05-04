@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -288,6 +289,85 @@ def _check_document_project(feature_dir: Path) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Control repo merge helper
+# ---------------------------------------------------------------------------
+
+def _gh_merge_to_main(
+    control_repo: Path,
+    feature_id: str,
+    dry_run: bool,
+) -> tuple[str | None, str | None]:
+    """Create and merge a PR from {feature_id}-dev → main in the control repo.
+
+    Returns (pr_url, None) on success, or (None, error_msg) on failure.
+    On dry_run, returns ('dry_run', None) without executing any commands.
+    """
+    if dry_run:
+        return "dry_run", None
+
+    dev_branch = f"{feature_id}-dev"
+    cwd = str(control_repo)
+
+    def _gh(*cmd_args: str) -> tuple[int, str, str]:
+        try:
+            r = subprocess.run(
+                ["gh", *cmd_args], cwd=cwd, capture_output=True, text=True, timeout=60
+            )
+            return r.returncode, r.stdout.strip(), r.stderr.strip()
+        except FileNotFoundError:
+            return -1, "", "gh CLI not found. Install GitHub CLI (https://cli.github.com/)."
+        except subprocess.TimeoutExpired:
+            return -1, "", "gh command timed out after 60 s."
+
+    # Check for an existing open or merged PR to avoid duplicates
+    code, out, err = _gh(
+        "pr", "list",
+        "--head", dev_branch,
+        "--base", "main",
+        "--json", "url,state",
+        "--limit", "1",
+        "--state", "all",
+    )
+    if code != 0:
+        return None, f"PR lookup failed: {err or out}"
+
+    pr_url: str | None = None
+    try:
+        prs = json.loads(out or "[]")
+    except json.JSONDecodeError:
+        prs = []
+
+    if prs:
+        existing = prs[0]
+        state = str(existing.get("state") or "").upper()
+        if state == "MERGED":
+            return existing.get("url", "already_merged"), None
+        pr_url = existing.get("url", "")
+
+    if not pr_url:
+        code, out, err = _gh(
+            "pr", "create",
+            "--head", dev_branch,
+            "--base", "main",
+            "--title", f"[complete] {feature_id} — docs delivery to main",
+            "--body",
+            (
+                f"Final merge of planning docs and dev artifacts for {feature_id}.\n\n"
+                "Feature status: **complete** (archived in governance)."
+            ),
+        )
+        if code != 0:
+            return None, f"gh pr create failed: {err or out}"
+        pr_url = out
+
+    code, out, err = _gh("pr", "merge", pr_url, "--merge")
+    if code != 0:
+        return pr_url, f"PR created at {pr_url} but merge failed: {err or out}"
+
+    return pr_url, None
+
+
+# ---------------------------------------------------------------------------
 # check-preconditions
 # ---------------------------------------------------------------------------
 
@@ -413,6 +493,8 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     feature_id = str(getattr(args, "feature_id", "") or "").strip()
     dry_run: bool = bool(getattr(args, "dry_run", False))
     confirm: bool = bool(getattr(args, "confirm", False))
+    control_repo_str: str | None = getattr(args, "control_repo", None) or None
+    control_repo: Path | None = Path(control_repo_str).resolve() if control_repo_str else None
 
     if not feature_id:
         _out(_fail("feature_id_missing", "Provide --feature-id."))
@@ -508,6 +590,11 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         {"path": str(index_path.relative_to(governance_repo)), "change": f"status for '{feature_id}': {feature_index_entry.get('status', 'unknown')} → archived"},
         {"path": str(summary_path.relative_to(governance_repo)), "change": "write archive summary section"},
     ]
+    if control_repo is not None:
+        planned_changes.append({
+            "repo": str(control_repo),
+            "change": f"create and merge PR: {feature_id}-dev → main",
+        })
 
     doc_check = _check_document_project(feature_dir)
     warnings = []
@@ -590,6 +677,22 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         {"path": str(summary_path.relative_to(governance_repo)), "change": "archive summary written"},
     ]
 
+    # Merge feature-dev → main in the control repo if requested
+    merge_pr_url: str | None = None
+    merge_warning: str | None = None
+    if control_repo is not None:
+        merge_pr_url, merge_error = _gh_merge_to_main(control_repo, feature_id, dry_run=False)
+        if merge_error:
+            # Non-fatal: governance writes succeeded; surface as warning
+            merge_warning = merge_error
+            warnings.append(f"control_repo_merge_failed: {merge_error}")
+        else:
+            changes_applied.append({
+                "repo": str(control_repo),
+                "change": f"PR merged: {feature_id}-dev → main",
+                "pr_url": merge_pr_url or "",
+            })
+
     _out(
         {
             "status": "complete",
@@ -597,7 +700,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
             "archived_at": now_ts,
             "changes_applied": changes_applied,
             "retrospective_skipped": False,
-            "document_project_skipped": bool(warnings),
+            "document_project_skipped": bool(doc_check["status"] == "warn"),
             "warnings": warnings,
         }
     )
@@ -721,6 +824,9 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="Preview changes without writing")
     p_fin.add_argument("--confirm", dest="confirm", action="store_true",
                        help="Required for non-dry-run execution")
+    p_fin.add_argument("--control-repo", dest="control_repo", default=None,
+                       help="Path to the control repo. When provided, creates and merges a PR "
+                            "from {featureId}-dev → main after governance archival.")
 
     # archive-status
     sub.add_parser("archive-status", parents=[shared],

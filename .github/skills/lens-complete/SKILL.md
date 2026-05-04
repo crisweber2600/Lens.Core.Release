@@ -107,6 +107,7 @@ Inputs:
 - `--feature-id <id>`: feature identifier.
 - `--dry-run`: preview planned changes without writing.
 - `--confirm`: required for non-dry-run execution in non-interactive contexts.
+- `--control-repo <path>` *(optional)*: path to the control repo. When provided, creates and merges a PR from `{featureId}-dev → main` after governance archival. Requires `gh` CLI to be authenticated. If the merge fails, governance writes are **not** rolled back — the failure is surfaced as a warning in the response.
 
 Confirmation gate:
 
@@ -118,7 +119,8 @@ Operations:
 2. Update `feature.yaml.phase` to `complete` and set `completed_at`.
 3. Update the matching `feature-index.yaml` entry to `status: archived` and set `updated_at`.
 4. Write `summary.md` if absent, or update only the generated archive section if a managed section exists.
-5. Return all applied changes in structured JSON.
+5. If `--control-repo` is given, create and merge a PR from `{featureId}-dev → main`. An existing merged PR is treated as success. A merge failure is non-fatal (warning only).
+6. Return all applied changes in structured JSON.
 
 Dry-run return shape:
 
@@ -159,6 +161,13 @@ uv run ./scripts/complete-ops.py finalize \
 uv run ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {feature_id} \
+  --confirm
+
+# With control-repo merge (feature-dev → main):
+uv run ./scripts/complete-ops.py finalize \
+  --governance-repo {governance_repo} \
+  --feature-id {feature_id} \
+  --control-repo {project-root} \
   --confirm
 ```
 
