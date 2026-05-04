@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib.util
 import subprocess
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -79,3 +81,93 @@ def test_sync_governance_repo_auto_commits_pulls_and_pushes_local_changes(tmp_pa
         check=True,
     )
     assert remote_remote.stdout == "remote\n"
+
+
+def test_sync_control_repo_auto_commits_pulls_and_pushes_local_changes(tmp_path: Path):
+    ops = load_preflight_module()
+    remote, control = init_main_repo_with_remote(tmp_path)
+
+    peer = tmp_path / "peer"
+    subprocess.run(["git", "clone", str(remote), str(peer)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "checkout", "-b", "main", "origin/main"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "config", "user.email", "peer@example.com"], check=True)
+    subprocess.run(["git", "-C", str(peer), "config", "user.name", "Peer User"], check=True)
+    (peer / "REMOTE.txt").write_text("remote\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(peer), "add", "REMOTE.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "commit", "-m", "peer update"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "push", "origin", "main"], check=True, capture_output=True)
+
+    (control / "LOCAL.txt").write_text("local\n", encoding="utf-8")
+
+    ok, detail = ops.sync_control_repo(control)
+
+    assert ok is True
+    assert "committed local changes" in detail
+    assert "pulled origin/main" in detail
+    assert "pushed 1 local commit(s)" in detail
+    status_result = subprocess.run(
+        ["git", "-C", str(control), "status", "--short"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert status_result.stdout.strip() == ""
+    remote_local = subprocess.run(
+        ["git", "--git-dir", str(remote), "show", "main:LOCAL.txt"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert remote_local.stdout == "local\n"
+    remote_remote = subprocess.run(
+        ["git", "--git-dir", str(remote), "show", "main:REMOTE.txt"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert remote_remote.stdout == "remote\n"
+
+
+def test_main_syncs_control_and_governance_even_when_timestamp_is_fresh(tmp_path: Path, monkeypatch):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    release = project_root / "lens.core"
+    lifecycle = release / "_bmad" / "lens-work" / "lifecycle.yaml"
+    release_github = release / ".github"
+    personal = project_root / ".lens" / "personal"
+    governance = project_root / "TargetProjects" / "lens" / "lens-governance"
+
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+    release_github.mkdir(parents=True)
+    personal.mkdir(parents=True)
+    governance.mkdir(parents=True)
+    (project_root / ".lens" / "LENS_VERSION").write_text("4.0.0", encoding="utf-8")
+    (project_root / ".lens" / "governance-setup.yaml").write_text(
+        f"governance_repo_path: {governance.as_posix()}\n",
+        encoding="utf-8",
+    )
+    (personal / ".preflight-timestamp").write_text(
+        datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        encoding="utf-8",
+    )
+
+    control_syncs: list[Path] = []
+    governance_syncs: list[Path] = []
+
+    def fake_sync_control(repo: Path):
+        control_syncs.append(repo)
+        return True, "synced main; pulled origin/main"
+
+    def fake_sync_governance(repo: Path):
+        governance_syncs.append(repo)
+        return True, "synced main; pulled origin/main"
+
+    monkeypatch.chdir(project_root)
+    monkeypatch.setattr(sys, "argv", ["preflight.py"])
+    monkeypatch.setattr(ops, "sync_control_repo", fake_sync_control)
+    monkeypatch.setattr(ops, "sync_governance_repo", fake_sync_governance)
+
+    assert ops.main() == 0
+    assert control_syncs == [project_root, project_root]
+    assert governance_syncs == [governance]

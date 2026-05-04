@@ -36,7 +36,16 @@ def git_error(result: subprocess.CompletedProcess[str]) -> str:
     return (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
 
 
+CONTROL_AUTO_SYNC_COMMIT_MESSAGE = "chore(control): auto-sync local changes"
 GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local changes"
+INTERRUPTED_STATE_MARKERS: tuple[tuple[str, str], ...] = (
+    ("MERGE_HEAD", "merge in progress"),
+    ("CHERRY_PICK_HEAD", "cherry-pick in progress"),
+    ("REVERT_HEAD", "revert in progress"),
+    ("BISECT_LOG", "bisect in progress"),
+    ("rebase-merge", "rebase in progress"),
+    ("rebase-apply", "rebase in progress"),
+)
 
 
 def git_pull(repo: Path) -> bool:
@@ -49,9 +58,53 @@ def git_current_branch(repo: Path) -> str:
     return result.stdout.strip()
 
 
+def git_remotes(repo: Path) -> tuple[list[str], str | None]:
+    result = git_repo(repo, ["remote"])
+    if result.returncode != 0:
+        return [], git_error(result)
+
+    remotes = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not remotes:
+        return [], "no git remotes configured"
+    return remotes, None
+
+
+def git_upstream(repo: Path) -> tuple[str, str] | None:
+    result = git_repo(repo, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+    if result.returncode != 0:
+        return None
+
+    upstream = result.stdout.strip()
+    if not upstream or "/" not in upstream:
+        return None
+
+    remote, branch = upstream.split("/", 1)
+    if not remote or not branch:
+        return None
+    return remote, branch
+
+
 def git_branch_exists(repo: Path, branch: str, *, remote: bool = False) -> bool:
     ref = f"refs/remotes/origin/{branch}" if remote else f"refs/heads/{branch}"
     return git_repo(repo, ["show-ref", "--verify", "--quiet", ref]).returncode == 0
+
+
+def git_path_exists(repo: Path, marker: str) -> bool:
+    result = git_repo(repo, ["rev-parse", "--git-path", marker])
+    if result.returncode != 0:
+        return False
+
+    candidate = Path(result.stdout.strip())
+    if not candidate.is_absolute():
+        candidate = repo / candidate
+    return candidate.exists()
+
+
+def detect_interrupted_state(repo: Path) -> str | None:
+    for marker, detail in INTERRUPTED_STATE_MARKERS:
+        if git_path_exists(repo, marker):
+            return detail
+    return None
 
 
 def git_has_clean_worktree(repo: Path) -> tuple[bool, str | None]:
@@ -63,7 +116,7 @@ def git_has_clean_worktree(repo: Path) -> tuple[bool, str | None]:
     return True, None
 
 
-def auto_commit_local_changes(repo: Path) -> tuple[bool, str]:
+def auto_commit_local_changes(repo: Path, commit_message: str) -> tuple[bool, str]:
     add_result = git_repo(repo, ["add", "-A"])
     if add_result.returncode != 0:
         return False, f"failed to stage local changes: {git_error(add_result)}"
@@ -74,7 +127,7 @@ def auto_commit_local_changes(repo: Path) -> tuple[bool, str]:
     if staged_result.returncode != 1:
         return False, f"failed to inspect staged changes: {git_error(staged_result)}"
 
-    commit_result = git_repo(repo, ["commit", "-m", GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE])
+    commit_result = git_repo(repo, ["commit", "-m", commit_message])
     if commit_result.returncode != 0:
         return False, f"failed to commit local changes: {git_error(commit_result)}"
 
@@ -116,8 +169,36 @@ def ensure_local_branch(repo: Path, branch: str) -> tuple[bool, str | None]:
     return False, git_error(result)
 
 
-def commits_ahead_of_origin(repo: Path, branch: str) -> tuple[int, str | None]:
-    result = git_repo(repo, ["rev-list", "--count", f"origin/{branch}..HEAD"])
+def resolve_sync_target(
+    repo: Path,
+    branch: str,
+    preferred_remote: str | None = None,
+) -> tuple[str, str, str] | tuple[None, None, str]:
+    upstream = git_upstream(repo)
+    if upstream is not None:
+        upstream_remote, upstream_branch = upstream
+        if preferred_remote is None or preferred_remote == upstream_remote:
+            return upstream_remote, branch, upstream_branch
+
+    remotes, remote_error = git_remotes(repo)
+    if remote_error:
+        return None, None, remote_error
+
+    remote = preferred_remote if preferred_remote in remotes else ("origin" if "origin" in remotes else remotes[0])
+    return remote, branch, branch
+
+
+def remote_branch_exists(repo: Path, remote: str, branch: str) -> tuple[bool, str | None]:
+    result = git_repo(repo, ["ls-remote", "--exit-code", "--heads", remote, branch])
+    if result.returncode == 0:
+        return True, None
+    if result.returncode == 2:
+        return False, None
+    return False, git_error(result)
+
+
+def commits_ahead_of_remote(repo: Path, remote: str, branch: str) -> tuple[int, str | None]:
+    result = git_repo(repo, ["rev-list", "--count", f"{remote}/{branch}..HEAD"])
     if result.returncode != 0:
         return 0, git_error(result)
 
@@ -127,52 +208,104 @@ def commits_ahead_of_origin(repo: Path, branch: str) -> tuple[int, str | None]:
         return 0, f"unable to parse ahead count: {result.stdout.strip()}"
 
 
-def sync_governance_repo(governance_repo: Path) -> tuple[bool, str]:
-    worktree_check = git_repo(governance_repo, ["rev-parse", "--is-inside-work-tree"])
+def sync_managed_repo(
+    repo: Path,
+    repo_label: str,
+    commit_message: str,
+    *,
+    preferred_branch: str | None = None,
+    preferred_remote: str | None = None,
+) -> tuple[bool, str]:
+    worktree_check = git_repo(repo, ["rev-parse", "--is-inside-work-tree"])
     if worktree_check.returncode != 0 or worktree_check.stdout.strip() != "true":
         return False, f"not a git worktree ({git_error(worktree_check)})"
 
-    branch = resolve_governance_branch(governance_repo)
-    active_branch = git_current_branch(governance_repo) or "HEAD"
-    clean, clean_detail = git_has_clean_worktree(governance_repo)
-    if not clean:
-        if clean_detail == "local changes present" and active_branch != branch:
-            return False, (
-                f"local changes present on {active_branch}; switch to {branch} or clean the repo "
-                "before automatic governance sync"
-            )
-        if clean_detail == "local changes present":
-            pass
-        else:
+    interrupted = detect_interrupted_state(repo)
+    if interrupted is not None:
+        return False, interrupted
+
+    active_branch = git_current_branch(repo) or "HEAD"
+    branch = preferred_branch or active_branch
+    if not branch or branch == "HEAD":
+        return False, "detached HEAD; check out a branch before automatic sync"
+
+    if preferred_branch and active_branch != preferred_branch:
+        clean, clean_detail = git_has_clean_worktree(repo)
+        if not clean:
+            if clean_detail == "local changes present":
+                return False, (
+                    f"local changes present on {active_branch}; switch to {preferred_branch} or clean the repo "
+                    f"before automatic {repo_label} sync"
+                )
             return False, clean_detail or "unable to inspect worktree"
 
-    sync_notes = [f"synced {branch}"]
+        checked_out, checkout_detail = ensure_local_branch(repo, preferred_branch)
+        if not checked_out:
+            return False, f"failed to checkout {preferred_branch}: {checkout_detail}"
+        branch = preferred_branch
 
-    checked_out, checkout_detail = ensure_local_branch(governance_repo, branch)
-    if not checked_out:
-        return False, f"failed to checkout {branch}: {checkout_detail}"
+    remote, local_branch, remote_branch_or_error = resolve_sync_target(repo, branch, preferred_remote)
+    if remote is None or local_branch is None:
+        return False, remote_branch_or_error
 
+    remote_branch = remote_branch_or_error
+    clean, clean_detail = git_has_clean_worktree(repo)
+    sync_notes = [f"synced {local_branch}"]
     if not clean:
-        committed, commit_detail = auto_commit_local_changes(governance_repo)
+        if clean_detail != "local changes present":
+            return False, clean_detail or "unable to inspect worktree"
+
+        committed, commit_detail = auto_commit_local_changes(repo, commit_message)
         if not committed:
             return False, commit_detail
         sync_notes.append(commit_detail)
 
-    pull_result = git_repo(governance_repo, ["pull", "--rebase", "--autostash", "origin", branch])
-    if pull_result.returncode != 0:
-        return False, f"pull failed on {branch}: {git_error(pull_result)}"
+    has_remote_branch, remote_branch_error = remote_branch_exists(repo, remote, remote_branch)
+    if remote_branch_error is not None:
+        return False, remote_branch_error
 
-    ahead, ahead_detail = commits_ahead_of_origin(governance_repo, branch)
-    if ahead_detail:
-        return False, ahead_detail
+    if has_remote_branch:
+        pull_result = git_repo(repo, ["pull", "--rebase", "--autostash", remote, remote_branch])
+        if pull_result.returncode != 0:
+            return False, f"pull failed on {remote}/{remote_branch}: {git_error(pull_result)}"
+        sync_notes.append(f"pulled {remote}/{remote_branch}")
 
-    if ahead > 0:
-        push_result = git_repo(governance_repo, ["push", "origin", f"HEAD:{branch}"])
+        ahead, ahead_detail = commits_ahead_of_remote(repo, remote, remote_branch)
+        if ahead_detail:
+            return False, ahead_detail
+
+        if ahead > 0:
+            push_result = git_repo(repo, ["push", remote, f"HEAD:{remote_branch}"])
+            if push_result.returncode != 0:
+                return False, f"push failed on {remote}/{remote_branch}: {git_error(push_result)}"
+            sync_notes.append(f"pushed {ahead} local commit(s)")
+    else:
+        push_result = git_repo(repo, ["push", "-u", remote, f"HEAD:{remote_branch}"])
         if push_result.returncode != 0:
-            return False, f"push failed on {branch}: {git_error(push_result)}"
-        sync_notes.append(f"pushed {ahead} local commit(s)")
+            return False, f"push failed on {remote}/{remote_branch}: {git_error(push_result)}"
+        sync_notes.append(f"created {remote}/{remote_branch}")
 
     return True, "; ".join(sync_notes)
+
+
+def sync_control_repo(control_repo: Path) -> tuple[bool, str]:
+    return sync_managed_repo(
+        control_repo,
+        "control repo",
+        CONTROL_AUTO_SYNC_COMMIT_MESSAGE,
+        preferred_remote="origin",
+    )
+
+
+def sync_governance_repo(governance_repo: Path) -> tuple[bool, str]:
+    branch = resolve_governance_branch(governance_repo)
+    return sync_managed_repo(
+        governance_repo,
+        "governance repo",
+        GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE,
+        preferred_branch=branch,
+        preferred_remote="origin",
+    )
 
 
 def current_branch() -> str:
@@ -670,6 +803,14 @@ def main() -> int:
         echo(f"ERROR: lens.core directory not found at {release_dir}")
         return 1
 
+    echo("[preflight] Syncing control repo...")
+    control_sync_ok, control_detail = sync_control_repo(project_root)
+    if control_sync_ok:
+        echo(f"  ✓ Control repo {control_detail}")
+    else:
+        echo(f"  ⚠ Control repo sync failed: {control_detail}")
+        return 1
+
     # ------------------------------------------------------------------
     # Step 1a: Enforce LENS_VERSION compatibility
     # ------------------------------------------------------------------
@@ -702,6 +843,7 @@ def main() -> int:
     # ------------------------------------------------------------------
     needs_pull = True
     last_time: datetime | None = None
+    control_sync_ok = True
     release_sync_ok = True
     governance_sync_ok = True
 
@@ -727,7 +869,8 @@ def main() -> int:
         if governance_sync_ok:
             echo(f"  ✓ Governance repo {governance_detail}")
         else:
-            echo(f"  ⚠ Governance repo sync skipped: {governance_detail}")
+            echo(f"  ⚠ Governance repo sync failed: {governance_detail}")
+            return 1
 
     # ------------------------------------------------------------------
     # Step 3: Sync .github/ from release repo (hash-based)
@@ -865,7 +1008,7 @@ def main() -> int:
     # Step 6: Update timestamp
     # ------------------------------------------------------------------
     if needs_pull:
-        if release_sync_ok and governance_sync_ok:
+        if control_sync_ok and release_sync_ok and governance_sync_ok:
             timestamp_file.parent.mkdir(parents=True, exist_ok=True)
             timestamp_file.write_text(
                 datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -874,6 +1017,14 @@ def main() -> int:
             echo("[preflight] Timestamp updated")
         else:
             echo("[preflight] Timestamp not updated because authority repo sync did not complete cleanly")
+
+    echo("[preflight] Finalizing control repo sync...")
+    control_sync_ok, control_detail = sync_control_repo(project_root)
+    if control_sync_ok:
+        echo(f"  ✓ Control repo {control_detail}")
+    else:
+        echo(f"  ⚠ Control repo sync failed: {control_detail}")
+        return 1
 
     echo("[preflight] Preflight complete ✓")
     if args.caller == "onboard":
