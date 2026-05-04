@@ -15,6 +15,17 @@ from pathlib import Path
 import yaml
 
 
+REQUIRED_STORY_FRONTMATTER = (
+    "feature",
+    "story_id",
+    "doc_type",
+    "status",
+    "title",
+    "depends_on",
+    "updated_at",
+)
+
+
 def get_required_artifacts(lifecycle_path: Path, phase: str, contract: str) -> list[str]:
     data = yaml.safe_load(lifecycle_path.read_text(encoding="utf-8"))
     phases = data.get("phases", {})
@@ -120,6 +131,77 @@ def artifact_exists(docs_root: Path, name: str) -> bool:
     return bool(existing_artifact_files(docs_root, name))
 
 
+def yaml_metadata_from_file(path: Path) -> dict | None:
+    """Return parsed YAML metadata as a dict, {} if absent, or None on yaml.YAMLError."""
+    try:
+        if path.suffix.lower() in {".yaml", ".yml"}:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            return data if isinstance(data, dict) else {}
+
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if not lines or lines[0].strip() != "---":
+            return {}
+
+        for index, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                data = yaml.safe_load("\n".join(lines[1:index])) or {}
+                return data if isinstance(data, dict) else {}
+
+        return {}
+    except yaml.YAMLError:
+        return None
+
+
+def metadata_field_missing(metadata: dict, field: str) -> bool:
+    if field not in metadata:
+        return True
+    value = metadata[field]
+    return value is None or value == ""
+
+
+def strict_metadata_errors(phase: str, contract: str, docs_root: Path) -> list[str]:
+    if phase != "finalizeplan" or contract != "phase-artifacts":
+        return []
+
+    errors: list[str] = []
+
+    for story_file in existing_artifact_files(docs_root, "story-files"):
+        metadata = yaml_metadata_from_file(story_file)
+        if metadata is None:
+            errors.append(
+                f"{story_file.relative_to(docs_root)} has malformed YAML frontmatter (parse error)"
+            )
+            continue
+        missing = [
+            field
+            for field in REQUIRED_STORY_FRONTMATTER
+            if metadata_field_missing(metadata, field)
+        ]
+        if missing:
+            errors.append(
+                f"{story_file.relative_to(docs_root)} missing story frontmatter fields: {', '.join(missing)}"
+            )
+        elif metadata.get("doc_type") != "story":
+            errors.append(
+                f"{story_file.relative_to(docs_root)} has doc_type {metadata.get('doc_type')!r}; expected 'story'"
+            )
+
+    sprint_plan = docs_root / "sprint-plan.md"
+    if sprint_plan.exists() and sprint_plan.stat().st_size > 0:
+        metadata = yaml_metadata_from_file(sprint_plan)
+        if metadata is None:
+            errors.append("sprint-plan.md has malformed YAML frontmatter (parse error)")
+        else:
+            status = metadata.get("status")
+            if status == "draft":
+                errors.append("sprint-plan.md status is draft; expected approved or another dev-ready status")
+            open_questions = metadata.get("open_questions")
+            if open_questions:
+                errors.append("sprint-plan.md has unresolved open_questions")
+
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check that required lifecycle artifacts for a phase exist."
@@ -134,6 +216,11 @@ def main() -> int:
     parser.add_argument("--lifecycle-path", required=True, help="Path to lifecycle.yaml")
     parser.add_argument("--docs-root", required=True, help="Path to docs root")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument(
+        "--strict-metadata",
+        action="store_true",
+        help="For FinalizePlan handoff, validate story frontmatter and dev-ready planning metadata.",
+    )
     args = parser.parse_args()
 
     lifecycle_path = Path(args.lifecycle_path)
@@ -168,7 +255,13 @@ def main() -> int:
         else:
             missing.append(artifact)
 
-    passed = len(missing) == 0
+    metadata_errors = strict_metadata_errors(args.phase, args.contract, docs_root) if args.strict_metadata else []
+    passed = len(missing) == 0 and len(metadata_errors) == 0
+    failure_reason = None
+    if missing:
+        failure_reason = "missing_artifacts"
+    elif metadata_errors:
+        failure_reason = "metadata_errors"
 
     if args.json:
         print(json.dumps({
@@ -178,8 +271,9 @@ def main() -> int:
             "found": len(found),
             "missing": missing,
             "found_list": found,
+            "metadata_errors": metadata_errors,
             "misplaced": {},
-            "failure_reason": None if passed else "missing_artifacts",
+            "failure_reason": failure_reason,
             "status": "pass" if passed else "fail",
         }, indent=2))
     else:
@@ -202,6 +296,10 @@ def main() -> int:
         print(f"  Required: {len(required)}")
         print(f"  Found:    {len(found)}")
         print(f"  Missing:  {', '.join(missing) if missing else 'none'}")
+        if metadata_errors:
+            print("  Metadata errors:")
+            for error in metadata_errors:
+                print(f"    - {error}")
 
     return 0 if passed else 1
 

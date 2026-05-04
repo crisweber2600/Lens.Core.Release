@@ -24,6 +24,7 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 - No direct governance file creation is allowed. Governance writes route only through the `publish-to-governance` CLI, `lens-git-orchestration`, or `lens-feature-yaml`.
 - A non-fail adversarial review verdict must explicitly direct the user to review the generated review artifact before FinalizePlan continues.
 - Before any downstream bundle generation, FinalizePlan must reconcile accepted findings from predecessor review artifacts and the current `finalizeplan-review.md` back into the staged planning documents and related feature metadata. If a finding is intentionally deferred, that deferral must be recorded in `finalizeplan-review.md`.
+- After downstream bundle generation, FinalizePlan must run a post-bundle metadata reconciliation gate before any bundle commit, final PR, or phase update. This gate updates dev-ready planning metadata, story-file frontmatter, and review-response records produced or affected by Step 3.
 - Step 3 delegates through `lens-bmad-skill` in this exact order: `bmad-create-epics-and-stories` -> `bmad-check-implementation-readiness` -> `bmad-sprint-planning` -> `bmad-create-story`.
 - `feature.yaml` is updated to `finalizeplan-complete` in Step 3 only, after the downstream bundle and final PR handoff have completed.
 - A fail verdict from `lens-adversarial-review --phase finalizeplan --source phase-complete` stops the flow and leaves `feature.yaml` unchanged.
@@ -121,9 +122,26 @@ gh pr create --base {featureId} --head {featureId}-plan --title "[plan] {feature
    2. `lens-bmad-skill --skill bmad-check-implementation-readiness`
    3. `lens-bmad-skill --skill bmad-sprint-planning`
    4. `lens-bmad-skill --skill bmad-create-story`
-2. Validate that bundle outputs exist in the resolved docs path: `epics.md`, `stories.md`, `implementation-readiness.md`, `sprint-status.yaml`, and story files under `stories/` or supported root story-file names.
-3. Commit and push the downstream bundle on `{featureId}` through `lens-git-orchestration`.
-4. Open or verify the final PR from `{featureId}` to `{featureId}-dev` by executing this terminal command; do not narrate the operation or ask the user to create the PR:
+2. Run the post-bundle metadata reconciliation gate before validation or commit:
+   - Re-read predecessor review artifacts, `finalizeplan-review.md`, and any PR review suggestions already received for this bundle.
+   - Apply accepted metadata findings to `business-plan.md`, `tech-plan.md`, `sprint-plan.md`, and related feature metadata while the feature is still in FinalizePlan. Typical fixes include promoting dev-ready planning artifacts out of `draft`, clearing resolved `open_questions`, updating dependency paths to the live target surfaces, and registering target repositories required for `/dev`.
+   - Ensure every story file produced by `bmad-create-story` has YAML frontmatter containing `feature`, `story_id`, `doc_type: story`, `status`, `title`, `depends_on`, and `updated_at`, and that those identifiers correlate with `sprint-status.yaml`.
+   - Refresh `finalizeplan-review.md` with the metadata fixes applied in this gate or an explicit deferral rationale for any accepted finding not applied.
+3. Validate that bundle outputs exist in the resolved docs path and pass strict handoff metadata checks by executing:
+
+```bash
+uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py \
+   --phase finalizeplan \
+   --contract phase-artifacts \
+   --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml \
+   --docs-root {staged_docs_path} \
+   --strict-metadata \
+   --json
+```
+
+4. Stop if strict validation fails. Surface missing artifacts or metadata errors and leave `feature.yaml` unchanged.
+5. Commit and push the downstream bundle on `{featureId}` through `lens-git-orchestration`.
+6. Open or verify the final PR from `{featureId}` to `{featureId}-dev` by executing this terminal command; do not narrate the operation or ask the user to create the PR:
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
@@ -136,15 +154,15 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchest
    --body "FinalizePlan downstream bundle is ready for dev implementation."
 ```
 
-5. Capture `pr_url` from the JSON output as `final_pr_url` and report it before any phase update.
-6. If the command exits non-zero, surface the exact error and this fallback command verbatim, then stop without updating lifecycle state; do not ask the user to create the PR manually:
+7. Capture `pr_url` from the JSON output as `final_pr_url` and report it before any phase update.
+8. If the command exits non-zero, surface the exact error and this fallback command verbatim, then stop without updating lifecycle state; do not ask the user to create the PR manually:
 
 ```bash
 gh pr create --base {featureId}-dev --head {featureId} --title "[finalizeplan] {feature_id} ready for dev" --body "FinalizePlan downstream bundle is ready for dev implementation."
 ```
 
-7. Only after the downstream bundle is pushed and the final PR exists, update `feature.yaml` phase to `finalizeplan-complete` through `lens-feature-yaml`.
-8. Signal `/dev` as the next action after the final PR is ready.
+9. Only after the downstream bundle is pushed and the final PR exists, update `feature.yaml` phase to `finalizeplan-complete` through `lens-feature-yaml`.
+10. Signal `/dev` as the next action after the final PR is ready.
 
 ## Output Artifacts
 
@@ -166,11 +184,11 @@ gh pr create --base {featureId}-dev --head {featureId} --title "[finalizeplan] {
 | `lens-adversarial-review` | Run the phase-complete FinalizePlan review gate. |
 | `lens-git-orchestration` | Publish reviewed artifacts, push branches, create plan PR, and create final PR. |
 | `lens-bmad-skill` | Generate downstream bundle artifacts through registered BMAD skills. |
-| `validate-phase-artifacts.py` | Validate review-ready predecessor resumes and bundle output presence. |
+| `validate-phase-artifacts.py` | Validate review-ready predecessor resumes, bundle output presence, and strict FinalizePlan handoff metadata. |
 
 ## Completion Criteria
 
 - Step 1 produced or refreshed `finalizeplan-review.md`, did not fail the gate, and pushed `{featureId}-plan` when required.
 - Step 2 executed `git-orchestration-ops.py merge-plan --strategy pr`, captured `planning_pr_url`, and created or verified the `{featureId}-plan` -> `{featureId}` planning PR.
-- Step 3 generated the downstream bundle in the required wrapper order, pushed `{featureId}`, executed `git-orchestration-ops.py create-pr`, captured `final_pr_url`, opened or verified the `{featureId}` -> `{featureId}-dev` final PR, and only then updated `feature.yaml` to `finalizeplan-complete`.
+- Step 3 generated the downstream bundle in the required wrapper order, applied post-bundle metadata reconciliation, passed `validate-phase-artifacts.py --strict-metadata`, pushed `{featureId}`, executed `git-orchestration-ops.py create-pr`, captured `final_pr_url`, opened or verified the `{featureId}` -> `{featureId}-dev` final PR, and only then updated `feature.yaml` to `finalizeplan-complete`.
 - No direct governance file creation occurred at any point.

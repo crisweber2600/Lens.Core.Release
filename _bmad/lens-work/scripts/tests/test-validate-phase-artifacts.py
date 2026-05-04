@@ -30,6 +30,21 @@ def _make_docs(tmp_path: Path) -> Path:
     return docs_root
 
 
+def _story_frontmatter(story_id: str = "PF-1.1") -> str:
+    return f"""---
+feature: lens-dev-new-codebase-preandpostflight
+story_id: "{story_id}"
+doc_type: story
+status: ready-for-dev
+title: "Metadata-ready story"
+depends_on: []
+updated_at: 2026-05-04T00:00:00Z
+---
+
+# Story {story_id}: Metadata-ready story
+"""
+
+
 class TestValidatePhaseArtifactsStoryFiles:
     def test_ignores_batch_input_files_for_phase_completion(self, tmp_path):
         docs_root = _make_docs(tmp_path)
@@ -93,6 +108,123 @@ class TestValidatePhaseArtifactsStoryFiles:
         assert result.returncode == 0, result.stdout + result.stderr
         payload = json.loads(result.stdout)
         assert payload["status"] == "pass"
+
+    def test_strict_metadata_requires_story_frontmatter(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text("# Story PF-1.1\n", encoding="utf-8")
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "fail"
+        assert payload["failure_reason"] == "metadata_errors"
+        assert "story-PF-1.1.md missing story frontmatter fields" in payload["metadata_errors"][0]
+
+    def test_strict_metadata_accepts_story_frontmatter(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text(_story_frontmatter(), encoding="utf-8")
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "pass"
+        assert payload["metadata_errors"] == []
+
+    def test_strict_metadata_rejects_draft_sprint_plan(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text(_story_frontmatter(), encoding="utf-8")
+        (docs_root / "sprint-plan.md").write_text(
+            """---
+feature: lens-dev-new-codebase-preandpostflight
+doc_type: sprint-plan
+status: draft
+open_questions:
+  - Which metadata should be updated?
+---
+
+# Sprint Plan
+""",
+            encoding="utf-8",
+        )
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "fail"
+        assert any(error.startswith("sprint-plan.md status is draft") for error in payload["metadata_errors"])
+        assert "sprint-plan.md has unresolved open_questions" in payload["metadata_errors"]
+
+    def test_strict_metadata_rejects_malformed_story_yaml(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text(
+            "---\nbad: [unclosed bracket\n---\n# Story\n", encoding="utf-8"
+        )
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "fail"
+        assert payload["failure_reason"] == "metadata_errors"
+        assert any("malformed YAML frontmatter" in e for e in payload["metadata_errors"])
+
+    def test_strict_metadata_rejects_malformed_sprint_plan_yaml(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text(_story_frontmatter(), encoding="utf-8")
+        (docs_root / "sprint-plan.md").write_text(
+            "---\nbad: [unclosed bracket\n---\n# Sprint Plan\n", encoding="utf-8"
+        )
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "fail"
+        assert payload["failure_reason"] == "metadata_errors"
+        assert "sprint-plan.md has malformed YAML frontmatter (parse error)" in payload["metadata_errors"]
 
     def test_completion_review_contract_checks_only_review_inputs(self, tmp_path):
         docs_root = tmp_path / "docs"

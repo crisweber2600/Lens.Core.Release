@@ -100,6 +100,36 @@ class TestFinalizePlanContract:
         assert positions == sorted(positions), "Downstream bundle delegations are out of order"
         assert "review-driven planning fixes" in step_three
 
+    def test_step_three_requires_post_bundle_metadata_gate(self):
+        content = SKILL_PATH.read_text(encoding="utf-8")
+        step_three = section_between(content, "### Step 3 - downstream-bundle-and-final-pr", "## Output Artifacts")
+
+        assert "post-bundle metadata reconciliation gate" in step_three
+        assert "business-plan.md" in step_three
+        assert "tech-plan.md" in step_three
+        assert "sprint-plan.md" in step_three
+        assert "open_questions" in step_three
+        assert "dependency paths" in step_three
+        assert "target repositories" in step_three
+        assert "story_id" in step_three
+        assert "depends_on" in step_three
+        assert "updated_at" in step_three
+        assert "--strict-metadata" in step_three
+        assert "metadata errors" in step_three.lower()
+
+        metadata_gate_position = step_three.find("post-bundle metadata reconciliation gate")
+        strict_validation_position = step_three.find("--strict-metadata")
+        commit_position = step_three.find("Commit and push")
+        final_pr_position = step_three.find("final_pr_url")
+        phase_update_position = step_three.find("finalizeplan-complete")
+
+        assert metadata_gate_position != -1
+        assert strict_validation_position != -1
+        assert commit_position != -1
+        assert final_pr_position != -1
+        assert phase_update_position != -1
+        assert metadata_gate_position < strict_validation_position < commit_position < final_pr_position < phase_update_position
+
     def test_finalizeplan_complete_update_happens_only_in_step_three(self):
         content = SKILL_PATH.read_text(encoding="utf-8")
         execution_contract = section_between(content, "## Execution Contract", "## Output Artifacts")
