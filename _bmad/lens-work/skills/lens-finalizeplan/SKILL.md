@@ -22,6 +22,8 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 - The execution contract has exactly three ordered steps: `review-and-push`, `plan-pr-readiness`, `downstream-bundle-and-final-pr`.
 - The predecessor gate accepts `techplan-complete` OR `expressplan-complete` as explicit ready states. Active `techplan` or `expressplan` wording is allowed only for a phase-complete resume when review-ready validation proves the predecessor artifacts are complete.
 - No direct governance file creation is allowed. Governance writes route only through the `publish-to-governance` CLI, `lens-git-orchestration`, or `lens-feature-yaml`.
+- A non-fail adversarial review verdict must explicitly direct the user to review the generated review artifact before FinalizePlan continues.
+- Before any downstream bundle generation, FinalizePlan must reconcile accepted findings from predecessor review artifacts and the current `finalizeplan-review.md` back into the staged planning documents and related feature metadata. If a finding is intentionally deferred, that deferral must be recorded in `finalizeplan-review.md`.
 - Step 3 delegates through `lens-bmad-skill` in this exact order: `bmad-create-epics-and-stories` -> `bmad-check-implementation-readiness` -> `bmad-sprint-planning` -> `bmad-create-story`.
 - `feature.yaml` is updated to `finalizeplan-complete` in Step 3 only, after the downstream bundle and final PR handoff have completed.
 - A fail verdict from `lens-adversarial-review --phase finalizeplan --source phase-complete` stops the flow and leaves `feature.yaml` unchanged.
@@ -62,10 +64,16 @@ lens-adversarial-review --phase finalizeplan --source phase-complete
 ```
 
 2. If the verdict is `fail`, stop. Do not publish, commit, push, open PRs, or update `feature.yaml`.
-3. Determine the upstream publish phase from the predecessor state:
+3. If the verdict is `pass` or `pass-with-warnings`, report the path to `finalizeplan-review.md`, direct the user to review it, and surface any findings that must be reconciled before bundle generation.
+4. Review predecessor planning-review artifacts from the staged docs path before continuing:
+   - For express-track predecessors, `expressplan-adversarial-review.md` is mandatory review input.
+   - For other predecessors, use the upstream planning review artifact when present.
+5. Apply accepted findings and required fixes from the predecessor review artifacts and the current `finalizeplan-review.md` back into `business-plan.md`, `tech-plan.md`, `sprint-plan.md`, and related feature metadata before publishing or bundling.
+6. Refresh `finalizeplan-review.md` so any applied changes are recorded in a `Pre-Review Fixes Applied` section and any intentional deferrals remain explicit.
+7. Determine the upstream publish phase from the predecessor state:
    - `techplan-complete` or active `techplan` resume -> publish `--phase techplan`
    - `expressplan-complete` or active `expressplan` resume -> publish `--phase expressplan`
-4. Publish reviewed upstream planning artifacts to the governance mirror through the CLI-backed boundary:
+8. Publish reviewed upstream planning artifacts to the governance mirror through the CLI-backed boundary:
 
 ```bash
 uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
@@ -76,9 +84,9 @@ uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/sc
    --phase {upstream_publish_phase}
 ```
 
-5. If the feature arrived from ExpressPlan, use `--phase expressplan` and report any missing hyphenated express artifacts as a tracked publish gap. Do not compensate with direct governance authoring.
-6. Commit and push `{featureId}-plan` through `lens-git-orchestration commit-artifacts --push` or `lens-git-orchestration push` as appropriate for the current branch state.
-7. Report the pushed branch and commit SHA. Leave lifecycle phase unchanged.
+9. If the feature arrived from ExpressPlan, use `--phase expressplan` and report any missing hyphenated express artifacts as a tracked publish gap. Do not compensate with direct governance authoring.
+10. Commit and push `{featureId}-plan` through `lens-git-orchestration commit-artifacts --push` or `lens-git-orchestration push` as appropriate for the current branch state.
+11. Report the pushed branch and commit SHA. Leave lifecycle phase unchanged.
 
 ### Step 2 - plan-pr-readiness
 
@@ -90,7 +98,7 @@ uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/sc
 
 ### Step 3 - downstream-bundle-and-final-pr
 
-1. After the planning PR has landed or the user confirms `{featureId}` contains the reviewed planning state, generate the downstream planning bundle through `lens-bmad-skill` in this exact order:
+1. After the planning PR has landed or the user confirms `{featureId}` contains the reviewed planning state, and only after the review-driven planning fixes from Step 1 are applied, generate the downstream planning bundle through `lens-bmad-skill` in this exact order:
    1. `lens-bmad-skill --skill bmad-create-epics-and-stories`
    2. `lens-bmad-skill --skill bmad-check-implementation-readiness`
    3. `lens-bmad-skill --skill bmad-sprint-planning`

@@ -27,6 +27,7 @@ You are the ExpressPlan conductor. You protect the express track from accidental
 - Step 2 invokes exactly `lens-adversarial-review --phase expressplan --source phase-complete`.
 - Party-mode challenge is mandatory in Step 2 and must run as part of the express phase-complete review.
 - Canonical review artifact only: the review gate writes `expressplan-adversarial-review.md`. do not use `expressplan-review.md` as a new output or fallback.
+- Any non-fail express review verdict must explicitly direct the user to review `expressplan-adversarial-review.md` before `/finalizeplan` is presented as the next command.
 - No pre-verdict phase mutation: never update `feature.yaml.phase` before the canonical review artifact exists and a verdict is read. If the review verdict is `fail`, stop, leave `feature.yaml.phase` unchanged, do not advertise `/finalizeplan` as available.
 - Step 3 sets `expressplan-complete` through `lens-feature-yaml` and signals `/finalizeplan`.
 - No direct governance file creation is allowed from this skill.
@@ -117,11 +118,14 @@ No pre-verdict phase mutation: never update `feature.yaml.phase` before the cano
 
 If the review verdict is `fail`, stop, leave `feature.yaml.phase` unchanged, do not advertise `/finalizeplan` as available, and summarize the blocking findings. A `pass` or `pass-with-warnings` verdict may advance to Step 3.
 
+On a `pass` or `pass-with-warnings` verdict, explicitly report that the review artifact is `expressplan-adversarial-review.md` under `{staged_docs_path}`, direct the user to review that file, and state that FinalizePlan begins by integrating accepted review findings into the staged planning documents before any downstream bundle generation.
+
 ### Step 3 - advance-to-finalizeplan
 
 1. Update `feature.yaml` phase to `expressplan-complete` through `lens-feature-yaml`.
-2. Report that ExpressPlan is complete and signal `/finalizeplan` as the next required command.
-3. FinalizePlan owns downstream bundle generation, governance publication, and PR topology. Do not generate, repair, publish, or open PRs for `epics.md`, `stories.md`, `implementation-readiness.md`, `sprint-status.yaml`, story files, governance publication, or PR topology from this conductor. No FinalizePlan bundle artifact is an ExpressPlan completion artifact.
+2. Report that ExpressPlan is complete, name `expressplan-adversarial-review.md` as the review artifact the user should inspect, and signal `/finalizeplan` as the next required command.
+3. State explicitly that FinalizePlan starts by applying accepted express review findings back into `business-plan.md`, `tech-plan.md`, `sprint-plan.md`, and related feature metadata before it generates any downstream bundle artifacts.
+4. FinalizePlan owns downstream bundle generation, governance publication, and PR topology. Do not generate, repair, publish, or open PRs for `epics.md`, `stories.md`, `implementation-readiness.md`, `sprint-status.yaml`, story files, governance publication, or PR topology from this conductor. No FinalizePlan bundle artifact is an ExpressPlan completion artifact.
 
 ## Output Artifacts
 

@@ -65,6 +65,8 @@ class TestExpressPlanContract:
         assert "lens-adversarial-review --phase expressplan --source phase-complete" in step_two
         assert "mandatory party-mode" in step_two.lower()
         assert "fail" in step_two.lower()
+        assert "expressplan-adversarial-review.md" in step_two
+        assert "direct the user to review" in step_two.lower()
 
     def test_step_three_sets_expressplan_complete_and_signals_finalizeplan(self):
         content = EXPRESS_SKILL.read_text(encoding="utf-8")
@@ -73,6 +75,9 @@ class TestExpressPlanContract:
         assert "expressplan-complete" in step_three
         assert "/finalizeplan" in step_three
         assert "lens-feature-yaml" in step_three
+        assert "business-plan.md" in step_three
+        assert "tech-plan.md" in step_three
+        assert "sprint-plan.md" in step_three
 
 
 class TestQuickPlanInternalOnly:

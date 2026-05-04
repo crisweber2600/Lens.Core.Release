@@ -73,6 +73,18 @@ class TestFinalizePlanContract:
         assert "--phase expressplan" in step_one
         assert "--phase {upstream_publish_phase}" in step_one
 
+    def test_step_one_requires_review_acknowledgement_and_pre_review_fixes(self):
+        content = SKILL_PATH.read_text(encoding="utf-8")
+        step_one = section_between(content, "### Step 1 - review-and-push", "### Step 2")
+
+        assert "finalizeplan-review.md" in step_one
+        assert "direct the user to review" in step_one.lower()
+        assert "expressplan-adversarial-review.md" in step_one
+        assert "Pre-Review Fixes Applied" in step_one
+        assert "business-plan.md" in step_one
+        assert "tech-plan.md" in step_one
+        assert "sprint-plan.md" in step_one
+
     def test_step_three_delegates_bundle_in_required_order(self):
         content = SKILL_PATH.read_text(encoding="utf-8")
         step_three = section_between(content, "### Step 3 - downstream-bundle-and-final-pr", "## Output Artifacts")
@@ -86,6 +98,7 @@ class TestFinalizePlanContract:
 
         assert all(position != -1 for position in positions), "Missing downstream bundle delegation"
         assert positions == sorted(positions), "Downstream bundle delegations are out of order"
+        assert "review-driven planning fixes" in step_three
 
     def test_finalizeplan_complete_update_happens_only_in_step_three(self):
         content = SKILL_PATH.read_text(encoding="utf-8")
