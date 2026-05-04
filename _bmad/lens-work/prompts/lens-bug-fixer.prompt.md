@@ -7,3 +7,4 @@ description: 'Bug fix orchestration — discovers New bugs, creates features, mo
 Load `{project-root}/lens.core/_bmad/lens-work/skills/bmad-lens-bug-fixer/SKILL.md` and follow it exactly.
 
 This prompt is only a redirect. Do not add prompt-local business logic.
+
