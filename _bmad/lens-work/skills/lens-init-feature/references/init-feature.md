@@ -29,29 +29,18 @@ Prompt for (if not already provided):
 Derive:
 
 - **featureSlug** — slugify the feature name: lowercase, replace spaces with `-`, strip non-alphanumeric
-- **featureId (full)** — `{normalized-domain}-{normalized-service}-{featureSlug}` (e.g., `platform-identity-auth-refresh`)
+- **featureId** — canonical `{normalized-domain}-{normalized-service}-{featureSlug}` (e.g., `platform-identity-auth-refresh`)
 - **username** — from `{username}` resolved on activation
 
-**Before proceeding, present the naming choice to the user:**
+**Before proceeding, present the derived identity to the user as read-only context:**
 
 ```
 Derived featureId:
-  Short:  {featureSlug}
-  Full:   {domain}-{service}-{featureSlug}
-
-The full form is the default — it is unique across all domains and services.
-The short form is simpler but only guaranteed unique within a domain+service.
-
-Use full form? [Y/n] (or type a custom featureId)
+  Feature Slug:  {featureSlug}
+  Feature ID:    {domain}-{service}-{featureSlug}
 ```
 
-- If the user accepts the default (Y / Enter): use `{domain}-{service}-{featureSlug}`
-- If the user types `n` or `short`: use `{featureSlug}` only
-- If the user types a custom value: use that (validate it is kebab-case, no spaces)
-
-Set `featureSlug` to the slug portion only (always). Set `featureId` to the chosen value.
-
-Confirm the chosen featureId and the explicitly chosen track with the user before proceeding.
+Set `featureSlug` to the slug portion only. Set `featureId` to the canonical full value. Do not ask the user to approve, shorten, or customize `featureId`; only the track selection remains an explicit user choice before proceeding.
 
 ### Step 2: Validate with Dry Run
 

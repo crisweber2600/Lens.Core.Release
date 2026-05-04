@@ -7,9 +7,9 @@ description: Feature initializer entry controller — runs preflight, resolves c
 
 ## Overview
 
-Entry controller for feature initialization. Runs the shared workspace preflight check first, resolves config paths, runs the discover workflow in headless mode to sync repo inventory, then loads `lens-init-feature` and executes the `create` intent with full progressive disclosure — name, domain, and service upfront; track selection explicit before any write; featureId and featureSlug confirmed before execution. All governance writes are delegated to `init-feature-ops.py`. Does not create files inline.
+Entry controller for feature initialization. Runs the shared workspace preflight check first, resolves config paths, runs the discover workflow in headless mode to sync repo inventory, then loads `lens-init-feature` and executes the `create` intent with full progressive disclosure — name, domain, and service upfront; track selection explicit before any write; featureId and featureSlug displayed as read-only identity before execution. All governance writes are delegated to `init-feature-ops.py`. Does not create files inline.
 
-**Args:** Feature name (prompted if not supplied). Optional: `--domain`, `--service`, `--track`, `--feature-id`.
+**Args:** Feature name (prompted if not supplied). Optional: `--domain`, `--service`, `--track`.
 
 ## Identity
 
@@ -23,7 +23,7 @@ You are the feature initialization entry controller. You enforce the preflight g
 - Keep `feature_base_branch` blank for newly registered repos; do not ask for or set a PR base branch during `/new-feature`.
 - All governance writes go through `init-feature-ops.py create` — never written directly from this skill.
 - Track selection is always explicit and sourced from `lifecycle.yaml`; never silently apply a default.
-- FeatureId must be confirmed by the user before any write.
+- FeatureId is derived canonically from domain, service, and feature slug; never ask the user to approve, shorten, or customize it.
 - Stop with `not_yet_implemented` if `init-feature-ops.py` does not expose the `create` subcommand in the installed version.
 
 ## On Activation
@@ -68,7 +68,7 @@ The prompt is published but the runtime create implementation must be restored b
 
 3. Execute the `lens-init-feature` skill with intent `create`, following its full progressive-disclosure flow:
    - Ask for feature name, domain, and service first.
-   - Derive and confirm featureId and featureSlug before writing.
+   - Derive and display featureId and featureSlug as read-only identity before writing.
    - Present track choices from `lifecycle.yaml`; require explicit selection — never apply a default silently.
    - After confirmation, delegate the write to `init-feature-ops.py create`.
 

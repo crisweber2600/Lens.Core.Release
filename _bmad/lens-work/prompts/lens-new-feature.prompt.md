@@ -60,7 +60,7 @@ Before invoking `init-feature-ops.py create`, automatically run the discover wor
 not_yet_implemented: `/lens-new-feature` requires the `init-feature-ops.py create` subcommand. The prompt is published, but the runtime create implementation must be restored by the lens-dev-new-codebase-new-feature dev phase before this command can create features.
 ```
 
-4. When the `create` subcommand is available, the skill must perform the progressive-disclosure flow from `lens-init-feature`, including explicit track selection and featureId confirmation before any write.
+4. When the `create` subcommand is available, the skill must perform the progressive-disclosure flow from `lens-init-feature`, including explicit track selection before any write. The derived canonical featureId is read-only; display it for transparency but do not ask the user to approve, shorten, or customize it.
 
 ## Scope Boundaries
 

@@ -123,6 +123,30 @@ def test_scan_reports_missing_from_disk(tmp_path: Path):
     assert result["missing_from_disk"][0]["name"] == "my-repo"
 
 
+def test_scan_handles_multiple_local_paths_per_inventory_entry(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    target_root = workspace / "TargetProjects"
+    primary = target_root / "primary" / "repo-a"
+    mark_git_repo(primary)
+    inventory = tmp_path / "repo-inventory.yaml"
+    inventory.write_text(
+        "repositories:\n"
+        "  - name: repo-a\n"
+        "    remote_url: https://github.com/org/repo-a\n"
+        "    local_path: TargetProjects/primary/repo-a\n"
+        "    local_paths:\n"
+        "      - TargetProjects/primary/repo-a\n"
+        "      - TargetProjects/secondary/repo-a\n",
+        encoding="utf-8",
+    )
+
+    result = run_scan(inventory, target_root)
+
+    assert result["summary"] == {"missing_from_disk": 1, "untracked": 0, "already_cloned": 1}
+    assert result["already_cloned"][0]["local_path"] == "TargetProjects/primary/repo-a"
+    assert result["missing_from_disk"][0]["local_path"] == "TargetProjects/secondary/repo-a"
+
+
 def test_scan_matches_inventory_path_with_backslashes(tmp_path: Path):
     workspace = tmp_path / "workspace"
     target_root = workspace / "TargetProjects"
@@ -181,7 +205,7 @@ def test_add_entry_creates_new_entry(tmp_path: Path):
     assert result["entry"]["feature_base_branch"] == ""
 
 
-def test_add_entry_is_idempotent_by_remote_url(tmp_path: Path):
+def test_add_entry_same_remote_and_path_is_noop(tmp_path: Path):
     inventory = tmp_path / "repo-inventory.yaml"
     original = (
         "repos:\n"
@@ -195,11 +219,38 @@ def test_add_entry_is_idempotent_by_remote_url(tmp_path: Path):
         inventory,
         "renamed-repo",
         "https://github.com/org/existing-repo",
-        "TargetProjects/renamed-repo",
+        "TargetProjects/existing-repo",
     )
 
     assert result == {"added": False, "reason": "already_exists"}
     assert inventory.read_text(encoding="utf-8") == original
+
+
+def test_add_entry_records_additional_local_path_for_same_remote(tmp_path: Path):
+    inventory = tmp_path / "repo-inventory.yaml"
+    inventory.write_text(
+        "repositories:\n"
+        "  - name: existing-repo\n"
+        "    remote_url: https://github.com/org/existing-repo\n"
+        "    local_path: TargetProjects/existing-repo\n"
+        "    feature_base_branch: develop\n",
+        encoding="utf-8",
+    )
+
+    result = run_add_entry(
+        inventory,
+        "renamed-repo",
+        "https://github.com/org/existing-repo",
+        "TargetProjects/renamed-repo",
+    )
+
+    assert result["added"] is True
+    assert result["reason"] == "additional_local_path"
+    data = yaml.safe_load(inventory.read_text(encoding="utf-8"))
+    entry = data["repositories"][0]
+    assert entry["local_path"] == "TargetProjects/existing-repo"
+    assert entry["local_paths"] == ["TargetProjects/existing-repo", "TargetProjects/renamed-repo"]
+    assert entry["feature_base_branch"] == "develop"
 
 
 def test_validate_passes_well_formed_inventory(tmp_path: Path):

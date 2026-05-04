@@ -345,16 +345,21 @@ def target_projects_inventory_entry(
     for entry in repositories:
         if not isinstance(entry, dict):
             continue
-        local_path = str(entry.get("local_path") or "").strip()
-        if not local_path:
-            continue
-        resolved_local_path = resolve_inventory_local_path(
-            local_path,
-            project_root=project_root,
-            governance_repo=governance_path,
-        )
-        if path_key(resolved_local_path) == repo_path_key:
-            return entry, None
+        candidate_paths: list[str] = []
+        primary = str(entry.get("local_path") or "").strip()
+        if primary:
+            candidate_paths.append(primary)
+        extra_paths = entry.get("local_paths")
+        if isinstance(extra_paths, list):
+            candidate_paths.extend(str(p).strip() for p in extra_paths if str(p).strip())
+        for local_path in candidate_paths:
+            resolved_local_path = resolve_inventory_local_path(
+                local_path,
+                project_root=project_root,
+                governance_repo=governance_path,
+            )
+            if path_key(resolved_local_path) == repo_path_key:
+                return entry, None
 
     return None, {
         "status": "error",
@@ -488,16 +493,23 @@ def set_feature_base_branch_in_inventory(
     for i, entry in enumerate(repositories):
         if not isinstance(entry, dict):
             continue
-        local_path = str(entry.get("local_path") or "").strip()
-        if not local_path:
-            continue
-        resolved_local_path = resolve_inventory_local_path(
-            local_path,
-            project_root=project_root,
-            governance_repo=governance_path,
-        )
-        if path_key(resolved_local_path) == repo_path_key:
-            entry_index = i
+        candidate_paths: list[str] = []
+        primary = str(entry.get("local_path") or "").strip()
+        if primary:
+            candidate_paths.append(primary)
+        extra_paths = entry.get("local_paths")
+        if isinstance(extra_paths, list):
+            candidate_paths.extend(str(p).strip() for p in extra_paths if str(p).strip())
+        for local_path in candidate_paths:
+            resolved_local_path = resolve_inventory_local_path(
+                local_path,
+                project_root=project_root,
+                governance_repo=governance_path,
+            )
+            if path_key(resolved_local_path) == repo_path_key:
+                entry_index = i
+                break
+        if entry_index is not None:
             break
 
     if entry_index is None:

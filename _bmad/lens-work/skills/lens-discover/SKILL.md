@@ -11,8 +11,8 @@ description: Sync local TargetProjects repositories with governance repo-invento
 
 The command is intentionally narrow:
 
-- `discover-ops.py scan` reports missing inventory entries on disk, untracked local repositories, already cloned repositories, and summary counts.
-- `discover-ops.py add-entry` appends untracked repositories to `repo-inventory.yaml` and is idempotent by `remote_url`.
+- `discover-ops.py scan` reports missing inventory paths on disk, untracked local repositories, already cloned paths, and summary counts. Entries may declare multiple local clone paths with `local_paths`.
+- `discover-ops.py add-entry` appends untracked repositories to `repo-inventory.yaml`, or records an additional `local_paths` value when the same `remote_url` already exists at a different local path.
 - `discover-ops.py validate` verifies required inventory fields before any governance commit is attempted.
 - The skill performs git clone and git add/commit/push orchestration inline. It does not delegate the auto-commit exception to a helper script.
 
@@ -90,7 +90,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/sc
   --json
 ```
 
-`scan` accepts both top-level `repositories:` and legacy `repos:` inventory keys. It walks `{target_root}` up to three levels deep and detects directories containing `.git`. All local path comparisons use resolved filesystem paths.
+`scan` accepts both top-level `repositories:` and legacy `repos:` inventory keys. It walks `{target_root}` up to three levels deep and detects directories containing `.git`. All local path comparisons use resolved filesystem paths. When an entry has both `local_path` and `local_paths`, every unique path is evaluated so missing secondary clones are surfaced for repair.
 
 ### add-entry
 
@@ -103,7 +103,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/sc
   --json
 ```
 
-`add-entry` is idempotent by `remote_url`. If the same `remote_url` already exists, it returns `{ "added": false, "reason": "already_exists" }` and leaves `repo-inventory.yaml` byte-for-byte unchanged. Any mutation writes the canonical top-level `repositories:` key and leaves `feature_base_branch` blank for the new entry so PR creation can choose the base branch later.
+`add-entry` is idempotent by the pair of `remote_url` and local path. If the same `remote_url` already exists at the same local path, it returns `{ "added": false, "reason": "already_exists" }` and leaves `repo-inventory.yaml` byte-for-byte unchanged. If the same `remote_url` exists at a different local path, it records that path in the existing entry's `local_paths` list and returns `{ "added": true, "reason": "additional_local_path" }`. Brand-new repositories still write the canonical top-level `repositories:` key and leave `feature_base_branch` blank for the new entry so PR creation can choose the base branch later.
 
 ### validate
 

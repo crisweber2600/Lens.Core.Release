@@ -155,11 +155,41 @@ def entry_local_path(entry: dict[str, Any]) -> str:
     return str(entry.get("local_path") or default_local_path(name)).strip()
 
 
-def inventory_entry_payload(entry: dict[str, Any]) -> dict[str, Any]:
+def normalized_local_path_key(path: str) -> str:
+    return str(path).strip().replace("\\", "/").rstrip("/")
+
+
+def unique_local_paths(paths: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for path in paths:
+        clean = str(path).strip()
+        if not clean:
+            continue
+        key = normalized_local_path_key(clean)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(clean)
+    return unique
+
+
+def entry_local_paths(entry: dict[str, Any]) -> list[str]:
+    explicit_local_path = str(entry.get("local_path") or "").strip()
+    paths: list[str] = [explicit_local_path] if explicit_local_path else []
+    extra_paths = entry.get("local_paths")
+    if isinstance(extra_paths, list):
+        paths.extend(str(path).strip() for path in extra_paths if str(path).strip())
+    if not paths:
+        paths.append(entry_local_path(entry))
+    return unique_local_paths(paths)
+
+
+def inventory_entry_payload(entry: dict[str, Any], local_path: str | None = None) -> dict[str, Any]:
     return {
         "name": entry.get("name"),
         "remote_url": entry.get("remote_url"),
-        "local_path": entry_local_path(entry),
+        "local_path": local_path or entry_local_path(entry),
     }
 
 
@@ -175,14 +205,14 @@ def scan_inventory(inventory_path: Path, target_root: Path) -> dict[str, Any]:
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        local_path = entry_local_path(entry)
-        resolved_path = resolve_inventory_local_path(local_path, inventory_path, target_root)
-        inventory_paths.add(resolved_path)
-        payload = inventory_entry_payload(entry)
-        if resolved_path in disk_paths:
-            already_cloned.append(payload)
-        else:
-            missing_from_disk.append(payload)
+        for local_path in entry_local_paths(entry):
+            resolved_path = resolve_inventory_local_path(local_path, inventory_path, target_root)
+            inventory_paths.add(resolved_path)
+            payload = inventory_entry_payload(entry, local_path)
+            if resolved_path in disk_paths:
+                already_cloned.append(payload)
+            else:
+                missing_from_disk.append(payload)
 
     untracked: list[dict[str, Any]] = []
     for repo_path in disk_repos:
@@ -216,9 +246,41 @@ def add_inventory_entry(inventory_path: Path, name: str, remote_url: str, local_
     normalized_local_path = local_path.strip() if local_path is not None else None
 
     data, entries = read_inventory(inventory_path)
-    for entry in entries:
-        if isinstance(entry, dict) and str(entry.get("remote_url") or "").strip() == normalized_remote_url:
+    matching_entries = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict) and str(entry.get("remote_url") or "").strip() == normalized_remote_url
+    ]
+
+    if matching_entries:
+        target_entry = matching_entries[0]
+
+        # Nothing new to record if no path was supplied for an already-registered remote
+        if not normalized_local_path:
             return {"added": False, "reason": "already_exists"}
+
+        # Collect only paths that were explicitly recorded — no phantom default_local_path fallback
+        existing_explicit: list[str] = []
+        explicit_primary = str(target_entry.get("local_path") or "").strip()
+        if explicit_primary:
+            existing_explicit.append(explicit_primary)
+        extra = target_entry.get("local_paths")
+        if isinstance(extra, list):
+            existing_explicit.extend(str(p).strip() for p in extra if str(p).strip())
+        existing_explicit = unique_local_paths(existing_explicit)
+
+        existing_keys = {normalized_local_path_key(p) for p in existing_explicit}
+        if normalized_local_path_key(normalized_local_path) in existing_keys:
+            return {"added": False, "reason": "already_exists"}
+
+        # Record the new path in local_paths without forging a primary local_path
+        target_entry["local_paths"] = unique_local_paths([*existing_explicit, normalized_local_path])
+
+        output = dict(data)
+        output.pop("repos", None)
+        output["repositories"] = list(entries)
+        atomic_write_yaml(inventory_path, output)
+        return {"added": True, "reason": "additional_local_path", "entry": target_entry}
 
     new_entry = {
         "name": normalized_name,
@@ -270,7 +332,10 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--target-root", required=True, type=Path)
     scan.add_argument("--json", action="store_true")
 
-    add_entry = subparsers.add_parser("add-entry", help="Add an inventory entry idempotently by remote_url.")
+    add_entry = subparsers.add_parser(
+        "add-entry",
+        help="Add an inventory entry or record another local path for an existing remote_url.",
+    )
     add_entry.add_argument("--inventory-path", required=True, type=Path)
     add_entry.add_argument("--name", required=True)
     add_entry.add_argument("--remote-url", required=True)
