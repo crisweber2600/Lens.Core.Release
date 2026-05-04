@@ -128,6 +128,41 @@ def test_sync_control_repo_auto_commits_pulls_and_pushes_local_changes(tmp_path:
     assert remote_remote.stdout == "remote\n"
 
 
+def test_sync_release_repo_resets_hard_and_retries_when_pull_is_blocked(tmp_path: Path):
+    ops = load_preflight_module()
+    remote, release = init_main_repo_with_remote(tmp_path)
+
+    (release / "tracked.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(release), "add", "tracked.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(release), "commit", "-m", "add tracked"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(release), "push", "origin", "main"], check=True, capture_output=True)
+
+    peer = tmp_path / "peer"
+    subprocess.run(["git", "clone", str(remote), str(peer)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "checkout", "-b", "main", "origin/main"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "config", "user.email", "peer@example.com"], check=True)
+    subprocess.run(["git", "-C", str(peer), "config", "user.name", "Peer User"], check=True)
+    (peer / "tracked.txt").write_text("remote\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(peer), "add", "tracked.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "commit", "-m", "add tracked"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(peer), "push", "origin", "main"], check=True, capture_output=True)
+
+    (release / "tracked.txt").write_text("local blocker\n", encoding="utf-8")
+
+    ok, detail = ops.sync_release_repo(release)
+
+    assert ok is True
+    assert detail == "pull blocked; reset --hard; pulled origin"
+    assert (release / "tracked.txt").read_text(encoding="utf-8") == "remote\n"
+    status_result = subprocess.run(
+        ["git", "-C", str(release), "status", "--short"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert status_result.stdout.strip() == ""
+
+
 def test_main_syncs_control_and_governance_even_when_timestamp_is_fresh(tmp_path: Path, monkeypatch):
     ops = load_preflight_module()
     project_root = tmp_path / "workspace"
@@ -153,7 +188,12 @@ def test_main_syncs_control_and_governance_even_when_timestamp_is_fresh(tmp_path
     )
 
     control_syncs: list[Path] = []
+    release_syncs: list[Path] = []
     governance_syncs: list[Path] = []
+
+    def fake_sync_release(repo: Path):
+        release_syncs.append(repo)
+        return True, "pulled origin"
 
     def fake_sync_control(repo: Path):
         control_syncs.append(repo)
@@ -165,9 +205,11 @@ def test_main_syncs_control_and_governance_even_when_timestamp_is_fresh(tmp_path
 
     monkeypatch.chdir(project_root)
     monkeypatch.setattr(sys, "argv", ["preflight.py"])
+    monkeypatch.setattr(ops, "sync_release_repo", fake_sync_release)
     monkeypatch.setattr(ops, "sync_control_repo", fake_sync_control)
     monkeypatch.setattr(ops, "sync_governance_repo", fake_sync_governance)
 
     assert ops.main() == 0
+    assert release_syncs == [release]
     assert control_syncs == [project_root, project_root]
     assert governance_syncs == [governance]

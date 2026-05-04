@@ -48,9 +48,24 @@ INTERRUPTED_STATE_MARKERS: tuple[tuple[str, str], ...] = (
 )
 
 
-def git_pull(repo: Path) -> bool:
-    result = git_repo(repo, ["pull", "origin"])
-    return result.returncode == 0
+def sync_release_repo(release_repo: Path) -> tuple[bool, str]:
+    pull_result = git_repo(release_repo, ["pull", "origin"])
+    if pull_result.returncode == 0:
+        return True, "pulled origin"
+
+    pull_error = git_error(pull_result)
+    reset_result = git_repo(release_repo, ["reset", "--hard"])
+    if reset_result.returncode != 0:
+        return False, f"pull failed: {pull_error}; reset --hard failed: {git_error(reset_result)}"
+
+    retry_result = git_repo(release_repo, ["pull", "origin"])
+    if retry_result.returncode != 0:
+        return False, (
+            f"pull failed: {pull_error}; reset --hard succeeded; "
+            f"retry pull failed: {git_error(retry_result)}"
+        )
+
+    return True, "pull blocked; reset --hard; pulled origin"
 
 
 def git_current_branch(repo: Path) -> str:
@@ -803,6 +818,14 @@ def main() -> int:
         echo(f"ERROR: lens.core directory not found at {release_dir}")
         return 1
 
+    echo("[preflight] Pulling release repo...")
+    release_sync_ok, release_detail = sync_release_repo(release_dir)
+    if release_sync_ok:
+        echo(f"  ✓ Release repo {release_detail}")
+    else:
+        echo(f"  ⚠ Release repo sync failed: {release_detail}")
+        return 1
+
     echo("[preflight] Syncing control repo...")
     control_sync_ok, control_detail = sync_control_repo(project_root)
     if control_sync_ok:
@@ -856,13 +879,7 @@ def main() -> int:
         window = pull_window_seconds(current_branch())
         if elapsed < window:
             needs_pull = False
-            echo(f"[preflight] Timestamp fresh ({int(elapsed)}s < {window}s) — skipping pulls")
-
-    if needs_pull:
-        echo("[preflight] Pulling authority repos...")
-        if not git_pull(release_dir):
-            release_sync_ok = False
-            echo("  ⚠ Release repo pull failed (offline?)")
+            echo(f"[preflight] Timestamp fresh ({int(elapsed)}s < {window}s) — keeping existing timestamp")
 
     if governance_path and governance_path.is_dir():
         governance_sync_ok, governance_detail = sync_governance_repo(governance_path)
