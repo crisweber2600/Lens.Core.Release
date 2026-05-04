@@ -197,7 +197,7 @@ def branch_for_phase_write(feature_id: str, phase: str | None, phase_step: str |
         if normalized_step in {"step1", "step2", "1", "2", "finalizeplan-step1", "finalizeplan-step2"}:
             return f"{feature_id}-plan", "finalizeplan_step_1_2_to_plan"
         if normalized_step in {"step3", "3", "finalizeplan-step3"}:
-            return f"{feature_id}-dev", "finalizeplan_step_3_to_dev"
+            return feature_id, "finalizeplan_step_3_to_feature"
         return f"{feature_id}-plan", "finalizeplan_default_to_plan"
 
     return None, None
@@ -533,8 +533,14 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
             }, 1
         if expected_branch and cb != expected_branch:
             return {
-                "error": "phase_branch_mismatch",
-                "detail": f"Phase '{phase}' (step '{getattr(args, 'phase_step', None) or ''}') must write on branch '{expected_branch}', found '{cb}'.",
+                "status": "error",
+                "error": "branch_mismatch",
+                "current_branch": cb,
+                "expected_branch": expected_branch,
+                "detail": (
+                    f"Phase '{phase}' step '{getattr(args, 'phase_step', None) or ''}' requires branch "
+                    f"'{expected_branch}'. Currently on '{cb}'. Checkout '{expected_branch}' before committing."
+                ),
                 "routing": routing_decision,
             }, 1
     else:
@@ -761,6 +767,86 @@ def _gh_auth_error(detail: str) -> bool:
     return any(token in lowered for token in ["authentication", "not logged", "login required", "403"])
 
 
+def resolve_git_ref(repo: str, branch: str) -> str | None:
+    """Resolve a branch name to a local or origin ref for git plumbing calls, preferring origin/ when available.
+
+    The remote check (``git branch -r``) is intentionally separate from the
+    local check via ``branch_exists()`` so that the remote ref is returned
+    whenever possible, ensuring merge-base computations use the most current
+    authoritative state rather than a potentially stale local copy.
+    """
+    remote_result = git(["branch", "-r", "--list", f"origin/{branch}"], cwd=repo, check=False)
+    if remote_result.stdout.strip():
+        return f"origin/{branch}"
+    if branch_exists(repo, branch):
+        return branch
+    return None
+
+
+def _default_base_candidates(repo: str) -> tuple[str, ...]:
+    """Return a deduplicated ordered tuple of base-branch candidates for *repo*.
+
+    The list begins with the branch detected via ``resolve_default_branch``
+    (which probes ``origin/HEAD``) so repos whose primary branch is named
+    anything other than ``main`` / ``develop`` are handled correctly.  The
+    remaining well-known names are appended as fall-back entries.
+    """
+    detected = resolve_default_branch(repo)
+    return tuple(dict.fromkeys([detected, "main", "master", "develop", "trunk"]))
+
+
+def merge_base_sha(repo: str, head_ref: str, base_ref: str) -> str | None:
+    """Return merge-base SHA for refs, or None when no shared history exists."""
+    result = git(["merge-base", head_ref, base_ref], cwd=repo, check=False)
+    if result.returncode != 0:
+        return None
+    sha = result.stdout.strip()
+    return sha or None
+
+
+def merge_base_timestamp(repo: str, merge_base: str) -> int:
+    """Return commit timestamp (epoch seconds) for a merge-base SHA, or -1 on failure."""
+    result = git(["log", "-1", "--format=%ct", merge_base], cwd=repo, check=False)
+    if result.returncode != 0:
+        return -1
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return -1
+
+
+def pick_base_branch(repo: str, head_branch: str, candidates: tuple[str, ...] | None = None) -> str | None:
+    """Return the candidate branch whose merge-base with head is most recent.
+
+    When *candidates* is omitted the function uses :func:`_default_base_candidates`
+    to build a deduplicated list starting with the repo's detected default branch
+    so that repos using any naming convention (main, master, develop, trunk) are
+    covered.
+    """
+    if candidates is None:
+        candidates = _default_base_candidates(repo)
+
+    head_ref = resolve_git_ref(repo, head_branch)
+    if head_ref is None:
+        return None
+
+    best_branch: str | None = None
+    best_ts = -1
+    for candidate in candidates:
+        candidate_ref = resolve_git_ref(repo, candidate)
+        if candidate_ref is None:
+            continue
+        merge_base = merge_base_sha(repo, head_ref, candidate_ref)
+        if not merge_base:
+            continue
+        ts = merge_base_timestamp(repo, merge_base)
+        if ts > best_ts:
+            best_ts = ts
+            best_branch = candidate
+
+    return best_branch
+
+
 def _ensure_pull_request(
     repo: str,
     *,
@@ -877,13 +963,38 @@ def _ensure_pull_request(
 
 def cmd_create_pr(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     repo = args.repo or args.governance_repo
-    base_branch = args.base
     head_branch = args.head
+    explicit_base = args.base
+    auto_detect_base = bool(getattr(args, "auto_detect_base", False))
 
-    if not branch_exists(repo, base_branch, include_remote=True):
-        return {"error": "base_branch_not_found", "branch": base_branch}, 1
     if not branch_exists(repo, head_branch, include_remote=True):
         return {"error": "head_branch_not_found", "branch": head_branch}, 1
+
+    if explicit_base and not branch_exists(repo, explicit_base, include_remote=True):
+        return {"error": "base_branch_not_found", "branch": explicit_base}, 1
+
+    if auto_detect_base or not explicit_base:
+        auto_candidates = _default_base_candidates(repo)
+        resolved_base = pick_base_branch(repo, head_branch, candidates=auto_candidates)
+        if resolved_base is None:
+            return {
+                "status": "error",
+                "error": "no_common_ancestor",
+                "detail": f"No shared history found between '{head_branch}' and any candidate base branch.",
+                "head_branch": head_branch,
+                "candidates_checked": list(auto_candidates),
+            }, 1
+        base_branch = resolved_base
+    else:
+        head_ref = resolve_git_ref(repo, head_branch)
+        base_ref = resolve_git_ref(repo, explicit_base)
+        if not head_ref or not base_ref or not merge_base_sha(repo, head_ref, base_ref):
+            return {
+                "status": "error",
+                "error": "no_common_ancestor",
+                "detail": f"No shared history found between head '{head_branch}' and base '{explicit_base}'.",
+            }, 1
+        base_branch = explicit_base
 
     result_payload: dict[str, Any] = {
         "strategy": "pr",
@@ -1293,10 +1404,11 @@ def build_parser() -> argparse.ArgumentParser:
     cp = sub.add_parser("create-pr", help="Create or validate a pull request between two branches")
     cp.add_argument("--governance-repo", required=True)
     cp.add_argument("--repo", default=None)
-    cp.add_argument("--base", required=True)
+    cp.add_argument("--base", required=False)
     cp.add_argument("--head", required=True)
     cp.add_argument("--title", default=None)
     cp.add_argument("--body", default="Auto-created by lens-git-orchestration")
+    cp.add_argument("--auto-detect-base", action="store_true")
     cp.add_argument("--auto-merge", action="store_true")
     cp.add_argument("--dry-run", action="store_true")
 

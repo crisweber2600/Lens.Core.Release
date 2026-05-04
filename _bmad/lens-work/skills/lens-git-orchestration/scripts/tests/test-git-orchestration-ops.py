@@ -811,6 +811,80 @@ class TestCreatePr:
         assert result["pr_url"] == "https://example.test/pr/8"
         assert any(call[:3] == ["gh", "pr", "create"] for call in gh_calls)
 
+    def test_create_pr_auto_detects_base_when_base_omitted(self, monkeypatch):
+        monkeypatch.setattr(
+            ops,
+            "branch_exists",
+            lambda repo, branch, include_remote=True: branch == "feature-auto",
+        )
+        monkeypatch.setattr(ops, "resolve_default_branch", lambda repo: "main")
+        monkeypatch.setattr(ops, "pick_base_branch", lambda repo, head_branch, candidates=None: "develop")
+        monkeypatch.setattr(
+            ops,
+            "_ensure_pull_request",
+            lambda *a, **k: ({"pr_url": "https://example.test/pr/9", "created": True, "auto_merge_enabled": False}, 0),
+        )
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base=None,
+            head="feature-auto",
+            title="Auto Base",
+            body="Auto Base",
+            auto_merge=False,
+            auto_detect_base=True,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["base_branch"] == "develop"
+
+    def test_create_pr_auto_detect_failure_includes_candidates(self, monkeypatch):
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: branch == "feature-orphan")
+        monkeypatch.setattr(ops, "resolve_default_branch", lambda repo: "main")
+        monkeypatch.setattr(ops, "pick_base_branch", lambda repo, head_branch, candidates=None: None)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base=None,
+            head="feature-orphan",
+            title="Orphan PR",
+            body="No history",
+            auto_merge=False,
+            auto_detect_base=True,
+            dry_run=False,
+        ))
+
+        assert code == 1
+        assert result["status"] == "error"
+        assert result["error"] == "no_common_ancestor"
+        assert result["head_branch"] == "feature-orphan"
+        assert "candidates_checked" in result
+        assert "main" in result["candidates_checked"]
+
+    def test_create_pr_explicit_base_requires_shared_history(self, monkeypatch):
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: True)
+        monkeypatch.setattr(ops, "resolve_git_ref", lambda repo, branch: branch)
+        monkeypatch.setattr(ops, "merge_base_sha", lambda repo, head_ref, base_ref: None)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base="main",
+            head="feature-explicit",
+            title="Explicit Base",
+            body="Explicit Base",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=False,
+        ))
+
+        assert code == 1
+        assert result["status"] == "error"
+        assert result["error"] == "no_common_ancestor"
+
 
 
 # ---------------------------------------------------------------------------
@@ -1013,6 +1087,11 @@ class TestCommitArtifactsNothingToCommit:
 
 
 class TestTopologyAndRouting:
+    def test_branch_for_phase_write_step3_routes_to_feature_branch(self):
+        branch, rule = ops.branch_for_phase_write("route-feat", "finalizeplan", "step3")
+        assert branch == "route-feat"
+        assert rule == "finalizeplan_step_3_to_feature"
+
     def test_commit_requires_three_branch_topology(self, repo):
         make_branch(repo, "route-feat")
         make_branch(repo, "route-feat-plan")
@@ -1037,7 +1116,7 @@ class TestTopologyAndRouting:
         assert "route-feat-dev" in result["missing_branches"]
         assert result["action"] == "init-feature"
 
-    def test_finalizeplan_step3_requires_dev_branch(self, repo):
+    def test_finalizeplan_step3_requires_feature_branch(self, repo):
         make_branch(repo, "fin-feat")
         make_branch(repo, "fin-feat-plan")
         make_branch(repo, "fin-feat-dev")
@@ -1058,8 +1137,9 @@ class TestTopologyAndRouting:
         ))
 
         assert code == 1
-        assert result["error"] == "phase_branch_mismatch"
-        assert result["routing"]["expected_branch"] == "fin-feat-dev"
+        assert result["error"] == "branch_mismatch"
+        assert result["expected_branch"] == "fin-feat"
+        assert result["current_branch"] == "fin-feat-plan"
         assert result["routing"]["routing_enforced"] is True
 
     def test_dev_phase_rejected_in_control_repo(self, repo):

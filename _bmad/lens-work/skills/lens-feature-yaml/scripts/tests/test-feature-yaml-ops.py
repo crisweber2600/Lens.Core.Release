@@ -182,6 +182,27 @@ def test_update_surgically_changes_requested_fields_and_preserves_unknowns(tmp_p
     assert updated["phase_transitions"] == base_feature()["phase_transitions"]
 
 
+def test_update_sets_links_pull_request(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature())
+
+    payload, code = run_feature_yaml(
+        [
+            "update",
+            "--feature-path",
+            str(feature_path),
+            "--pull-request",
+            "https://github.com/org/repo/pull/42",
+        ]
+    )
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert payload["changed_fields"] == ["links.pull_request"]
+
+    updated = yaml.safe_load(feature_path.read_text(encoding="utf-8"))
+    assert updated["links"]["pull_request"] == "https://github.com/org/repo/pull/42"
+
+
 def test_sync_feature_index_updates_stale_entry(tmp_path: Path):
     feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="expressplan-complete", status="active"))
     write_feature_index(

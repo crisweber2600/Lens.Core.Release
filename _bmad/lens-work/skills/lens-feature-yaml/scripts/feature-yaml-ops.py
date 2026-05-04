@@ -378,6 +378,13 @@ def apply_updates(feature_data: dict[str, Any], args: argparse.Namespace) -> lis
             feature_data["milestones"] = milestones
             changed_fields.append("milestones")
 
+    if getattr(args, "pull_request", None) is not None:
+        links = feature_data.get("links") if isinstance(feature_data.get("links"), dict) else {}
+        if links.get("pull_request") != args.pull_request:
+            links["pull_request"] = args.pull_request
+            feature_data["links"] = links
+            changed_fields.append("links.pull_request")
+
     return changed_fields
 
 
@@ -558,6 +565,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--governance-docs-path", required=False, help="New docs.governance_docs_path value")
     update_parser.add_argument("--target-repos", required=False, help="JSON or YAML list for target_repos")
     update_parser.add_argument("--milestones", required=False, help="JSON or YAML mapping for milestones")
+    update_parser.add_argument("--pull-request", required=False, help="PR URL to set in feature.yaml links.pull_request")
 
     sync_parser = subparsers.add_parser("sync-feature-index", help="Synchronize feature-index.yaml from feature.yaml")
     add_feature_args(sync_parser)
