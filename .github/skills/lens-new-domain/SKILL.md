@@ -7,48 +7,78 @@ description: Domain initializer — creates domain.yaml and constitution scaffol
 
 ## Overview
 
-Thin conductor for domain initialization. Resolves runtime config, then delegates all governance writes to `lens-init-feature` via the `create-domain` subcommand of `init-feature-ops.py`. Creates `domain.yaml` and a domain-level `constitution.md` in the governance repo. Does not create feature branches, feature.yaml, summary.md, or lifecycle artifacts.
+Entry controller for domain initialization. Runs the shared workspace preflight check, resolves config with deterministic precedence, then delegates all governance writes to `lens-init-feature` via the `create-domain` subcommand of `init-feature-ops.py`. Creates `domain.yaml` and a domain-level `constitution.md` in the governance repo. Does not create feature branches, feature.yaml, summary.md, or lifecycle artifacts.
 
 **Args:** Domain name (prompted if not supplied). Optional: `--target-projects-root`, `--docs-root`, `--personal-folder`, `--dry-run`.
 
 ## Identity
 
-You are the domain registration conductor. You collect the domain name from the user, derive and confirm a safe slug, then delegate all writes to the init-feature script. You do not write governance files directly.
+You are the domain registration entry controller. You enforce preflight, resolve config without workspace probing, collect the domain display name, derive and confirm a safe slug, then delegate all writes to the init-feature script. You do not write governance files directly.
 
 ## Non-Negotiables
 
+- Run `light-preflight.py` before any config resolution or script invocation. Stop if it exits non-zero.
 - Never write governance files directly from this skill — all writes go through `init-feature-ops.py create-domain`.
 - Always confirm the derived domain slug with the user before executing.
 - Pass `--execute-governance-git` so governance `main` is pulled, committed, and pushed by the script.
 - Do not create feature branches, feature.yaml, summary.md, feature-index entries, or lifecycle artifacts.
+- Do not search the workspace for alternate config files or script locations.
+- Do not probe alternate governance repo candidates with `ls`, `git log`, `git branch`, or `git config`; use the resolved config value or stop with `config_missing` or `config_invalid`.
 - Report `governance_commit_sha` when present. Surface `remaining_git_commands` only for manual follow-up.
 
 ## On Activation
 
-1. Load config from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
-2. Resolve required and optional config:
-   - `{governance_repo}` — required; stop with `config_missing` if unset.
-   - `{target_projects_path}` — optional.
-   - `{output_folder}` — optional.
-   - `{personal_output_folder}` — required; prompt if unset.
-3. Ask for the domain display name if not supplied.
-4. Derive a safe domain slug (lowercase, hyphenated, no spaces or special characters).
-5. Confirm the slug with the user; offer edit or cancel before proceeding.
-6. Run the domain creation script:
+### Step 1 — Preflight
+
+Run the preflight check from the workspace root:
 
 ```bash
-uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
+uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py
+```
+
+If this exits non-zero, stop and surface the failure. Do not proceed until preflight passes.
+
+### Step 2 — Config Resolution
+
+1. Read `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`. Resolve:
+   - `{release_repo_root}` (default: `lens.core`)
+   - `{governance_repo}` from `governance_repo_path`
+   - `{target_projects_path}` (default: `{project-root}/TargetProjects`)
+   - `{output_folder}` (default: `{project-root}/docs`)
+   - `{personal_output_folder}` (default: `{project-root}/.lens/personal`)
+2. If `{project-root}/.lens/governance-setup.yaml` exists and contains `governance_repo_path`, prefer that value.
+3. If `{governance_repo}` remains unset, stop with: `config_missing: Set .lens/governance-setup.yaml or governance_repo_path in bmadconfig.yaml before running /new-domain.`
+4. Do not search the workspace for alternate config files or script locations.
+5. Do not probe alternate governance repo candidates with `ls`, `git log`, `git branch`, or `git config`.
+
+### Step 3 — User Input
+
+1. Ask for the domain display name if not supplied.
+2. Derive a safe domain slug (lowercase, hyphenated, no spaces or special characters).
+3. Validate the derived slug against the safe ID pattern.
+4. Confirm the slug with the user; offer edit or cancel before proceeding.
+
+### Step 4 — Delegate to Init-Feature Script
+
+Run the domain creation script:
+
+```bash
+uv run {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
   create-domain \
   --governance-repo {governance_repo} \
   --domain {domain_slug} \
+  --name "{display_name}" \
   [--target-projects-root {target_projects_path}] \
   [--docs-root {output_folder}] \
   --personal-folder {personal_output_folder} \
+  [--dry-run] \
   --execute-governance-git
 ```
 
-7. Report the `governance_commit_sha` from the script JSON result.
-8. Surface any `remaining_git_commands` for manual workspace scaffold follow-up if present.
+After execution:
+
+- Report the `governance_commit_sha` from the script JSON result.
+- Surface any `remaining_git_commands` for manual workspace scaffold follow-up if present.
 
 ## Outputs
 
