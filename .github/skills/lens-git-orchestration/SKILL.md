@@ -117,10 +117,12 @@ Load `./references/merge-plan.md` for full guidance.
 **Outcome:** A PR exists between two named branches, with optional auto-merge enabled when requested.
 
 **Process:**
-1. Confirm base and head branches exist.
-2. Reuse an existing open PR for the same head/base pair when one already exists.
-3. Otherwise create the PR with the provided or default title/body.
-4. If `--auto-merge` was requested, attempt to enable it and report whether GitHub accepted it.
+1. For repos under `TargetProjects/`, load governance `repo-inventory.yaml` and require the matching entry's `feature_base_branch`.
+2. If `feature_base_branch` is missing, ask the user which branch PRs should merge into, update `repo-inventory.yaml`, and retry. Do not fall back to `main` or remote default branch for TargetProjects PRs.
+3. Confirm base and head branches exist. For TargetProjects repos, the base must match `feature_base_branch`; explicit `--base` or `--target-branch` values cannot override it.
+4. Reuse an existing open PR for the same head/base pair when one already exists.
+5. Otherwise create the PR with the provided or default title/body.
+6. If `--auto-merge` was requested, attempt to enable it and report whether GitHub accepted it.
 
 Load `./references/create-pr.md` for full guidance.
 
