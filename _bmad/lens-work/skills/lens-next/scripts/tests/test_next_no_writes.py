@@ -281,17 +281,17 @@ def lifecycle_yaml(tmp_path):
 
 
 @pytest.mark.parametrize("phase,track,expected_recommendation", [
-    ("preplan", "full", "/businessplan"),
+    ("preplan", "full", "/preplan"),
     ("preplan-complete", "full", "/businessplan"),
-    ("businessplan", "full", "/techplan"),
+    ("businessplan", "full", "/businessplan"),
     ("businessplan-complete", "full", "/techplan"),
-    ("techplan", "full", "/finalizeplan"),
+    ("techplan", "full", "/techplan"),
     ("techplan-complete", "full", "/finalizeplan"),
-    ("finalizeplan", "full", "/dev"),
+    ("finalizeplan", "full", "/finalizeplan"),
     ("finalizeplan-complete", "full", "/dev"),
-    ("expressplan", "express", "/finalizeplan"),
+    ("expressplan", "express", "/expressplan"),
     ("expressplan-complete", "express", "/finalizeplan"),
-    ("finalizeplan", "express", "/dev"),
+    ("finalizeplan", "express", "/finalizeplan"),
     ("finalizeplan-complete", "express", "/dev"),
 ])
 def test_routing_outcomes(tmp_path, lifecycle_yaml, phase, track, expected_recommendation):
@@ -546,7 +546,7 @@ def test_routing_warnings_passthrough(tmp_path, lifecycle_yaml):
 
     assert payload["status"] == "unblocked"
     assert payload["warnings"] == ["This feature has a pending architecture review"]
-    assert payload["recommendation"] == "/businessplan"
+    assert payload["recommendation"] == "/preplan"
     assert exit_code == 0
 
 

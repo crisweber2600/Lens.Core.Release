@@ -14,14 +14,14 @@ description: "Full-track phase routing parity fixtures"
 track: full
 
 fixtures:
-  - name: "preplan → /businessplan"
-    description: "Feature on full track at preplan should advance to businessplan"
+  - name: "preplan → /preplan"
+    description: "Feature on full track at preplan should continue in preplan until the phase completes"
     input:
       phase: preplan
       track: full
     expected:
       status: unblocked
-      recommendation: "/businessplan"
+      recommendation: "/preplan"
       blockers: []
       warnings: []
 
@@ -36,14 +36,14 @@ fixtures:
       blockers: []
       warnings: []
 
-  - name: "businessplan → /techplan"
-    description: "Feature on full track at businessplan should advance to techplan"
+  - name: "businessplan → /businessplan"
+    description: "Feature on full track at businessplan should continue in businessplan until the phase completes"
     input:
       phase: businessplan
       track: full
     expected:
       status: unblocked
-      recommendation: "/techplan"
+      recommendation: "/businessplan"
       blockers: []
       warnings: []
 
@@ -58,14 +58,14 @@ fixtures:
       blockers: []
       warnings: []
 
-  - name: "techplan → /finalizeplan"
-    description: "Feature on full track at techplan should advance to finalizeplan"
+  - name: "techplan → /techplan"
+    description: "Feature on full track at techplan should continue in techplan until the phase completes"
     input:
       phase: techplan
       track: full
     expected:
       status: unblocked
-      recommendation: "/finalizeplan"
+      recommendation: "/techplan"
       blockers: []
       warnings: []
 
@@ -80,14 +80,14 @@ fixtures:
       blockers: []
       warnings: []
 
-  - name: "finalizeplan → /dev"
-    description: "Feature on full track at finalizeplan should advance to dev"
+  - name: "finalizeplan → /finalizeplan"
+    description: "Feature on full track at finalizeplan should continue in finalizeplan until the phase completes"
     input:
       phase: finalizeplan
       track: full
     expected:
       status: unblocked
-      recommendation: "/dev"
+      recommendation: "/finalizeplan"
       blockers: []
       warnings: []
 

@@ -13,14 +13,14 @@ description: "Express-track phase routing parity fixtures"
 track: express
 
 fixtures:
-  - name: "expressplan → /finalizeplan"
-    description: "Feature on express track at expressplan should advance to finalizeplan via auto_advance_to"
+  - name: "expressplan → /expressplan"
+    description: "Feature on express track at expressplan should continue in expressplan until the phase completes"
     input:
       phase: expressplan
       track: express
     expected:
       status: unblocked
-      recommendation: "/finalizeplan"
+      recommendation: "/expressplan"
       blockers: []
       warnings: []
 
@@ -39,14 +39,14 @@ fixtures:
       blockers: []
       warnings: []
 
-  - name: "finalizeplan (express) → /dev"
-    description: "Feature on express track at finalizeplan should advance to dev"
+  - name: "finalizeplan (express) → /finalizeplan"
+    description: "Feature on express track at finalizeplan should continue in finalizeplan until the phase completes"
     input:
       phase: finalizeplan
       track: express
     expected:
       status: unblocked
-      recommendation: "/dev"
+      recommendation: "/finalizeplan"
       blockers: []
       warnings: []
 

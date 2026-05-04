@@ -249,8 +249,9 @@ def suggest(feature_id: str, governance_repo_override: str | None,
 
     # --- Normalize phase for lookup ---
     # "expressplan-complete", "preplan-complete", etc. → strip "-complete" suffix
+    is_complete_phase = phase.endswith("-complete")
     lookup_phase = phase
-    if phase.endswith("-complete"):
+    if is_complete_phase:
         lookup_phase = phase[: -len("-complete")]
 
     # --- Find phase definition in lifecycle ---
@@ -277,6 +278,8 @@ def suggest(feature_id: str, governance_repo_override: str | None,
             phase,
             track,
         )
+
+    recommendation = auto_advance if is_complete_phase else f"/{lookup_phase}"
 
     # --- Check blockers (feature.yaml dependencies field) ---
     blockers: list[str] = []
@@ -321,12 +324,12 @@ def suggest(feature_id: str, governance_repo_override: str | None,
         result["status"] = "blocked"
         result["blockers"] = blockers
         result["warnings"] = warnings
-        result["recommendation"] = auto_advance
+        result["recommendation"] = recommendation
         return result
 
     return {
         "status": "unblocked",
-        "recommendation": auto_advance,
+        "recommendation": recommendation,
         "blockers": [],
         "warnings": warnings,
         "phase": phase,
