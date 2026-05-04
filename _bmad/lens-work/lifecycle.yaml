@@ -152,7 +152,7 @@ phases:
       outcomes: [pass, pass-with-warnings, fail]
 
 tracks:
-  standard:
+  full:
     description: Full retained planning and implementation lifecycle.
     phases: [preplan, businessplan, techplan, finalizeplan, dev, complete]
     start_phase: preplan

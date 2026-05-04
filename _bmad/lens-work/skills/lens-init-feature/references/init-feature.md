@@ -24,7 +24,7 @@ Prompt for (if not already provided):
 1. **Feature name** — human-readable, used to derive the short `featureSlug` (e.g., "Auth Token Refresh" → `auth-refresh`)
 2. **Domain** — organizational domain (e.g., `platform`, `commerce`)
 3. **Service** — service within the domain (e.g., `identity`, `payments`)
-4. **Track** — present the lifecycle track choices explicitly and require the user to choose one before creation. If `{default_track}` exists, label it as the preferred track only; do not apply it without explicit confirmation.
+4. **Track** — read the `tracks` keys from `lifecycle.yaml`, present those lifecycle track choices explicitly, and require the user to choose one before creation. If `{default_track}` exists and is present in `lifecycle.yaml`, label it as the preferred track only; do not apply it without explicit confirmation. Do not offer stale aliases such as `quickplan` when they are absent from `lifecycle.yaml`.
 
 Derive:
 

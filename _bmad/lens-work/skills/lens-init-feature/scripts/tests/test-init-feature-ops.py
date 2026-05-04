@@ -11,7 +11,7 @@ import yaml
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "init-feature-ops.py"
 EXPECTED_CONSTITUTION_BODY = """\
 ---
-permitted_tracks: [quickplan, full, hotfix, tech-change,express,expressplan]
+permitted_tracks: [full, express, quickdev, hotfix-express, spike]
 required_artifacts:
   planning:
     - business-plan
@@ -541,7 +541,7 @@ class TestCreate:
             "--domain", "lens-dev",
             "--service", "new-codebase",
             "--name", "Index Test",
-            "--track", "quickplan",
+            "--track", "full",
         ])
 
         assert completed.returncode == 0
@@ -551,7 +551,7 @@ class TestCreate:
 
         entry = next(e for e in index_data["features"] if e.get("featureId") == "lens-dev-new-codebase-index-test")
         assert entry["featureSlug"] == "index-test"
-        assert entry["status"] == "preplan"  # quickplan track starts at preplan
+        assert entry["status"] == "preplan"  # full track starts at preplan
         assert entry["plan_branch"] == "lens-dev-new-codebase-index-test-plan"
 
         # non-express track creates an immediate planning PR
@@ -619,6 +619,41 @@ class TestCreate:
         assert payload["status"] == "fail"
         assert "Invalid track" in payload["error"]
 
+    def test_create_feature_requires_explicit_track(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        gov.mkdir()
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-missing-track",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+        ])
+
+        assert completed.returncode == 1
+        assert payload["status"] == "fail"
+        assert "Track must be selected explicitly" in payload["error"]
+        assert "full" in payload["error"]
+
+    def test_create_feature_rejects_removed_quickplan_track(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        gov.mkdir()
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-quickplan-track",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--track", "quickplan",
+        ])
+
+        assert completed.returncode == 1
+        assert payload["status"] == "fail"
+        assert "Invalid track: 'quickplan'" in payload["error"]
+        assert "full, express, quickdev, hotfix-express, spike" in payload["error"]
+
     def test_create_feature_auto_creates_parent_markers(self, tmp_path: Path):
         gov = tmp_path / "gov"
         gov.mkdir()
@@ -666,7 +701,7 @@ class TestCreate:
         (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
         (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
 
-        for non_express_track in ("quickplan", "full", "hotfix", "tech-change"):
+        for non_express_track in ("full", "quickdev", "hotfix-express", "spike"):
             fid = f"lens-dev-new-codebase-pr-{non_express_track}"
             completed, payload = run_script([
                 "create",

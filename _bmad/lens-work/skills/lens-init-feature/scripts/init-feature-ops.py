@@ -18,6 +18,7 @@ import shlex
 import subprocess
 import tempfile
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -25,6 +26,35 @@ import yaml
 # source: old-codebase init-feature-ops.py SAFE_ID_PATTERN
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local changes"
+LIFECYCLE_PATH = Path(__file__).resolve().parents[3] / "lifecycle.yaml"
+
+
+@lru_cache(maxsize=1)
+def load_lifecycle() -> dict:
+    try:
+        with LIFECYCLE_PATH.open(encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise RuntimeError(f"Failed to read lifecycle.yaml: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise RuntimeError("Failed to read lifecycle.yaml: expected a top-level mapping")
+    return data
+
+
+def lifecycle_track_names() -> list[str]:
+    tracks = load_lifecycle().get("tracks") or {}
+    if not isinstance(tracks, dict) or not tracks:
+        raise RuntimeError("lifecycle.yaml must define a non-empty tracks mapping")
+    return [str(track) for track in tracks.keys()]
+
+
+def lifecycle_track_flow() -> str:
+    return "[" + ", ".join(lifecycle_track_names()) + "]"
+
+
+def lifecycle_track_markdown() -> str:
+    return ", ".join(f"`{track}`" for track in lifecycle_track_names())
 
 
 def now_iso() -> str:
@@ -197,7 +227,7 @@ def make_domain_yaml(domain: str, name: str, username: str, timestamp: str) -> d
 def make_domain_constitution_md(domain: str, name: str) -> str:
     return (
         "---\n"
-        "permitted_tracks: [quickplan, full, hotfix, tech-change,express,expressplan]\n"
+        f"permitted_tracks: {lifecycle_track_flow()}\n"
         "required_artifacts:\n"
         "  planning:\n"
         "    - business-plan\n"
@@ -418,8 +448,8 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
             "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
             "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
             "context_path": context_path,
-            "related_service_clone_path": related_service_clone_path(domain, service),
-            "related_service_clone_guidance": related_service_clone_guidance(domain, service),
+            "related_service_clone_path": None,
+            "related_service_clone_guidance": None,
             "error": None,
             **build_container_result_fields(governance_git_commands, workspace_git_commands),
         }
@@ -434,7 +464,7 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
     try:
         constitution_path.parent.mkdir(parents=True, exist_ok=True)
         constitution_path.write_text(make_domain_constitution_md(domain, name), encoding="utf-8")
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         return {
             "status": "fail",
             "scope": "domain",
@@ -516,8 +546,8 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
         "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
         "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
         "context_path": written_context_path,
-        "related_service_clone_path": related_service_clone_path(domain, service),
-        "related_service_clone_guidance": related_service_clone_guidance(domain, service),
+        "related_service_clone_path": None,
+        "related_service_clone_guidance": None,
         "error": None,
         **build_container_result_fields(
             governance_git_commands,
@@ -563,7 +593,7 @@ def make_service_constitution_md(domain: str, service: str, name: str) -> str:
     display = name or service
     return (
         "---\n"
-        "permitted_tracks: [quickplan, full, hotfix, tech-change, express, expressplan]\n"
+        f"permitted_tracks: {lifecycle_track_flow()}\n"
         "required_artifacts:\n"
         "  planning:\n"
         "    - business-plan\n"
@@ -588,8 +618,7 @@ def make_service_constitution_md(domain: str, service: str, name: str) -> str:
         "\n"
         "## Tracks\n"
         "\n"
-        "All standard tracks are permitted: `quickplan`, `full`, `hotfix`, `tech-change`, "
-        "`express`, `expressplan`.\n"
+        f"All lifecycle tracks are permitted: {lifecycle_track_markdown()}.\n"
         "\n"
         "## Artifacts\n"
         "\n"
@@ -755,7 +784,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
             domain_const_path.parent.mkdir(parents=True, exist_ok=True)
             domain_const_path.write_text(make_domain_constitution_md(domain, domain_name), encoding="utf-8")
             created_domain_constitution = True
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             return {"status": "fail", "scope": "service", "dry_run": False,
                     "error": f"Failed to write parent domain constitution: {exc}"}
 
@@ -770,7 +799,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
     try:
         service_const_path.parent.mkdir(parents=True, exist_ok=True)
         service_const_path.write_text(make_service_constitution_md(domain, service, name), encoding="utf-8")
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         return {"status": "fail", "scope": "service", "dry_run": False,
                 "error": f"Failed to write service constitution: {exc}"}
 
@@ -856,16 +885,17 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# CF-1: Valid tracks
-# ---------------------------------------------------------------------------
-VALID_TRACKS = frozenset({"quickplan", "full", "hotfix", "tech-change", "express", "expressplan"})
-
-
 def _starting_phase_for_track(track: str) -> str:
-    if track in ("express", "expressplan"):
-        return "expressplan"
-    return "preplan"
+    tracks = load_lifecycle().get("tracks") or {}
+    track_def = tracks.get(track)
+    if not isinstance(track_def, dict):
+        raise RuntimeError(
+            f"Invalid track: '{track}'. Must be one of: {', '.join(lifecycle_track_names())}."
+        )
+    start_phase = str(track_def.get("start_phase") or "").strip()
+    if not start_phase:
+        raise RuntimeError(f"Track '{track}' is missing start_phase in lifecycle.yaml.")
+    return start_phase
 
 
 def make_feature_yaml(
@@ -982,18 +1012,33 @@ def cmd_create(args: argparse.Namespace) -> dict:
     domain = args.domain
     service = args.service
     name = args.name if args.name else feature_id
-    track = args.track if args.track else "quickplan"
+    track = args.track
     username = args.username if args.username else ""
     governance_repo = args.governance_repo
     control_repo = args.control_repo if args.control_repo else governance_repo
     description = args.description if args.description else ""
 
-    if track not in VALID_TRACKS:
+    if not track:
+        try:
+            available = ", ".join(lifecycle_track_names())
+            track_msg = f"Available tracks from lifecycle.yaml: {available}."
+        except RuntimeError as exc:
+            track_msg = f"Could not read available tracks from lifecycle.yaml: {exc}"
         return {
             "status": "fail",
             "scope": "feature",
             "dry_run": bool(args.dry_run),
-            "error": f"Invalid track: '{track}'. Must be one of: {', '.join(sorted(VALID_TRACKS))}.",
+            "error": f"Track must be selected explicitly. {track_msg}",
+        }
+
+    try:
+        starting_phase = _starting_phase_for_track(track)
+    except RuntimeError as exc:
+        return {
+            "status": "fail",
+            "scope": "feature",
+            "dry_run": bool(args.dry_run),
+            "error": str(exc),
         }
 
     err = validate_safe_id_field(domain, "domain")
@@ -1020,8 +1065,6 @@ def cmd_create(args: argparse.Namespace) -> dict:
     # Derive feature slug: strip "{domain}-{service}-" prefix if present
     prefix = f"{domain}-{service}-"
     feature_slug = feature_id[len(prefix):] if feature_id.startswith(prefix) else feature_id
-
-    starting_phase = _starting_phase_for_track(track)
 
     feature_dir = gov_path / "features" / domain / service / feature_id
     feature_yaml_path = feature_dir / "feature.yaml"
@@ -1198,7 +1241,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
                 ),
             }
 
-    is_express = track in ("express", "expressplan")
+    is_express = track == "express"
     gh_commands: list[str] = []
     if not is_express:
         gh_commands = [
@@ -1273,7 +1316,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--service", required=True)
     create.add_argument("--name")
     create.add_argument("--description", default="")
-    create.add_argument("--track", default="quickplan")
+    create.add_argument("--track")
     create.add_argument("--username", default="")
     create.add_argument("--execute-governance-git", action="store_true")
     create.add_argument("--dry-run", action="store_true")

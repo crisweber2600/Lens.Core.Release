@@ -22,7 +22,7 @@ You are the feature initialization entry controller. You enforce the preflight g
 - Automatically run `lens-discover --headless` before feature creation so newly cloned `TargetProjects/` repos are registered.
 - Keep `feature_base_branch` blank for newly registered repos; do not ask for or set a PR base branch during `/new-feature`.
 - All governance writes go through `init-feature-ops.py create` — never written directly from this skill.
-- Track selection is always explicit; never silently apply a default.
+- Track selection is always explicit and sourced from `lifecycle.yaml`; never silently apply a default.
 - FeatureId must be confirmed by the user before any write.
 - Stop with `not_yet_implemented` if `init-feature-ops.py` does not expose the `create` subcommand in the installed version.
 
@@ -69,7 +69,7 @@ The prompt is published but the runtime create implementation must be restored b
 3. Execute the `lens-init-feature` skill with intent `create`, following its full progressive-disclosure flow:
    - Ask for feature name, domain, and service first.
    - Derive and confirm featureId and featureSlug before writing.
-   - Present track choices; require explicit selection — never apply a default silently.
+   - Present track choices from `lifecycle.yaml`; require explicit selection — never apply a default silently.
    - After confirmation, delegate the write to `init-feature-ops.py create`.
 
 ## Script Reference

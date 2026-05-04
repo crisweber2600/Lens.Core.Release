@@ -9,7 +9,7 @@ description: Feature initialization orchestrator — creates 2-branch topology, 
 
 This skill orchestrates the full initialization of a new feature in the Lens governance framework. It creates the two-branch topology (`{featureId}` and `{featureId}-plan`) in the **control repo**, commits `feature.yaml` to governance `main`, registers the feature in `feature-index.yaml` on `main`, creates a `summary.md` stub on `main`, and opens a PR from the plan branch to the feature branch in the control repo when the selected track uses an immediate planning PR. New features persist a canonical composite `featureId` plus a short `featureSlug` so control-repo branches stay unique across domains/services while target-repo working branches can stay concise. The governance repo stays on `main` at all times; no feature branches are created there. For the `express` track, the planning PR is deferred until planning artifacts exist on the plan branch.
 
-**Progressive disclosure:** you ask only for feature name, domain, and service upfront. Then you present track choices and require an explicit selection before creation. Username and repo paths are resolved from `user-profile.md`, config, and git config.
+**Progressive disclosure:** you ask only for feature name, domain, and service upfront. Then you load track choices from `lifecycle.yaml` and require an explicit selection before creation. Username and repo paths are resolved from `user-profile.md`, config, and git config.
 
 **Args:** Accepts operation as first argument: `create`. Pass `--feature-id`, `--domain`, `--service`, `--name`, and `--track` to initialize a specific feature.
 
@@ -19,7 +19,7 @@ You are the entry point for all feature work in the Lens system. You orchestrate
 
 ## Communication Style
 
-- Ask for the minimum: name, domain, service, then present track choices once scope is resolved
+- Ask for the minimum: name, domain, service, then present track choices from `lifecycle.yaml` once scope is resolved
 - Confirm the derived featureId and featureSlug before creating anything
 - Treat profile or config track values as suggestions only; never apply them silently
 - After creation, report the lifecycle start phase and the next recommended command returned by the script; do not hardcode `/quickplan`
@@ -61,7 +61,8 @@ Load available config from `{project-root}/lens.core/_bmad/bmadconfig.yaml` and 
 - `{governance_repo}` — governance repo root path. **If not configured, halt and instruct user to run `lens-new-domain` to scaffold the governance structure first.**
 - `{control_repo}` (default: `{governance_repo}`) — source code repo root path
 - `{username}` (default: `git config user.name`) — current user
-- `{default_track}` (from `user-profile.md` `default_track` field, then config, then `quickplan`) — preferred lifecycle track hint; show it as a suggestion only and still ask the user to choose explicitly
+- `{available_tracks}` from `{project-root}/lens.core/_bmad/lens-work/lifecycle.yaml` `tracks` keys — canonical lifecycle track choices; do not offer tracks absent from this file
+- `{default_track}` from `user-profile.md` `default_track` field, then config — preferred lifecycle track hint only when it is present in `{available_tracks}`; ignore stale values and still ask the user to choose explicitly
 
 Load `{governance_repo}/users/{username}/user-profile.md` for user defaults. Load `{governance_repo}/feature-index.yaml` on `main` to check for existing features in the same domain.
 
@@ -97,7 +98,7 @@ uv run scripts/init-feature-ops.py create \
   --domain platform \
   --service identity \
   --name "Auth Token Refresh" \
-  --track quickplan \
+  --track full \
   --username cweber
 
 # Initialize a new feature and push governance artifacts automatically
@@ -107,7 +108,7 @@ uv run scripts/init-feature-ops.py create \
   --domain platform \
   --service identity \
   --name "Auth Token Refresh" \
-  --track quickplan \
+  --track full \
   --username cweber \
   --execute-governance-git
 
@@ -129,7 +130,7 @@ uv run scripts/init-feature-ops.py create \
   --domain platform \
   --service identity \
   --name "Auth Token Refresh" \
-  --track quickplan \
+  --track full \
   --username cweber \
   --dry-run
 
