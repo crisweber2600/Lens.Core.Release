@@ -36,6 +36,7 @@ You are the Lens lifecycle review conductor. You do not author the phase artifac
 - **Predecessor context matters** - review the current phase output against the immediately prior reviewed artifact set, cross-feature context, and constitution when available
 - **Party-mode challenge is required** - after the adversarial findings exist, run a short multi-voice challenge round that directly asks the user what they still may have missed
 - **Findings must be durable** - always write or refresh the phase review artifact in the staged docs path so the next handoff can publish a reviewed artifact set instead of oral history
+- **Post-review commands are explicit** - when a `phase-complete` review passes, the caller must continue to the command after the review and execute any required git or PR operation through the CLI-backed Lens command; do not narrate or delegate required PR creation to the user
 
 ## On Activation
 
@@ -71,7 +72,19 @@ You are the Lens lifecycle review conductor. You do not author the phase artifac
    - `pass-with-warnings` - the phase can move forward, but medium or high risk findings remain documented.
    - `pass` - no unresolved material gaps remain.
 17. If `--source phase-complete` and the verdict is `fail`, stop and instruct the caller not to update `feature.yaml`.
-18. If `--source manual-rerun`, stop after reporting the verdict; do not modify lifecycle state.
+18. If `--source phase-complete` and the verdict is `pass` or `pass-with-warnings`, return the verdict and require the caller to continue to the command step immediately after the review. If that post-review command opens or verifies a PR, the caller MUST execute `lens-git-orchestration` or `git-orchestration-ops.py` in the terminal, capture `pr_url` from command output, and include the PR URL in its response. The caller MUST NOT ask the user to create the PR manually.
+19. If `--source manual-rerun`, stop after reporting the verdict; do not modify lifecycle state, publish artifacts, push branches, or create/verify PRs.
+
+## Post-Review Command Contract
+
+For every `lens-adversarial-review --source phase-complete` invocation:
+
+1. A `fail` verdict is terminal for the caller. The caller must not update `feature.yaml`, publish artifacts, push branches, open PRs, or advertise the next lifecycle command as available.
+2. A `pass` or `pass-with-warnings` verdict unlocks the caller's documented command after the review. The caller must continue into that next command step rather than stopping at a narrative summary.
+3. If the command after the review creates or verifies a PR, it must run the CLI-backed Lens command in the terminal, such as `git-orchestration-ops.py merge-plan --strategy pr` or `git-orchestration-ops.py create-pr`.
+4. The caller must capture `pr_url` from the JSON output or the returned command result and include the PR URL in its output contract.
+5. If PR command execution fails, surface the exact error and the concrete fallback command. Do not tell the user to create the PR themselves.
+6. `manual-rerun` reviews are read-review-write only and never trigger post-review commands, lifecycle advancement, branch pushes, or PR creation.
 
 ## Output Artifact
 
@@ -94,4 +107,4 @@ All review artifacts are written to the staged control-repo docs path resolved f
 | `lens-constitution` | Loads constitutional planning constraints |
 | `bmad-review-adversarial-general` | Supplies the skeptical review posture and findings model |
 | `bmad-party-mode` | Supplies the short multi-voice blind-spot challenge round |
-| Phase conductors | Call this skill before marking `preplan`, `businessplan`, or `techplan` complete, and during FinalizePlan step 1 review |
+| Phase conductors | Call this skill before marking lifecycle phases complete, then apply the Post-Review Command Contract to the command after the review |

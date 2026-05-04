@@ -92,7 +92,7 @@ When lifecycle-required businessplan artifacts are staged:
 
 1. **Adversarial review gate:** Run `lens-adversarial-review --phase businessplan --source phase-complete` using `phases.businessplan.completion_review` from `lifecycle.yaml`. Do not run during batch pass 1. In interactive mode and batch pass 2:
    - Verdict `fail`: stop, do not update `feature.yaml`
-   - Verdict `pass` or `pass-with-warnings`: continue
+   - Verdict `pass` or `pass-with-warnings`: apply the `lens-adversarial-review` Post-Review Command Contract to the command after the review, then continue
 2. **Phase transition:** Update `feature.yaml` phase to `businessplan-complete` via `lens-feature-yaml`
 3. **Defer governance publish:** Leave PRD, UX, and businessplan review report publication to TechPlan handoff unless user explicitly requests now
 4. **Report next action:** `/techplan` (or auto-advance per lifecycle.yaml)

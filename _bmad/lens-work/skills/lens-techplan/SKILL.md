@@ -74,7 +74,7 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 12. After architecture authoring completes, run the TechPlan phase completion adversarial review:
     `lens-adversarial-review --phase techplan --source phase-complete`
 
-13. On review pass, update `feature.yaml` phase to `techplan-complete` via `lens-feature-yaml`.
+13. On review pass, apply the `lens-adversarial-review` Post-Review Command Contract to the command after the review, then update `feature.yaml` phase to `techplan-complete` via `lens-feature-yaml`.
 
 ## Phase Completion Artifacts
 

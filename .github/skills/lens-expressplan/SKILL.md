@@ -116,7 +116,7 @@ The review must include the mandatory party-mode blind-spot challenge. The revie
 
 No pre-verdict phase mutation: never update `feature.yaml.phase` before the canonical review artifact exists and a verdict has been read.
 
-If the review verdict is `fail`, stop, leave `feature.yaml.phase` unchanged, do not advertise `/finalizeplan` as available, and summarize the blocking findings. A `pass` or `pass-with-warnings` verdict may advance to Step 3.
+If the review verdict is `fail`, stop, leave `feature.yaml.phase` unchanged, do not advertise `/finalizeplan` as available, and summarize the blocking findings. A `pass` or `pass-with-warnings` verdict applies the `lens-adversarial-review` Post-Review Command Contract and advances to Step 3.
 
 On a `pass` or `pass-with-warnings` verdict, explicitly report that the review artifact is `expressplan-adversarial-review.md` under `{staged_docs_path}`, direct the user to review that file, and state that FinalizePlan begins by integrating accepted review findings into the staged planning documents before any downstream bundle generation.
 

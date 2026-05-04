@@ -109,6 +109,42 @@ class TestFinalizePlanContract:
         assert "finalizeplan-complete" not in before_step_three
         assert "finalizeplan-complete" in step_three
 
+    def test_step_two_executes_merge_plan_pr_command(self):
+        content = SKILL_PATH.read_text(encoding="utf-8")
+        step_two = section_between(content, "### Step 2 - plan-pr-readiness", "### Step 3")
+
+        assert "uv run --script" in step_two
+        assert "git-orchestration-ops.py" in step_two
+        assert "merge-plan" in step_two
+        assert "--strategy pr" in step_two
+        assert "planning_pr_url" in step_two
+        assert "pr_url" in step_two
+        assert "do not ask the user" in step_two.lower()
+
+    def test_step_three_executes_create_pr_command(self):
+        content = SKILL_PATH.read_text(encoding="utf-8")
+        step_three = section_between(content, "### Step 3 - downstream-bundle-and-final-pr", "## Output Artifacts")
+
+        assert "uv run --script" in step_three
+        assert "git-orchestration-ops.py" in step_three
+        assert "create-pr" in step_three
+        assert "--base {featureId}-dev" in step_three
+        assert "--head {featureId}" in step_three
+        assert "final_pr_url" in step_three
+        assert "pr_url" in step_three
+        assert "do not ask the user" in step_three.lower()
+
+    def test_final_pr_exists_before_phase_update(self):
+        content = SKILL_PATH.read_text(encoding="utf-8")
+        step_three = section_between(content, "### Step 3 - downstream-bundle-and-final-pr", "## Output Artifacts")
+
+        final_pr_position = step_three.find("final_pr_url")
+        phase_update_position = step_three.find("finalizeplan-complete")
+
+        assert final_pr_position != -1
+        assert phase_update_position != -1
+        assert final_pr_position < phase_update_position
+
 
 class TestFinalizePlanDiscovery:
     def test_prompt_chain_uses_light_preflight_then_redirects(self):

@@ -45,7 +45,7 @@ uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py create-bug
 4. Parse script JSON:
    - `status: created` or `status: duplicate` are both valid; continue.
    - On non-zero exit, stop and surface error.
-5. Load and run `d:/lensTrees/Lens.Core.control copy/.github/skills/bmad-quick-dev/SKILL.md`.
+5. Load and run `{project-root}/.github/skills/bmad-quick-dev/SKILL.md`.
 6. Use this implementation intent exactly:
 
 "Fix this bug report in `TargetProjects/lens-dev/new-codebase/lens.core.src`.
@@ -64,7 +64,35 @@ Required workflow in target project:
 6) Implement the fix and run relevant validation
 7) `git add` and `git commit` with conventional commit message
 8) `git push -u origin <branch>`
-9) Open a PR to `develop` with bug context, legacy-gap notes, and validation notes"
+9) Create the PR by executing this terminal command from the workspace root — you MUST execute this command, not narrate it:
+   ```bash
+   uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py create-pr \
+     --repo {target_project} \
+     --governance-repo {governance_repo} \
+     --head feature/bugfix-{bug-title-slug} \
+     --base develop \
+     --title "fix(lens): {title}" \
+     --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
+   ```
+   Capture `pr_url` from the JSON output field and include it in the Output Contract response.
+   If the command exits non-zero, surface the exact error and run this fallback from the `{target_project}` directory:
+   ```bash
+   gh pr create \
+     --base develop \
+     --head feature/bugfix-{bug-title-slug} \
+     --title "fix(lens): {title}" \
+     --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
+   ```
+   Capture the PR URL from the `gh pr create` output. Do NOT ask the user to create the PR themselves."
+
+7. After quick-dev delegation returns, run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
+   - Verify the target project is still on `feature/bugfix-{bug-title-slug}`.
+   - Run `git status --short`. If implementation changes remain unstaged or uncommitted, commit them with a conventional commit message before continuing. Do not include unrelated user changes; stop and surface the blocker if unrelated changes are mixed into the same worktree.
+   - Run `git rev-parse --short HEAD` and capture the result as `commit hash`.
+   - Run `git push -u origin feature/bugfix-{bug-title-slug}` to verify the branch is pushed. If it exits non-zero, stop and surface the exact error.
+   - Re-run the idempotent PR creation command from step 9, capture `pr_url`, and include it as `PR URL`. The command must reuse an existing open PR when present.
+   - Do not answer with the Output Contract until `commit hash` and `PR URL` are both non-empty and the target repo has no uncommitted implementation changes.
+   - Never say "left uncommitted", "you can create the PR", or equivalent manual handoff language for this flow. Either complete commit/push/PR verification or surface the exact blocking command/error.
 
 ## Output Contract
 

@@ -68,7 +68,7 @@ uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-pha
 
 1. Run `lens-adversarial-review --phase preplan --source phase-complete`. The review is the lifecycle party-mode adversarial gate for this phase.
 2. If the review verdict is `fail`, stop and keep `feature.yaml` unchanged.
-3. If the review verdict is `pass` or `pass-with-warnings`, update the feature phase to `preplan-complete` through `lens-feature-yaml`.
+3. If the review verdict is `pass` or `pass-with-warnings`, apply the `lens-adversarial-review` Post-Review Command Contract to the command after the review, then update the feature phase to `preplan-complete` through `lens-feature-yaml`.
 4. Confirm completion and name `/businessplan` as the expected next user action. Do not auto-launch `/businessplan` from PrePlan.
 5. Keep the no-governance-write invariant in force for the whole phase: no direct governance file writes and no `publish-to-governance` call.
 
