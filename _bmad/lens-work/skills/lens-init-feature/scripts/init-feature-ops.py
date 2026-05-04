@@ -24,6 +24,7 @@ import yaml
 
 # source: old-codebase init-feature-ops.py SAFE_ID_PATTERN
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local changes"
 
 
 def now_iso() -> str:
@@ -85,13 +86,44 @@ def ensure_git_worktree(repo: str) -> None:
         raise RuntimeError(f"{repo} is not a git worktree")
 
 
-def ensure_clean_worktree(repo: str) -> None:
+def git_current_branch(repo: str) -> str:
+    result = subprocess.run(
+        git_command_argv(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        msg = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
+        raise RuntimeError(f"{git_command_text(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])} failed: {msg}")
+    return result.stdout.strip() or "HEAD"
+
+
+def worktree_has_local_changes(repo: str) -> bool:
     result = subprocess.run(git_command_argv(repo, ["status", "--short"]), capture_output=True, text=True)
     if result.returncode != 0:
         msg = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
         raise RuntimeError(f"{git_command_text(repo, ['status', '--short'])} failed: {msg}")
-    if result.stdout.strip():
+    return bool(result.stdout.strip())
+
+
+def ensure_clean_worktree(repo: str) -> None:
+    if worktree_has_local_changes(repo):
         raise RuntimeError("Governance repo has local changes. Commit or stash before --execute-governance-git.")
+
+
+def auto_commit_local_changes(repo: str) -> None:
+    run_git(repo, ["add", "-A"])
+    diff_result = subprocess.run(
+        git_command_argv(repo, ["diff", "--cached", "--quiet"]),
+        capture_output=True,
+        text=True,
+    )
+    if diff_result.returncode == 0:
+        raise RuntimeError("Governance repo has local changes, but none could be staged for commit.")
+    if diff_result.returncode != 1:
+        output = (diff_result.stderr or diff_result.stdout).strip() or f"exit code {diff_result.returncode}"
+        raise RuntimeError(f"{git_command_text(repo, ['diff', '--cached', '--quiet'])} failed: {output}")
+    run_git(repo, ["commit", "-m", GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE])
 
 
 def current_head_sha(repo: str) -> str | None:
@@ -104,8 +136,21 @@ def current_head_sha(repo: str) -> str | None:
 
 def sync_governance_main(governance_repo: str) -> None:
     ensure_git_worktree(governance_repo)
-    ensure_clean_worktree(governance_repo)
-    run_git(governance_repo, ["checkout", "main"])
+    active_branch = git_current_branch(governance_repo)
+    has_local_changes = worktree_has_local_changes(governance_repo)
+
+    if has_local_changes and active_branch != "main":
+        raise RuntimeError(
+            f"Governance repo has local changes on branch '{active_branch}'. "
+            "Switch to main or clean the repo before --execute-governance-git."
+        )
+
+    if active_branch != "main":
+        run_git(governance_repo, ["checkout", "main"])
+
+    if has_local_changes:
+        auto_commit_local_changes(governance_repo)
+
     run_git(governance_repo, ["pull", "--rebase", "--autostash", "origin", "main"])
 
 

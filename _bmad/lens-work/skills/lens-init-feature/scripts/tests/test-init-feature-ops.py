@@ -226,7 +226,7 @@ def test_create_domain_execute_governance_git(tmp_path: Path):
 
 
 def test_create_domain_governance_git_dirty_repo(tmp_path: Path):
-    _, gov = init_main_repo_with_remote(tmp_path)
+    remote, gov = init_main_repo_with_remote(tmp_path)
     (gov / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
     personal = tmp_path / "personal"
     completed, payload = run_script(
@@ -241,10 +241,24 @@ def test_create_domain_governance_git_dirty_repo(tmp_path: Path):
             "--execute-governance-git",
         ]
     )
-    assert completed.returncode == 1
-    assert payload["status"] == "fail"
-    assert "preflight failed" in payload["error"].lower()
-    assert not (gov / "features" / "risk" / "domain.yaml").exists()
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert payload["governance_git_executed"] is True
+    assert (gov / "features" / "risk" / "domain.yaml").exists()
+    status_result = subprocess.run(
+        ["git", "-C", str(gov), "status", "--short"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert status_result.stdout.strip() == ""
+    remote_dirty = subprocess.run(
+        ["git", "--git-dir", str(remote), "show", "main:DIRTY.txt"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert remote_dirty.stdout == "dirty\n"
 
 
 def test_domain_yaml_schema_parity(tmp_path: Path):
@@ -344,6 +358,53 @@ def test_create_domain_name_defaults_to_slug(tmp_path: Path):
 # TestCreate
 # ---------------------------------------------------------------------------
 class TestCreate:
+    def test_create_feature_execute_governance_git_auto_syncs_dirty_repo(self, tmp_path: Path):
+        remote, gov = init_main_repo_with_remote(tmp_path)
+        (gov / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-auto-sync-test",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--name", "Auto Sync Test",
+            "--track", "express",
+            "--username", "testuser",
+            "--execute-governance-git",
+        ])
+
+        assert completed.returncode == 0
+        assert payload["status"] == "pass"
+        assert payload["governance_git_executed"] is True
+        status_result = subprocess.run(
+            ["git", "-C", str(gov), "status", "--short"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert status_result.stdout.strip() == ""
+        remote_dirty = subprocess.run(
+            ["git", "--git-dir", str(remote), "show", "main:DIRTY.txt"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert remote_dirty.stdout == "dirty\n"
+        remote_feature = subprocess.run(
+            [
+                "git",
+                "--git-dir",
+                str(remote),
+                "show",
+                "main:features/lens-dev/new-codebase/lens-dev-new-codebase-auto-sync-test/feature.yaml",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "featureId: lens-dev-new-codebase-auto-sync-test" in remote_feature.stdout
+
     def test_create_feature_writes_feature_yaml(self, tmp_path: Path):
         gov = tmp_path / "gov"
         gov.mkdir()

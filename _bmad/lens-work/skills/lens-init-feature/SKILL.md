@@ -193,8 +193,9 @@ uv run scripts/init-feature-ops.py read-context \
 
 `create`, `create-domain`, and `create-service` accept an optional `--execute-governance-git` flag. When present, the script:
 
-- verifies that `{governance_repo}` is a clean git worktree
-- checks out `main` and pulls latest before duplicate detection
+- verifies that `{governance_repo}` is a git worktree
+- auto-commits local governance changes when they are already on `main`, then pulls latest before duplicate detection
+- still fails fast when local governance changes are on a non-`main` branch, because the governance repo must stay on `main`
 - stages, commits, and pushes governance artifacts automatically on `main`
 - returns `governance_git_commands`, `remaining_git_commands`, `remaining_commands`, `governance_git_executed`, and `governance_commit_sha`
 

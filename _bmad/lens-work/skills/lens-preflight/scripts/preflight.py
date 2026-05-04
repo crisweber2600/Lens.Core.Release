@@ -36,6 +36,9 @@ def git_error(result: subprocess.CompletedProcess[str]) -> str:
     return (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
 
 
+GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local changes"
+
+
 def git_pull(repo: Path) -> bool:
     result = git_repo(repo, ["pull", "origin"])
     return result.returncode == 0
@@ -58,6 +61,29 @@ def git_has_clean_worktree(repo: Path) -> tuple[bool, str | None]:
     if result.stdout.strip():
         return False, "local changes present"
     return True, None
+
+
+def auto_commit_local_changes(repo: Path) -> tuple[bool, str]:
+    add_result = git_repo(repo, ["add", "-A"])
+    if add_result.returncode != 0:
+        return False, f"failed to stage local changes: {git_error(add_result)}"
+
+    staged_result = git_repo(repo, ["diff", "--cached", "--quiet"])
+    if staged_result.returncode == 0:
+        return False, "local changes were detected but none could be staged for commit"
+    if staged_result.returncode != 1:
+        return False, f"failed to inspect staged changes: {git_error(staged_result)}"
+
+    commit_result = git_repo(repo, ["commit", "-m", GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE])
+    if commit_result.returncode != 0:
+        return False, f"failed to commit local changes: {git_error(commit_result)}"
+
+    sha_result = git_repo(repo, ["rev-parse", "--short", "HEAD"])
+    sha = sha_result.stdout.strip() if sha_result.returncode == 0 else ""
+    detail = "committed local changes"
+    if sha:
+        detail = f"{detail} ({sha})"
+    return True, detail
 
 
 def resolve_governance_branch(repo: Path) -> str:
@@ -106,16 +132,31 @@ def sync_governance_repo(governance_repo: Path) -> tuple[bool, str]:
     if worktree_check.returncode != 0 or worktree_check.stdout.strip() != "true":
         return False, f"not a git worktree ({git_error(worktree_check)})"
 
+    branch = resolve_governance_branch(governance_repo)
+    active_branch = git_current_branch(governance_repo) or "HEAD"
     clean, clean_detail = git_has_clean_worktree(governance_repo)
     if not clean:
+        if clean_detail == "local changes present" and active_branch != branch:
+            return False, (
+                f"local changes present on {active_branch}; switch to {branch} or clean the repo "
+                "before automatic governance sync"
+            )
         if clean_detail == "local changes present":
-            return False, "local changes present; commit or stash them before automatic governance sync"
-        return False, clean_detail or "unable to inspect worktree"
+            pass
+        else:
+            return False, clean_detail or "unable to inspect worktree"
 
-    branch = resolve_governance_branch(governance_repo)
+    sync_notes = [f"synced {branch}"]
+
     checked_out, checkout_detail = ensure_local_branch(governance_repo, branch)
     if not checked_out:
         return False, f"failed to checkout {branch}: {checkout_detail}"
+
+    if not clean:
+        committed, commit_detail = auto_commit_local_changes(governance_repo)
+        if not committed:
+            return False, commit_detail
+        sync_notes.append(commit_detail)
 
     pull_result = git_repo(governance_repo, ["pull", "--rebase", "--autostash", "origin", branch])
     if pull_result.returncode != 0:
@@ -129,9 +170,9 @@ def sync_governance_repo(governance_repo: Path) -> tuple[bool, str]:
         push_result = git_repo(governance_repo, ["push", "origin", f"HEAD:{branch}"])
         if push_result.returncode != 0:
             return False, f"push failed on {branch}: {git_error(push_result)}"
-        return True, f"synced {branch} and pushed {ahead} local commit(s)"
+        sync_notes.append(f"pushed {ahead} local commit(s)")
 
-    return True, f"synced {branch}"
+    return True, "; ".join(sync_notes)
 
 
 def current_branch() -> str:

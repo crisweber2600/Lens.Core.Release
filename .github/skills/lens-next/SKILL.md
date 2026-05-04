@@ -24,6 +24,7 @@ You are the Next conductor. Your only job is to ask `next-ops.py` what to do and
 ## Non-Negotiables
 
 - All routing decisions come from `next-ops.py`. You never evaluate phase, track, or gate conditions inline.
+- Resolve the feature id from explicit input or `.lens/personal/context.yaml` before asking the user. Do not scan governance for "active" features, inspect `lifecycle.yaml`, or run ad hoc shell/Python probes to infer the target.
 - `status=blocked` → list blockers, stop. No downstream delegation under any circumstances.
 - `status=fail` → surface the error, stop. No delegation.
 - `status=unblocked` → delegate immediately via `lens-bmad-skill` with no second confirmation prompt.
@@ -48,8 +49,10 @@ You are the Next conductor. Your only job is to ask `next-ops.py` what to do and
 3. Resolve `{governance_repo}`, `{control_repo}`, and `{module_path}` from the loaded config.
 4. Resolve `{feature_id}`:
    - Use the value provided as a CLI argument if present.
-   - Otherwise use `session.feature_id` if available.
-   - If neither is available, prompt the user for the feature ID once and stop if not supplied.
+  - Otherwise read `{control_repo}/.lens/personal/context.yaml`; if it contains `feature_id`, use that value.
+  - Otherwise use `session.feature_id` if available.
+  - If neither is available, prompt the user for the feature ID once and stop if not supplied.
+  - Do not search `feature-index.yaml`, scan the workspace, or enumerate "active" features as a fallback.
 5. Confirm a clean git state in `{control_repo}` before proceeding (pull; fail fast on conflicts).
 6. Emit `[next:activate] feature={feature_id}`.
 

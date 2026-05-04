@@ -121,7 +121,7 @@ When `--execute-governance-git` succeeds, the script has already published gover
 
 > **Note:** The governance repo stays on `main` throughout — no feature branches are created there. The 2-branch topology (`{featureId}` + `{featureId}-plan`) exists only in the control repo and should be created through git-orchestration so `{featureId}` starts from the repo default branch.
 
-> **Auto-publish note:** `create`, `create-domain`, and `create-service` can be run with `--execute-governance-git`. In that mode the script performs the governance checkout/pull/add/commit/push itself and callers should surface only the returned `remaining_commands` for any manual follow-up.
+> **Auto-publish note:** `create`, `create-domain`, and `create-service` can be run with `--execute-governance-git`. In that mode the script performs the governance checkout/pull/add/commit/push itself, auto-commits local governance changes that are already on `main`, and callers should surface only the returned `remaining_commands` for any manual follow-up.
 
 > **Failure note:** If governance git preflight or execution fails, stop and surface the error. Do not fall back to a manual governance publish recipe.
 
