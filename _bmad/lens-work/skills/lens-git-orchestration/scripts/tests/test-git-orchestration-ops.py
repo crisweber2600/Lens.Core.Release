@@ -309,6 +309,50 @@ class TestCommitArtifacts:
         assert result["commit_sha"] != ""
         assert "commit-feat" in result["commit_message"]
 
+    def test_message_alias_commits_existing_file(self, repo):
+        make_branch(repo, "message-feat")
+        make_branch(repo, "message-feat-plan")
+        make_branch(repo, "message-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "message-feat"], check=True, capture_output=True)
+        (repo / "artifact.md").write_text("content")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="message-feat",
+            files=["artifact.md"],
+            description=None,
+            message="message alias artifact",
+            phase="unknown",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert "message alias artifact" in result["commit_message"]
+
+    def test_conflicting_message_aliases_are_rejected(self, repo):
+        (repo / "artifact.md").write_text("content")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="message-feat",
+            files=["artifact.md"],
+            description="description text",
+            message="message text",
+            phase="unknown",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "conflicting_message_aliases"
+
     def test_phase_auto_resolved_from_yaml(self, repo):
         write_feature_yaml(repo, "phase-feat", phase="plan")
         make_branch(repo, "phase-feat")
@@ -810,6 +854,73 @@ class TestCreatePr:
         assert result["created"] is True
         assert result["pr_url"] == "https://example.test/pr/8"
         assert any(call[:3] == ["gh", "pr", "create"] for call in gh_calls)
+
+    def test_create_pr_accepts_branch_aliases_and_forwards_body(self, monkeypatch):
+        captured: dict[str, str] = {}
+
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: True)
+        monkeypatch.setattr(ops, "resolve_git_ref", lambda repo, branch: branch)
+        monkeypatch.setattr(ops, "merge_base_sha", lambda repo, head_ref, base_ref: "abc123")
+
+        def fake_ensure_pull_request(repo, *, base_branch, head_branch, title, body, auto_merge, dry_run):
+            captured.update({"base": base_branch, "head": head_branch, "body": body})
+            return {"pr_url": "https://example.test/pr/10", "created": True, "auto_merge_enabled": False}, 0
+
+        monkeypatch.setattr(ops, "_ensure_pull_request", fake_ensure_pull_request)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base=None,
+            target_branch="develop",
+            head=None,
+            source_branch="feature/body-alias",
+            title="Alias PR",
+            body="Direct body text",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["pr_url"] == "https://example.test/pr/10"
+        assert captured == {"base": "develop", "head": "feature/body-alias", "body": "Direct body text"}
+
+    def test_create_pr_rejects_conflicting_head_aliases(self):
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base="main",
+            target_branch=None,
+            head="feature/one",
+            source_branch="feature/two",
+            title="Alias PR",
+            body="Body",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "conflicting_branch_aliases"
+
+    def test_create_pr_rejects_conflicting_base_aliases(self):
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base="main",
+            target_branch="develop",
+            head="feature/one",
+            source_branch=None,
+            title="Alias PR",
+            body="Body",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "conflicting_branch_aliases"
 
     def test_create_pr_auto_detects_base_when_base_omitted(self, monkeypatch):
         monkeypatch.setattr(

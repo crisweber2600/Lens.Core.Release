@@ -352,28 +352,33 @@ def sync_feature_index(governance_repo: Path, feature_data: dict[str, Any]) -> d
 
 def apply_updates(feature_data: dict[str, Any], args: argparse.Namespace) -> list[str]:
     changed_fields: list[str] = []
-    if args.phase is not None and feature_data.get("phase") != args.phase:
-        feature_data["phase"] = args.phase
+    phase = getattr(args, "phase", None)
+    if phase is not None and feature_data.get("phase") != phase:
+        feature_data["phase"] = phase
         changed_fields.append("phase")
 
-    if args.docs_path is not None or args.governance_docs_path is not None:
+    docs_path = getattr(args, "docs_path", None)
+    governance_docs_path = getattr(args, "governance_docs_path", None)
+    if docs_path is not None or governance_docs_path is not None:
         docs = feature_data.get("docs") if isinstance(feature_data.get("docs"), dict) else {}
-        if args.docs_path is not None and docs.get("path") != args.docs_path:
-            docs["path"] = args.docs_path
+        if docs_path is not None and docs.get("path") != docs_path:
+            docs["path"] = docs_path
             changed_fields.append("docs.path")
-        if args.governance_docs_path is not None and docs.get("governance_docs_path") != args.governance_docs_path:
-            docs["governance_docs_path"] = args.governance_docs_path
+        if governance_docs_path is not None and docs.get("governance_docs_path") != governance_docs_path:
+            docs["governance_docs_path"] = governance_docs_path
             changed_fields.append("docs.governance_docs_path")
         feature_data["docs"] = docs
 
-    if args.target_repos is not None:
-        target_repos = parse_yaml_value(args.target_repos, "target_repos", list)
+    target_repos_raw = getattr(args, "target_repos", None)
+    if target_repos_raw is not None:
+        target_repos = parse_yaml_value(target_repos_raw, "target_repos", list)
         if feature_data.get("target_repos") != target_repos:
             feature_data["target_repos"] = target_repos
             changed_fields.append("target_repos")
 
-    if args.milestones is not None:
-        milestones = parse_yaml_value(args.milestones, "milestones", dict)
+    milestones_raw = getattr(args, "milestones", None)
+    if milestones_raw is not None:
+        milestones = parse_yaml_value(milestones_raw, "milestones", dict)
         if feature_data.get("milestones") != milestones:
             feature_data["milestones"] = milestones
             changed_fields.append("milestones")
@@ -492,6 +497,10 @@ def cmd_validate(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_update(args: argparse.Namespace) -> dict[str, Any]:
+    field_error = normalize_field_update(args)
+    if field_error:
+        return field_error
+
     feature_path = resolve_feature_path(args)
     feature_data = load_yaml_mapping(feature_path)
     lifecycle = load_lifecycle(args)
@@ -515,6 +524,40 @@ def cmd_update(args: argparse.Namespace) -> dict[str, Any]:
         "feature_index_sync": sync_result,
         "feature": build_read_payload(feature_path, feature_data),
     }
+
+
+def normalize_field_update(args: argparse.Namespace) -> dict[str, Any] | None:
+    field = str(getattr(args, "field", "") or "").strip()
+    value = getattr(args, "value", None)
+    if not field:
+        return None
+
+    supported_fields = ["phase"]
+    if field not in supported_fields:
+        return fail(
+            "unsupported_field",
+            f"Unsupported field '{field}'. Supported fields: {', '.join(supported_fields)}",
+            field=field,
+            supported_fields=supported_fields,
+        )
+    if value is None or str(value).strip() == "":
+        return fail(
+            "missing_field_value",
+            "--value is required when --field is provided.",
+            field=field,
+            supported_fields=supported_fields,
+        )
+    if field == "phase":
+        existing_phase = getattr(args, "phase", None)
+        if existing_phase is not None and existing_phase != value:
+            return fail(
+                "conflicting_phase_values",
+                "--phase and --field phase --value must match when both are provided.",
+                phase=existing_phase,
+                value=value,
+            )
+        args.phase = value
+    return None
 
 
 def cmd_sync_feature_index(args: argparse.Namespace) -> dict[str, Any]:
@@ -566,6 +609,12 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--target-repos", required=False, help="JSON or YAML list for target_repos")
     update_parser.add_argument("--milestones", required=False, help="JSON or YAML mapping for milestones")
     update_parser.add_argument("--pull-request", required=False, help="PR URL to set in feature.yaml links.pull_request")
+    update_parser.add_argument("--field", required=False, help="Compatibility field updater. Supported: phase")
+    update_parser.add_argument("--value", required=False, help="Compatibility value paired with --field")
+
+    set_phase_parser = subparsers.add_parser("set-phase", help="Compatibility alias for update --phase <phase>")
+    add_feature_args(set_phase_parser)
+    set_phase_parser.add_argument("phase", help="New phase value")
 
     sync_parser = subparsers.add_parser("sync-feature-index", help="Synchronize feature-index.yaml from feature.yaml")
     add_feature_args(sync_parser)
@@ -588,6 +637,7 @@ def main() -> None:
         "read": cmd_read,
         "validate": cmd_validate,
         "update": cmd_update,
+        "set-phase": cmd_update,
         "sync-feature-index": cmd_sync_feature_index,
         "commit-dirty": cmd_commit_dirty,
     }

@@ -468,7 +468,16 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
     repo = args.repo
     feature_id = args.feature_id
     files = args.files
-    description = args.description
+    description = getattr(args, "description", None)
+    message = getattr(args, "message", None)
+    if description and message and description != message:
+        return {
+            "error": "conflicting_message_aliases",
+            "detail": "--description and --message must match when both are provided.",
+        }, 1
+    description = description or message
+    if not description:
+        return {"error": "description_missing", "detail": "Provide --description or --message."}, 1
     push = args.push
 
     if not files:
@@ -963,8 +972,35 @@ def _ensure_pull_request(
 
 def cmd_create_pr(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     repo = args.repo or args.governance_repo
-    head_branch = args.head
-    explicit_base = args.base
+    head_branch = getattr(args, "head", None)
+    source_branch = getattr(args, "source_branch", None)
+    if head_branch and source_branch and head_branch != source_branch:
+        return {
+            "status": "error",
+            "error": "conflicting_branch_aliases",
+            "detail": "--head and --source-branch must match when both are provided.",
+            "head": head_branch,
+            "source_branch": source_branch,
+        }, 1
+    head_branch = head_branch or source_branch
+    if not head_branch:
+        return {
+            "status": "error",
+            "error": "head_branch_missing",
+            "detail": "Provide --head or --source-branch.",
+        }, 1
+
+    explicit_base = getattr(args, "base", None)
+    target_branch = getattr(args, "target_branch", None)
+    if explicit_base and target_branch and explicit_base != target_branch:
+        return {
+            "status": "error",
+            "error": "conflicting_branch_aliases",
+            "detail": "--base and --target-branch must match when both are provided.",
+            "base": explicit_base,
+            "target_branch": target_branch,
+        }, 1
+    explicit_base = explicit_base or target_branch
     auto_detect_base = bool(getattr(args, "auto_detect_base", False))
 
     if not branch_exists(repo, head_branch, include_remote=True):
@@ -1365,7 +1401,8 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--governance-repo", default=None)
     ca.add_argument("--feature-id", required=True)
     ca.add_argument("--files", nargs="+", required=True)
-    ca.add_argument("--description", required=True)
+    ca.add_argument("--description", required=False)
+    ca.add_argument("--message", required=False, help="Compatibility alias for --description")
     ca.add_argument("--phase", default=None, help="Phase token; auto-resolved from feature.yaml if omitted")
     ca.add_argument("--phase-step", default=None, help="Optional phase step token for branch routing (for example: step1/step2/step3)")
     ca.add_argument("--push", action="store_true")
@@ -1405,7 +1442,9 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--governance-repo", required=True)
     cp.add_argument("--repo", default=None)
     cp.add_argument("--base", required=False)
-    cp.add_argument("--head", required=True)
+    cp.add_argument("--target-branch", required=False, help="Compatibility alias for --base")
+    cp.add_argument("--head", required=False)
+    cp.add_argument("--source-branch", required=False, help="Compatibility alias for --head")
     cp.add_argument("--title", default=None)
     cp.add_argument("--body", default="Auto-created by lens-git-orchestration")
     cp.add_argument("--auto-detect-base", action="store_true")

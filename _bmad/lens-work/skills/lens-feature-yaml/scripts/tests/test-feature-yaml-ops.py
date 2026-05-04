@@ -275,6 +275,120 @@ def test_update_phase_auto_syncs_feature_index(tmp_path: Path):
     assert entry["phase"] == "dev-ready"
 
 
+def test_set_phase_alias_uses_phase_transition_validator(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="finalizeplan-complete", status="active"))
+    write_feature_index(
+        tmp_path,
+        [
+            {
+                "id": "auth-login",
+                "domain": "platform",
+                "service": "identity",
+                "phase": "finalizeplan-complete",
+                "status": "active",
+                "track": "express",
+            }
+        ],
+    )
+
+    payload, code = run_feature_yaml(
+        [
+            "set-phase",
+            "--feature-path",
+            str(feature_path),
+            "--governance-repo",
+            str(tmp_path),
+            "dev-ready",
+        ]
+    )
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert payload["changed_fields"] == ["phase"]
+
+    updated = yaml.safe_load(feature_path.read_text(encoding="utf-8"))
+    assert updated["phase"] == "dev-ready"
+
+
+def test_update_field_phase_value_uses_phase_transition_validator(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="finalizeplan-complete", status="active"))
+    write_feature_index(
+        tmp_path,
+        [
+            {
+                "id": "auth-login",
+                "domain": "platform",
+                "service": "identity",
+                "phase": "finalizeplan-complete",
+                "status": "active",
+                "track": "express",
+            }
+        ],
+    )
+
+    payload, code = run_feature_yaml(
+        [
+            "update",
+            "--feature-path",
+            str(feature_path),
+            "--governance-repo",
+            str(tmp_path),
+            "--field",
+            "phase",
+            "--value",
+            "dev-ready",
+        ]
+    )
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert payload["changed_fields"] == ["phase"]
+
+    updated = yaml.safe_load(feature_path.read_text(encoding="utf-8"))
+    assert updated["phase"] == "dev-ready"
+
+
+def test_update_field_rejects_unsupported_fields(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature())
+
+    payload, code = run_feature_yaml(
+        [
+            "update",
+            "--feature-path",
+            str(feature_path),
+            "--field",
+            "priority",
+            "--value",
+            "high",
+        ]
+    )
+
+    assert code == 1
+    assert payload["status"] == "fail"
+    assert payload["error"] == "unsupported_field"
+    assert payload["supported_fields"] == ["phase"]
+
+
+def test_update_field_phase_rejects_invalid_phase(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="finalizeplan-complete"))
+
+    payload, code = run_feature_yaml(
+        [
+            "update",
+            "--feature-path",
+            str(feature_path),
+            "--field",
+            "phase",
+            "--value",
+            "definitely-not-a-phase",
+        ]
+    )
+
+    assert code == 1
+    assert payload["status"] == "fail"
+    assert payload["error"] == "invalid_target_phase"
+
+
 def test_dirty_state_handler_pulls_stages_commits_pushes_and_reports_sha(tmp_path: Path):
     ops = load_ops_module()
     commands: list[list[str]] = []
