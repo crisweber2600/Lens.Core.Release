@@ -31,6 +31,7 @@ If any field is missing, ask only for missing fields and stop until complete.
 2. Resolve:
    - `governance_repo = {project-root}/TargetProjects/lens/lens-governance`
    - `target_project = {project-root}/TargetProjects/lens-dev/new-codebase/lens.core.src`
+   - `legacy_project = {project-root}/TargetProjects/lens-dev/old-codebase/lens.core.src`
 3. Create bug intake artifact:
 
 ```bash
@@ -58,10 +59,12 @@ Required workflow in target project:
 1) `git checkout develop`
 2) `git pull`
 3) `git checkout -b feature/bugfix-{bug-title-slug}`
-4) Implement the fix and run relevant validation
-5) `git add` and `git commit` with conventional commit message
-6) `git push -u origin <branch>`
-7) Open a PR to `develop` with bug context and validation notes"
+4) Before implementing, identify the primary affected Lens command and inspect the same command in `TargetProjects/lens-dev/old-codebase/lens.core.src` to understand legacy behavior and identify gaps. Use the same command name and closest matching prompt/skill/script entrypoint when available. If no legacy match exists, record that as a gap.
+5) If the legacy comparison reveals large gaps that materially change expected behavior, workflow, or outputs, stop and use `vscode_askQuestions` to confirm user intent before implementing.
+6) Implement the fix and run relevant validation
+7) `git add` and `git commit` with conventional commit message
+8) `git push -u origin <branch>`
+9) Open a PR to `develop` with bug context, legacy-gap notes, and validation notes"
 
 ## Output Contract
 
