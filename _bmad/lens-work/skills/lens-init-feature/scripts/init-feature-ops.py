@@ -268,6 +268,17 @@ def build_container_result_fields(
     }
 
 
+def related_service_clone_path(domain: str, service: str) -> str:
+    return f"TargetProjects/{domain}/{service}"
+
+
+def related_service_clone_guidance(domain: str, service: str) -> str:
+    return (
+        "Before running /new-feature, clone any related service repositories into "
+        f"{related_service_clone_path(domain, service)}."
+    )
+
+
 def build_workspace_scaffold_batches(
     scaffold_entries: list[tuple[str, str]],
     scope: str,
@@ -407,6 +418,8 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
             "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
             "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
             "context_path": context_path,
+            "related_service_clone_path": related_service_clone_path(domain, service),
+            "related_service_clone_guidance": related_service_clone_guidance(domain, service),
             "error": None,
             **build_container_result_fields(governance_git_commands, workspace_git_commands),
         }
@@ -503,6 +516,8 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
         "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
         "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
         "context_path": written_context_path,
+        "related_service_clone_path": related_service_clone_path(domain, service),
+        "related_service_clone_guidance": related_service_clone_guidance(domain, service),
         "error": None,
         **build_container_result_fields(
             governance_git_commands,
@@ -719,6 +734,8 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
             "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
             "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
             "context_path": context_path,
+            "related_service_clone_path": related_service_clone_path(domain, service),
+            "related_service_clone_guidance": related_service_clone_guidance(domain, service),
             "error": None,
             **build_container_result_fields(governance_git_commands, workspace_git_commands),
         }
@@ -804,6 +821,8 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
                 "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
                 "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
                 "context_path": written_context_path,
+                "related_service_clone_path": related_service_clone_path(domain, service),
+                "related_service_clone_guidance": related_service_clone_guidance(domain, service),
                 "error": f"Governance git execution failed: {exc}",
                 **build_container_result_fields(
                     governance_git_commands,
@@ -825,6 +844,8 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
         "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
         "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
         "context_path": written_context_path,
+        "related_service_clone_path": related_service_clone_path(domain, service),
+        "related_service_clone_guidance": related_service_clone_guidance(domain, service),
         "error": None,
         **build_container_result_fields(
             governance_git_commands,

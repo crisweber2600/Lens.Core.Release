@@ -103,7 +103,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/sc
   --json
 ```
 
-`add-entry` is idempotent by `remote_url`. If the same `remote_url` already exists, it returns `{ "added": false, "reason": "already_exists" }` and leaves `repo-inventory.yaml` byte-for-byte unchanged. Any mutation writes the canonical top-level `repositories:` key.
+`add-entry` is idempotent by `remote_url`. If the same `remote_url` already exists, it returns `{ "added": false, "reason": "already_exists" }` and leaves `repo-inventory.yaml` byte-for-byte unchanged. Any mutation writes the canonical top-level `repositories:` key and leaves `feature_base_branch` blank for the new entry so PR creation can choose the base branch later.
 
 ### validate
 

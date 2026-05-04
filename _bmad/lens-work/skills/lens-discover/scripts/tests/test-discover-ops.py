@@ -3,6 +3,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import yaml
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "discover-ops.py"
 
@@ -174,6 +176,9 @@ def test_add_entry_creates_new_entry(tmp_path: Path):
     assert "- name: new-repo" in content
     assert "remote_url: https://github.com/org/new-repo" in content
     assert "local_path: TargetProjects/new-repo" in content
+    data = yaml.safe_load(content)
+    assert data["repositories"][0]["feature_base_branch"] == ""
+    assert result["entry"]["feature_base_branch"] == ""
 
 
 def test_add_entry_is_idempotent_by_remote_url(tmp_path: Path):

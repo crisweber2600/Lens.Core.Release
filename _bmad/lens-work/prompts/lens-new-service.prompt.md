@@ -26,5 +26,6 @@ The user wants to initialize a new service container, not a feature. The flow mu
 10. Pass `--personal-folder {personal_output_folder}` so `context.yaml` is written with the active domain and service
 11. Pass `--execute-governance-git` so governance `main` is pulled, written, committed, and pushed by the script
 12. Do not create feature branches, feature.yaml, summary.md, feature-index entries, or lifecycle artifacts
+13. After successful service creation, instruct the user to clone any related service repositories into `TargetProjects/{domain}/{service}` before running `/new-feature`
 
-Report `governance_commit_sha` when present. Surface `remaining_git_commands` only for manual workspace scaffold follow-up. Do not implement service writes in this prompt; delegate to the skill script.
+Report `governance_commit_sha` when present. Surface `related_service_clone_guidance` before the `/new-feature` handoff. Surface `remaining_git_commands` only for manual workspace scaffold follow-up. Do not implement service writes in this prompt; delegate to the skill script.

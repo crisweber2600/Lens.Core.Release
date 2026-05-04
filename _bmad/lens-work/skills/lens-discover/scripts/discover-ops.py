@@ -224,6 +224,7 @@ def add_inventory_entry(inventory_path: Path, name: str, remote_url: str, local_
         "name": normalized_name,
         "remote_url": normalized_remote_url,
         "local_path": normalized_local_path or default_local_path(normalized_name),
+        "feature_base_branch": "",
     }
     canonical_entries = [entry for entry in entries]
     canonical_entries.append(new_entry)

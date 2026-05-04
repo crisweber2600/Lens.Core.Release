@@ -72,7 +72,7 @@ Load `{governance_repo}/users/{username}/user-profile.md` for user defaults. Loa
 | Init Feature | Branches, feature.yaml, PR, index entry, and summary stub created atomically; governance git can be auto-executed on `main` while remaining control-repo follow-up stays explicit | Load `./references/init-feature.md` |
 | Auto-Context Pull | Domain context, related summaries, and depends_on docs loaded | Load `./references/auto-context-pull.md` |
 | Create Domain | Domain marker (`domain.yaml`), constitution (`constitutions/{domain}/constitution.md`), optional TargetProjects scaffold, optional `docs/{domain}/` scaffold, and optional personal context file created; governance git can be auto-executed on `main` | Use `create-domain` subcommand |
-| Create Service | Service marker, domain constitution (if absent), service constitution, optional TargetProjects scaffold, optional `docs/{domain}/{service}/` scaffold, and optional personal context file created; governance git can be auto-executed on `main` | Use `create-service` subcommand |
+| Create Service | Service marker, domain constitution (if absent), service constitution, optional TargetProjects scaffold, optional `docs/{domain}/{service}/` scaffold, optional personal context file, and clone-before-feature guidance created; governance git can be auto-executed on `main` | Use `create-service` subcommand |
 
 ## Integration Points
 
@@ -214,6 +214,7 @@ Both `create-domain` and `create-service` accept an optional `--docs-root` argum
 - `create-domain` creates `docs/{domain}/.gitkeep`
 - `create-service` creates `docs/{domain}/{service}/.gitkeep`
 - The returned JSON includes `docs_path` when the scaffold was created or planned
+- The returned JSON includes `related_service_clone_path` and `related_service_clone_guidance`; callers should instruct users to clone related service repositories into `TargetProjects/{domain}/{service}` before `/new-feature`
 - `workspace_git_commands` lists the control-repo scaffold publish commands; for `create-domain` with `--execute-governance-git`, those commands are executed automatically and `remaining_git_commands` is empty on success
 - `governance_git_commands` exposes the governance publish sequence, and `governance_commit_sha` identifies the pushed commit when `--execute-governance-git` succeeds
 

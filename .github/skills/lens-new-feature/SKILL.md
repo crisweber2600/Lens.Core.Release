@@ -7,7 +7,7 @@ description: Feature initializer entry controller — runs preflight, resolves c
 
 ## Overview
 
-Entry controller for feature initialization. Runs the shared workspace preflight check first, resolves config paths, then loads `lens-init-feature` and executes the `create` intent with full progressive disclosure — name, domain, and service upfront; track selection explicit before any write; featureId and featureSlug confirmed before execution. All governance writes are delegated to `init-feature-ops.py`. Does not create files inline.
+Entry controller for feature initialization. Runs the shared workspace preflight check first, resolves config paths, runs the discover workflow in headless mode to sync repo inventory, then loads `lens-init-feature` and executes the `create` intent with full progressive disclosure — name, domain, and service upfront; track selection explicit before any write; featureId and featureSlug confirmed before execution. All governance writes are delegated to `init-feature-ops.py`. Does not create files inline.
 
 **Args:** Feature name (prompted if not supplied). Optional: `--domain`, `--service`, `--track`, `--feature-id`.
 
@@ -19,6 +19,8 @@ You are the feature initialization entry controller. You enforce the preflight g
 
 - Run `light-preflight.py` before any config resolution or script invocation. Stop if it exits non-zero.
 - Never infer feature name, domain, service, or track from open files or branches without user confirmation.
+- Automatically run `lens-discover --headless` before feature creation so newly cloned `TargetProjects/` repos are registered.
+- Keep `feature_base_branch` blank for newly registered repos; do not ask for or set a PR base branch during `/new-feature`.
 - All governance writes go through `init-feature-ops.py create` — never written directly from this skill.
 - Track selection is always explicit; never silently apply a default.
 - FeatureId must be confirmed by the user before any write.
@@ -41,12 +43,20 @@ If this exits non-zero, stop and surface the failure. Do not proceed until prefl
 1. Read `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`. Resolve:
    - `{release_repo_root}` (default: `lens.core`)
    - `{governance_repo}` from `governance_repo_path`
+   - `{target_projects_path}` (default: `{project-root}/TargetProjects`)
    - `{control_repo}` (default: `{project-root}`)
    - `{personal_output_folder}` (default: `{project-root}/.lens/personal`)
 2. If `{project-root}/.lens/governance-setup.yaml` exists and contains `governance_repo_path`, prefer that value.
 3. If `{governance_repo}` remains unset, stop with: `config_missing: Run /new-domain or /new-service to configure governance first.`
 
-### Step 3 — Delegate to Init-Feature
+### Step 3 — Repo Inventory Sync
+
+1. Load `{project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-discover/SKILL.md`.
+2. Run the discover workflow in headless mode against `{governance_repo}/repo-inventory.yaml` and `{target_projects_path}`.
+3. Stop and surface any discover failure before creating the feature.
+4. Newly registered inventory entries must leave `feature_base_branch` blank so PR creation can ask for and persist the base branch later.
+
+### Step 4 — Delegate to Init-Feature
 
 1. Load `{project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-init-feature/SKILL.md`.
 2. Verify `init-feature-ops.py` exposes the `create` subcommand. If not, stop with:

@@ -27,6 +27,8 @@ EXPECTED_SUCCESS_FIELDS = {
     "target_projects_path",
     "docs_path",
     "context_path",
+    "related_service_clone_path",
+    "related_service_clone_guidance",
     "governance_git_executed",
     "governance_commit_sha",
     "git_commands",
@@ -206,6 +208,28 @@ def test_create_service_context_path(tmp_path):
     assert ctx["domain"] == "platform"
     assert ctx["service"] == "auth"
     assert ctx["updated_by"] == "new-service"
+
+
+def test_create_service_returns_clone_guidance(tmp_path):
+    """AC-9: create-service tells users where to clone related services before new-feature."""
+    gov = tmp_path / "gov"
+    gov.mkdir()
+    personal = tmp_path / "personal"
+    completed, payload = run_script(
+        [
+            "create-service",
+            "--governance-repo", str(gov),
+            "--domain", "platform",
+            "--service", "auth",
+            "--personal-folder", str(personal),
+        ]
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert payload["related_service_clone_path"] == "TargetProjects/platform/auth"
+    assert payload["related_service_clone_guidance"] == (
+        "Before running /new-feature, clone any related service repositories into "
+        "TargetProjects/platform/auth."
+    )
 
 
 def test_create_service_governance_git(tmp_path):
