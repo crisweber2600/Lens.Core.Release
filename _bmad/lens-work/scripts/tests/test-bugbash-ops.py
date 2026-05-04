@@ -45,12 +45,13 @@ class TestStatusSummary:
         result = _run(["status-summary", "--governance-repo", str(governance_repo)])
         assert result.returncode == 0
         data = json.loads(result.stdout.strip())
-        assert data == {"New": 0, "Inprogress": 0, "Fixed": 0, "Total": 0}
+        assert data == {"New": 0, "QuickDev": 0, "Inprogress": 0, "Fixed": 0, "Total": 0}
 
     def test_counts_bugs_in_each_folder(self, tmp_path):
         governance_repo = tmp_path / "gov"
         _create_md(governance_repo / "bugs" / "New", "bug-aa")
         _create_md(governance_repo / "bugs" / "New", "bug-bb")
+        _create_md(governance_repo / "bugs" / "QuickDev", "bug-qd")
         _create_md(governance_repo / "bugs" / "Inprogress", "bug-cc")
         _create_md(governance_repo / "bugs" / "Fixed", "bug-dd")
         _create_md(governance_repo / "bugs" / "Fixed", "bug-ee")
@@ -59,9 +60,10 @@ class TestStatusSummary:
         assert result.returncode == 0
         data = json.loads(result.stdout.strip())
         assert data["New"] == 2
+        assert data["QuickDev"] == 1
         assert data["Inprogress"] == 1
         assert data["Fixed"] == 3
-        assert data["Total"] == 6
+        assert data["Total"] == 7
 
     def test_exits_1_when_governance_repo_missing(self):
         with tempfile.TemporaryDirectory() as td:
@@ -76,10 +78,11 @@ class TestStatusSummary:
     def test_total_is_sum_of_all(self, tmp_path):
         governance_repo = tmp_path / "gov"
         _create_md(governance_repo / "bugs" / "New", "n1")
+        _create_md(governance_repo / "bugs" / "QuickDev", "q1")
         _create_md(governance_repo / "bugs" / "Inprogress", "i1")
         _create_md(governance_repo / "bugs" / "Inprogress", "i2")
         _create_md(governance_repo / "bugs" / "Fixed", "f1")
         result = _run(["status-summary", "--governance-repo", str(governance_repo)])
         assert result.returncode == 0
         data = json.loads(result.stdout.strip())
-        assert data["Total"] == data["New"] + data["Inprogress"] + data["Fixed"]
+        assert data["Total"] == data["New"] + data["QuickDev"] + data["Inprogress"] + data["Fixed"]

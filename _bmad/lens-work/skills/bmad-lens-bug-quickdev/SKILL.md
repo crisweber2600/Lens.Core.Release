@@ -39,11 +39,13 @@ uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py create-bug
   --title "{title}" \
   --description "{description}\n\nRepro Steps:\n{repro_steps}\n\nExpected:\n{expected}\n\nActual:\n{actual}" \
   --chat-log "Bug report submitted via /lens-bug-quickdev." \
-  --governance-repo {governance_repo}
+  --governance-repo {governance_repo} \
+  --queue QuickDev
 ```
 
 4. Parse script JSON:
    - `status: created` or `status: duplicate` are both valid; continue.
+   - Capture `slug` as `bug_slug` and `path` as `bug_artifact_path` for the PR-recording step and Output Contract.
    - On non-zero exit, stop and surface error.
 5. Load and run `{project-root}/.github/skills/bmad-quick-dev/SKILL.md`.
 6. Use this implementation intent exactly:
@@ -74,8 +76,15 @@ Required workflow in target project:
      --title "fix(lens): {title}" \
      --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
    ```
-   Capture `pr_url` from the JSON output field and include it in the Output Contract response.
-   If the command exits non-zero, surface the exact error and run this fallback from the `{target_project}` directory:
+    Capture `pr_url` from the JSON output field. Immediately record it back to the bug artifact by executing this terminal command from the workspace root:
+    ```bash
+    uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py record-quickdev-pr \
+       --governance-repo {governance_repo} \
+       --slug {bug_slug} \
+       --pr-url "{pr_url}"
+    ```
+    Capture the returned `path` as the final `bug_artifact_path` and include it in the Output Contract response. If this command exits non-zero, stop and surface the exact error.
+    If the create-pr command exits non-zero, surface the exact error and run this fallback from the `{target_project}` directory:
    ```bash
    gh pr create \
      --base develop \
@@ -83,7 +92,7 @@ Required workflow in target project:
      --title "fix(lens): {title}" \
      --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
    ```
-   Capture the PR URL from the `gh pr create` output. Do NOT ask the user to create the PR themselves."
+   Capture the PR URL from the `gh pr create` output, then execute the same `record-quickdev-pr` command above with the captured PR URL. Do NOT ask the user to create the PR themselves."
 
 7. After quick-dev delegation returns, run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
    - Verify the target project is still on `feature/bugfix-{bug-title-slug}`.
@@ -91,7 +100,8 @@ Required workflow in target project:
    - Run `git rev-parse --short HEAD` and capture the result as `commit hash`.
    - Run `git push -u origin feature/bugfix-{bug-title-slug}` to verify the branch is pushed. If it exits non-zero, stop and surface the exact error.
    - Re-run the idempotent PR creation command from step 9, capture `pr_url`, and include it as `PR URL`. The command must reuse an existing open PR when present.
-   - Do not answer with the Output Contract until `commit hash` and `PR URL` are both non-empty and the target repo has no uncommitted implementation changes.
+   - Re-run `record-quickdev-pr` with `bug_slug` and the final `pr_url`, capture the returned `path`, and use it as `bug_artifact_path`.
+   - Do not answer with the Output Contract until `commit hash`, `PR URL`, and `bug_artifact_path` are all non-empty, the PR URL has been recorded in the bug artifact, and the target repo has no uncommitted implementation changes.
    - Never say "left uncommitted", "you can create the PR", or equivalent manual handoff language for this flow. Either complete commit/push/PR verification or surface the exact blocking command/error.
 
 ## Output Contract

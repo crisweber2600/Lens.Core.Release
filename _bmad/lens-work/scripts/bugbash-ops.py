@@ -61,14 +61,16 @@ def cmd_status_summary(args: argparse.Namespace) -> int:
     assert_governance_repo_exists(governance_repo)
 
     new_count = _count_dir(governance_repo / "bugs" / "New")
+    quickdev_count = _count_dir(governance_repo / "bugs" / "QuickDev")
     inprogress_count = _count_dir(governance_repo / "bugs" / "Inprogress")
     fixed_count = _count_dir(governance_repo / "bugs" / "Fixed")
 
     summary = {
         "New": new_count,
+        "QuickDev": quickdev_count,
         "Inprogress": inprogress_count,
         "Fixed": fixed_count,
-        "Total": new_count + inprogress_count + fixed_count,
+        "Total": new_count + quickdev_count + inprogress_count + fixed_count,
     }
     print(json.dumps(summary))
     return 0

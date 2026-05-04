@@ -76,6 +76,16 @@ def test_pr_step_captures_pr_url():
     )
 
 
+def test_pr_step_records_pr_url_to_bug_artifact():
+    """Step 9 must record the captured PR URL back into the QuickDev bug artifact."""
+    text = _skill_text()
+    assert "record-quickdev-pr" in text, (
+        "SKILL.md step 9 must call bug-reporter-ops.py record-quickdev-pr after PR creation"
+    )
+    assert "--pr-url" in text, "record-quickdev-pr command must pass the captured PR URL"
+    assert "{bug_slug}" in text, "record-quickdev-pr command must target the captured bug slug"
+
+
 def test_pr_step_has_failure_fallback():
     """Step 9 must define a failure fallback that does not delegate to the user."""
     text = _skill_text()
@@ -101,6 +111,8 @@ def test_completion_gate_verifies_commit_push_and_pr_before_returning():
         "commit hash",
         "PR URL",
         "pr_url",
+        "record-quickdev-pr",
+        "bug_artifact_path",
     ):
         assert required in text, f"Completion gate missing required check: {required}"
 
@@ -180,3 +192,12 @@ def test_bug_intake_uses_bug_reporter_ops():
     assert "bug-reporter-ops.py create-bug" in text, (
         "SKILL.md must use bug-reporter-ops.py create-bug for governance intake"
     )
+
+
+def test_bug_intake_uses_quickdev_queue():
+    """Quickdev intake must write to bugs/QuickDev rather than bugs/New."""
+    text = _skill_text()
+    assert "--queue QuickDev" in text, (
+        "SKILL.md create-bug invocation must pass --queue QuickDev for quickdev bugs"
+    )
+    assert "bug_slug" in text, "SKILL.md must capture the create-bug slug for later PR recording"

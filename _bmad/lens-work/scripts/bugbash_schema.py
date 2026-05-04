@@ -9,9 +9,10 @@ bugbash_schema.py — Bug artifact frontmatter schema + status state machine.
 Shared by bug-reporter-ops.py (validate before write) and bug-fixer-ops.py
 (validate before status mutations).
 
-Allowed status values: New, Inprogress, Fixed
+Allowed status values: New, QuickDev, Inprogress, Fixed
 Allowed transitions:
   intake  → New              (new artifact; no prior state)
+    intake  → QuickDev         (quickdev artifact; no prior state)
   New     → Inprogress       (requires featureId set first)
   Inprogress → Fixed         (completion)
 
@@ -26,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-ALLOWED_STATUSES: frozenset[str] = frozenset({"New", "Inprogress", "Fixed"})
+ALLOWED_STATUSES: frozenset[str] = frozenset({"New", "QuickDev", "Inprogress", "Fixed"})
 
 REQUIRED_FIELDS: tuple[str, ...] = (
     "title",
