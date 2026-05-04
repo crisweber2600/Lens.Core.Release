@@ -235,16 +235,24 @@ def find_feature_yaml(governance_repo: str, feature_id: str) -> Path | None:
     return None
 
 
-def write_context_yaml(personal_folder: str, domain: str, service: str, source: str) -> Path:
+def write_context_yaml(
+    personal_folder: str,
+    domain: str,
+    service: str,
+    source: str,
+    feature_id: str = "",
+) -> Path:
     """Write context.yaml to the personal folder with current domain/service context."""
     context_path = Path(personal_folder) / "context.yaml"
     context_path.parent.mkdir(parents=True, exist_ok=True)
-    context_data = {
+    context_data: dict = {
         "domain": domain,
         "service": service,
         "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "updated_by": source,
     }
+    if feature_id:
+        context_data["feature_id"] = feature_id
 
     fd, tmp_path = tempfile.mkstemp(dir=str(context_path.parent), suffix=".yaml.tmp")
     try:
@@ -521,6 +529,7 @@ def cmd_switch(args: argparse.Namespace) -> dict:
                 str(feature_data.get("domain", "")),
                 str(feature_data.get("service", "")),
                 "lens-switch",
+                feature_id=args.feature_id,
             )
         )
     except OSError as e:

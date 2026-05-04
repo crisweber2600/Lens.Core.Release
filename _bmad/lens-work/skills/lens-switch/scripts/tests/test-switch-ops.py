@@ -350,6 +350,7 @@ def test_switch_success_full_contract_context_paths_and_context_file(tmp_path: P
     assert context_data["service"] == "identity"
     assert context_data["updated_by"] == "lens-switch"
     assert "T" in context_data["updated_at"]
+    assert context_data["feature_id"] == "auth-login"
 
     context_paths = payload["context_paths"]
     assert context_paths["related"][0]["id"] == "user-profile"
