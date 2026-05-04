@@ -250,9 +250,13 @@ def build_container_result_fields(
     workspace_git_commands: list[str],
     governance_git_executed: bool = False,
     governance_commit_sha: str | None = None,
+    workspace_git_executed: bool = False,
 ) -> dict:
     all_git_commands = [*governance_git_commands, *workspace_git_commands]
-    remaining_git_commands = workspace_git_commands if governance_git_executed else all_git_commands
+    if governance_git_executed and workspace_git_executed:
+        remaining_git_commands: list[str] = []
+    else:
+        remaining_git_commands = workspace_git_commands if governance_git_executed else all_git_commands
     return {
         "git_commands": all_git_commands,
         "governance_git_commands": governance_git_commands,
@@ -260,7 +264,34 @@ def build_container_result_fields(
         "remaining_git_commands": remaining_git_commands,
         "governance_git_executed": governance_git_executed,
         "governance_commit_sha": governance_commit_sha,
+        "workspace_git_executed": workspace_git_executed,
     }
+
+
+def build_workspace_scaffold_batches(
+    scaffold_entries: list[tuple[str, str]],
+    scope: str,
+    identifier: str,
+) -> list[tuple[str, list[list[str]]]]:
+    grouped: dict[str, list[str]] = {}
+    for workspace_root, rel_path in scaffold_entries:
+        grouped.setdefault(workspace_root, []).append(rel_path)
+
+    batches: list[tuple[str, list[list[str]]]] = []
+    for workspace_root, rel_paths in grouped.items():
+        unique_rel_paths = unique_paths(rel_paths)
+        noun = "folder" if len(unique_rel_paths) == 1 else "folders"
+        batches.append(
+            (
+                workspace_root,
+                [
+                    ["add", *unique_rel_paths],
+                    ["commit", "-m", f"scaffold({scope}): add {identifier} {noun}", "--only", "--", *unique_rel_paths],
+                    ["push"],
+                ],
+            )
+        )
+    return batches
 
 
 def build_workspace_scaffold_commands(
@@ -268,19 +299,21 @@ def build_workspace_scaffold_commands(
     scope: str,
     identifier: str,
 ) -> list[str]:
-    grouped: dict[str, list[str]] = {}
-    for workspace_root, rel_path in scaffold_entries:
-        grouped.setdefault(workspace_root, []).append(rel_path)
-
     commands: list[str] = []
-    for workspace_root, rel_paths in grouped.items():
-        unique_rel_paths = unique_paths(rel_paths)
-        noun = "folder" if len(unique_rel_paths) == 1 else "folders"
-        commands.extend([
-            f"git -C {workspace_root} add {' '.join(unique_rel_paths)}",
-            f'git -C {workspace_root} commit -m "scaffold({scope}): add {identifier} {noun}"',
-        ])
+    for workspace_root, steps in build_workspace_scaffold_batches(scaffold_entries, scope, identifier):
+        commands.extend(git_command_text(workspace_root, step) for step in steps)
     return commands
+
+
+def execute_workspace_scaffold_git(
+    scaffold_entries: list[tuple[str, str]],
+    scope: str,
+    identifier: str,
+) -> None:
+    for workspace_root, steps in build_workspace_scaffold_batches(scaffold_entries, scope, identifier):
+        ensure_git_worktree(workspace_root)
+        for step in steps:
+            run_git(workspace_root, step)
 
 
 def resolve_personal_folder(args: argparse.Namespace) -> Path:
@@ -427,12 +460,16 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
 
     governance_commit_sha: str | None = None
     governance_git_executed = False
+    workspace_git_executed = False
     if args.execute_governance_git:
         try:
             for step in gov_steps[2:]:
                 run_git(governance_repo, step)
             governance_commit_sha = current_head_sha(governance_repo)
             governance_git_executed = True
+            if workspace_scaffold_entries:
+                execute_workspace_scaffold_git(workspace_scaffold_entries, "domain", domain)
+                workspace_git_executed = True
         except RuntimeError as exc:
             return {
                 "status": "fail",
@@ -450,6 +487,8 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
                     governance_git_commands,
                     workspace_git_commands,
                     governance_commit_sha=current_head_sha(governance_repo),
+                    governance_git_executed=governance_git_executed,
+                    workspace_git_executed=workspace_git_executed,
                 ),
             }
 
@@ -470,6 +509,7 @@ def cmd_create_domain(args: argparse.Namespace) -> dict:
             workspace_git_commands,
             governance_git_executed=governance_git_executed,
             governance_commit_sha=governance_commit_sha,
+            workspace_git_executed=workspace_git_executed,
         ),
     }
 

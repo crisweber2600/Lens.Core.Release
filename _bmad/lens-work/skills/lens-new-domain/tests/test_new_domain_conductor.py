@@ -53,3 +53,16 @@ def test_skill_md_documents_deterministic_config_resolution() -> None:
     assert "Do not search the workspace for alternate config files or script locations." in text
     assert "Do not probe alternate governance repo candidates" in text
     assert "create-domain" in text
+
+
+def test_release_prompt_skips_slug_confirmation_for_valid_slug() -> None:
+    text = read_text(RELEASE_PROMPT)
+    assert "without a confirmation stop when the derived slug is valid" in text
+    assert "derive and confirm a slug" not in text
+
+
+def test_skill_md_documents_auto_publish_and_no_slug_confirmation() -> None:
+    text = read_text(SKILL_MD)
+    assert "Do not ask for slug confirmation when the derived domain slug is valid" in text
+    assert "published automatically" in text
+    assert "Always confirm the derived domain slug with the user before executing." not in text

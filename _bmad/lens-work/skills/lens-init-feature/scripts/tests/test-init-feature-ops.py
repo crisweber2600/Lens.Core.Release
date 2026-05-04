@@ -11,7 +11,7 @@ import yaml
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "init-feature-ops.py"
 EXPECTED_CONSTITUTION_BODY = """\
 ---
-permitted_tracks: [quickplan, full, hotfix, tech-change]
+permitted_tracks: [quickplan, full, hotfix, tech-change,express,expressplan]
 required_artifacts:
   planning:
     - business-plan
@@ -59,11 +59,11 @@ def run_script(args: list[str]):
     return completed, payload
 
 
-def init_main_repo_with_remote(base_tmp: Path) -> tuple[Path, Path]:
-    remote = base_tmp / "remote.git"
+def init_main_repo_with_remote(base_tmp: Path, name: str = "gov") -> tuple[Path, Path]:
+    remote = base_tmp / f"{name}-remote.git"
     subprocess.run(["git", "init", "--bare", str(remote)], check=True)
 
-    gov = base_tmp / "gov"
+    gov = base_tmp / name
     subprocess.run(["git", "clone", str(remote), str(gov)], check=True)
     subprocess.run(["git", "-C", str(gov), "checkout", "-b", "main"], check=True)
     subprocess.run(["git", "-C", str(gov), "config", "user.email", "test@example.com"], check=True)
@@ -223,6 +223,63 @@ def test_create_domain_execute_governance_git(tmp_path: Path):
     assert payload["governance_commit_sha"]
     assert (gov / "features" / "finance" / "domain.yaml").exists()
     assert (gov / "constitutions" / "finance" / "constitution.md").exists()
+
+
+def test_create_domain_execute_governance_git_auto_publishes_workspace_scaffold(tmp_path: Path):
+    _, gov = init_main_repo_with_remote(tmp_path, "gov")
+    workspace_remote, workspace = init_main_repo_with_remote(tmp_path, "workspace")
+    target = workspace / "TargetProjects"
+    docs = workspace / "docs"
+    personal = tmp_path / "personal"
+
+    completed, payload = run_script(
+        [
+            "create-domain",
+            "--governance-repo",
+            str(gov),
+            "--domain",
+            "finance",
+            "--target-projects-root",
+            str(target),
+            "--docs-root",
+            str(docs),
+            "--personal-folder",
+            str(personal),
+            "--execute-governance-git",
+        ]
+    )
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert payload["governance_git_executed"] is True
+    assert payload["workspace_git_executed"] is True
+    assert payload["remaining_git_commands"] == []
+    assert any(command.endswith("push") for command in payload["workspace_git_commands"])
+    assert (workspace / "TargetProjects" / "finance" / ".gitkeep").exists()
+    assert (workspace / "docs" / "finance" / ".gitkeep").exists()
+
+    workspace_status = subprocess.run(
+        ["git", "-C", str(workspace), "status", "--short"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert workspace_status.stdout.strip() == ""
+
+    pushed_target = subprocess.run(
+        ["git", "--git-dir", str(workspace_remote), "show", "main:TargetProjects/finance/.gitkeep"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    pushed_docs = subprocess.run(
+        ["git", "--git-dir", str(workspace_remote), "show", "main:docs/finance/.gitkeep"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert pushed_target.stdout == ""
+    assert pushed_docs.stdout == ""
 
 
 def test_create_domain_governance_git_dirty_repo(tmp_path: Path):

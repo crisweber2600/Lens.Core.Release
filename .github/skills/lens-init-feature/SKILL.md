@@ -214,7 +214,7 @@ Both `create-domain` and `create-service` accept an optional `--docs-root` argum
 - `create-domain` creates `docs/{domain}/.gitkeep`
 - `create-service` creates `docs/{domain}/{service}/.gitkeep`
 - The returned JSON includes `docs_path` when the scaffold was created or planned
-- `workspace_git_commands` and `remaining_git_commands` include the required control-repo scaffold follow-up commands
+- `workspace_git_commands` lists the control-repo scaffold publish commands; for `create-domain` with `--execute-governance-git`, those commands are executed automatically and `remaining_git_commands` is empty on success
 - `governance_git_commands` exposes the governance publish sequence, and `governance_commit_sha` identifies the pushed commit when `--execute-governance-git` succeeds
 
 Both `create-domain` and `create-service` accept an optional `--personal-folder` argument. When provided, they write a `context.yaml` file to that folder after successfully creating the governance artifacts. This file persists the user's active domain and service so that commands can resolve them without an active feature branch.
@@ -244,11 +244,8 @@ When handling the `create-domain` intent, use this interaction flow:
   - collapse repeated `-`
   - trim leading and trailing `-`
 3. Validate the derived slug against `SAFE_ID_PATTERN`.
-4. If valid, show: `Domain slug will be: {slug}. Proceed? [Y/n/edit]`
-5. On `Y`, invoke `create-domain` with `--domain {slug}` and `--name {display_name}` plus resolved config arguments.
-6. On `n`, cancel and report no changes were made.
-7. On `edit`, ask for a manual slug and validate it against `SAFE_ID_PATTERN` before showing confirmation again.
-8. If the derived slug is invalid, skip proceed prompt and ask for a valid manual slug.
-9. On success without auto-git, show `remaining_git_commands`.
-10. On success with auto-git, show `governance_commit_sha`.
-11. On failure, show the JSON `error` value verbatim.
+4. If valid, invoke `create-domain` with `--domain {slug}` and `--name {display_name}` plus resolved config arguments without a confirmation stop.
+5. If the derived slug is invalid, ask for a valid manual slug and validate it against `SAFE_ID_PATTERN` before invoking the script.
+6. On success without auto-git, show `remaining_git_commands`.
+7. On success with auto-git, show `governance_commit_sha` and note whether `remaining_git_commands` is empty.
+8. On failure, show the JSON `error` value verbatim.

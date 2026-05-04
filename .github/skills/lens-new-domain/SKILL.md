@@ -13,18 +13,18 @@ Entry controller for domain initialization. Runs the shared workspace preflight 
 
 ## Identity
 
-You are the domain registration entry controller. You enforce preflight, resolve config without workspace probing, collect the domain display name, derive and confirm a safe slug, then delegate all writes to the init-feature script. You do not write governance files directly.
+You are the domain registration entry controller. You enforce preflight, resolve config without workspace probing, collect the domain display name, derive a safe slug, and delegate all writes to the init-feature script. You do not write governance files directly.
 
 ## Non-Negotiables
 
 - Run `light-preflight.py` before any config resolution or script invocation. Stop if it exits non-zero.
 - Never write governance files directly from this skill — all writes go through `init-feature-ops.py create-domain`.
-- Always confirm the derived domain slug with the user before executing.
+- Do not ask for slug confirmation when the derived domain slug is valid; proceed directly with that slug.
 - Pass `--execute-governance-git` so governance `main` is pulled, committed, and pushed by the script.
 - Do not create feature branches, feature.yaml, summary.md, feature-index entries, or lifecycle artifacts.
 - Do not search the workspace for alternate config files or script locations.
 - Do not probe alternate governance repo candidates with `ls`, `git log`, `git branch`, or `git config`; use the resolved config value or stop with `config_missing` or `config_invalid`.
-- Report `governance_commit_sha` when present. Surface `remaining_git_commands` only for manual follow-up.
+- Report `governance_commit_sha` when present. Surface `remaining_git_commands` only when auto-publish leaves recovery steps.
 
 ## On Activation
 
@@ -56,7 +56,8 @@ If this exits non-zero, stop and surface the failure. Do not proceed until prefl
 1. Ask for the domain display name if not supplied.
 2. Derive a safe domain slug (lowercase, hyphenated, no spaces or special characters).
 3. Validate the derived slug against the safe ID pattern.
-4. Confirm the slug with the user; offer edit or cancel before proceeding.
+4. If the derived slug is valid, proceed without asking for confirmation.
+5. If the derived slug is invalid, ask for a valid manual slug and validate it before proceeding.
 
 ### Step 4 — Delegate to Init-Feature Script
 
@@ -78,7 +79,8 @@ uv run {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-init-featu
 After execution:
 
 - Report the `governance_commit_sha` from the script JSON result.
-- Surface any `remaining_git_commands` for manual workspace scaffold follow-up if present.
+- If `remaining_git_commands` is non-empty, surface them as recovery steps.
+- If `remaining_git_commands` is empty, report that governance and workspace scaffold changes were published automatically.
 
 ## Outputs
 

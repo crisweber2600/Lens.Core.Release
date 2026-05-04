@@ -39,9 +39,9 @@ Before reading config or invoking `init-feature-ops.py`:
 
 1. Load `{project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-new-domain/SKILL.md`.
 2. Execute the skill flow for domain creation.
-3. The skill must collect the display name, derive and confirm a slug, and delegate all writes to `init-feature-ops.py create-domain`.
+3. The skill must collect the display name, derive a slug, and delegate all writes to `init-feature-ops.py create-domain` without a confirmation stop when the derived slug is valid.
 4. The skill must pass `--target-projects-root {target_projects_path}`, `--docs-root {output_folder}`, `--personal-folder {personal_output_folder}`, and `--execute-governance-git`.
-5. On success, report `governance_commit_sha` when present and surface only `remaining_git_commands` for manual workspace scaffold follow-up.
+5. On success, report `governance_commit_sha` when present. If `remaining_git_commands` is non-empty, surface them as recovery steps; otherwise report that governance and workspace scaffold changes were published automatically.
 
 ## Scope Boundaries
 

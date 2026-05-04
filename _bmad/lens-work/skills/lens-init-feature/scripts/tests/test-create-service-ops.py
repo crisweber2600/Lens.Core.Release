@@ -33,6 +33,7 @@ EXPECTED_SUCCESS_FIELDS = {
     "governance_git_commands",
     "workspace_git_commands",
     "remaining_git_commands",
+    "workspace_git_executed",
     "error",
 }
 
