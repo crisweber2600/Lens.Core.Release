@@ -21,8 +21,9 @@ You are the ExpressPlan conductor. You protect the express track from accidental
 
 - Express-only gate runs before any delegation. accept only `express` and `expressplan` tracks. If the feature track is not `express` or `expressplan`, stop immediately.
 - Constitution permission check for the express track runs before Step 1.
-- Step 1 delegates with exactly `lens-bmad-skill --skill lens-quickplan`. Do not pass `--track`; never forward a user-supplied `--track` to QuickPlan.
+- Step 1 delegates through `lens-bmad-skill --skill lens-quickplan` and forwards the resolved `--mode {mode}`. Do not pass `--track`; never forward a user-supplied `--track` to QuickPlan.
 - QuickPlan prerequisite is mandatory: verify `lens-bmad-skill` registration, `lens-quickplan` registration, entry path, and skill file before any delegation. Missing `lens-bmad-skill` registration, missing `lens-quickplan` registration, missing entry path, or missing skill file blocks all QuickPlan delegation.
+- Interactive mode is never silent. Before Step 1, resolve `mode`, confirm the inferred feature context with the user, and ask only for missing goals, constraints, or success criteria that cannot be derived from feature state. Do not delegate to QuickPlan until the user responds.
 - Step 2 invokes exactly `lens-adversarial-review --phase expressplan --source phase-complete`.
 - Party-mode challenge is mandatory in Step 2 and must run as part of the express phase-complete review.
 - Canonical review artifact only: the review gate writes `expressplan-adversarial-review.md`. do not use `expressplan-review.md` as a new output or fallback.
@@ -49,6 +50,10 @@ You are the ExpressPlan conductor. You protect the express track from accidental
 6. **Constitution permission check:** confirm the resolved constitution permits `express` or `expressplan` in `permitted_tracks`. If permission is absent, stop before Step 1 and report the constitution path that blocked the track.
 7. Resolve staged docs path from `feature.yaml.docs.path` with fallback `docs/{domain}/{service}/{featureId}` in `{control_repo}`.
 8. Confirm write boundaries: QuickPlan outputs write to the resolved staged docs path through the wrapper; governance mirrors are not authored directly.
+9. Determine `mode`: `interactive` (default) or `batch`.
+10. If mode is `batch` and `batch_resume_context` is absent, delegate to `lens-batch --target expressplan`, write or refresh `expressplan-batch-input.md`, and stop. Do not delegate to QuickPlan on pass 1.
+11. If mode is `batch` and `batch_resume_context` is present, load the approved answers as Step 1 context and continue.
+12. If mode is `interactive`, confirm the feature, mode, and staged docs path with the user. Ask only for missing goals, constraints, or must-have context that cannot be inferred, and do not delegate to QuickPlan until the user responds.
 
 ## State Gate
 
@@ -76,12 +81,12 @@ Before delegating, verify the QuickPlan wrapper prerequisite: `lens-bmad-skill` 
 Delegate the express planning pipeline through the Lens BMAD wrapper:
 
 ```bash
-lens-bmad-skill --skill lens-quickplan plan {featureId}
+lens-bmad-skill --skill lens-quickplan plan {featureId} --mode {mode}
 ```
 
-Do not pass `--track`; never forward a user-supplied `--track` to QuickPlan. QuickPlan must use the existing feature state. The wrapper resolves the active `feature.yaml.docs.path` and enforces it as `write_scope`.
+Forward the resolved `mode` so QuickPlan preserves the interactive intake gate or batch resume context. Do not pass `--track`; never forward a user-supplied `--track` to QuickPlan. QuickPlan must use the existing feature state. The wrapper resolves the active `feature.yaml.docs.path` and enforces it as `write_scope`.
 
-Pass Lens context: `feature_id`, `domain`, `service`, `track`, `docs_path`, `governance_repo`, `control_repo`, and any batch resume context. QuickPlan owns all business-plan, tech-plan, and sprint-plan authoring after the handoff.
+Pass Lens context: `feature_id`, `domain`, `service`, `track`, `docs_path`, `governance_repo`, `control_repo`, `mode`, and any batch resume context. In interactive mode, QuickPlan must pause once to confirm or refine the inferred planning context before it writes any artifact. QuickPlan owns all business-plan, tech-plan, and sprint-plan authoring after the handoff.
 
 Expected Step 1 outputs:
 - `business-plan.md`

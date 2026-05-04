@@ -42,11 +42,21 @@ class TestExpressPlanContract:
         assert "Constitution permission check" in activation
         assert "permitted_tracks" in activation
 
+    def test_activation_restores_mode_resolution_and_interactive_gate(self):
+        content = EXPRESS_SKILL.read_text(encoding="utf-8")
+        activation = section_between(content, "## On Activation", "## Execution Contract")
+
+        assert "Determine `mode`: `interactive` (default) or `batch`." in activation
+        assert "If mode is `batch`" in activation
+        assert "If mode is `interactive`, confirm the feature, mode, and staged docs path with the user." in activation
+        assert "do not delegate to QuickPlan until the user responds" in activation
+
     def test_step_one_delegates_to_internal_quickplan_through_wrapper(self):
         content = EXPRESS_SKILL.read_text(encoding="utf-8")
         step_one = section_between(content, "### Step 1 - quickplan-via-lens-wrapper", "### Step 2")
 
         assert "lens-bmad-skill --skill lens-quickplan" in step_one
+        assert "--mode {mode}" in step_one
 
     def test_step_two_invokes_express_review_with_party_mode_required(self):
         content = EXPRESS_SKILL.read_text(encoding="utf-8")
@@ -81,6 +91,14 @@ class TestQuickPlanInternalOnly:
         assert "tech-plan.md" in content
         assert "sprint-plan.md" in content
 
+    def test_quickplan_requires_interactive_confirmation_before_drafting(self):
+        content = QUICKPLAN_SKILL.read_text(encoding="utf-8")
+
+        assert "**Args:** `plan <featureId> [--mode interactive|batch]`" in content
+        assert "Interactive mode is never silent." in content
+        assert "If mode is `interactive`, confirm the feature, mode, and docs path with the user." in content
+        assert "Do not write artifacts until the user responds." in content
+
     def test_no_public_quickplan_prompt_stub_exists(self):
         for path in PUBLIC_QUICKPLAN_PROMPTS:
             assert not path.exists(), f"QuickPlan must remain internal-only: {path}"
@@ -108,6 +126,7 @@ class TestExpressPlanDiscovery:
         release_prompt = RELEASE_PROMPT.read_text(encoding="utf-8")
 
         assert "light-preflight.py" in github_prompt
+        assert "vscode_askQuestions" in github_prompt
         assert "_bmad/lens-work/prompts/lens-expressplan.prompt.md" in github_prompt
         assert "lens-expressplan/SKILL.md" in release_prompt
         assert "only a redirect" in release_prompt.lower()

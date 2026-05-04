@@ -2,6 +2,11 @@
 agent: agent
 ---
 
+# lens-expressplan (Stub)
+
+> **This is a stub.** Load and execute the full prompt from the Lens module.
+> When appropriate, use `vscode_askQuestions` to collect user input before continuing.
+
 FIRST, run the preflight gate from the workspace root:
 
 ```bash
