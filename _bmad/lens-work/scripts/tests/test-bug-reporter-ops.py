@@ -59,6 +59,27 @@ def run_record_quickdev_pr(governance_repo: Path, slug: str, pr_url: str) -> sub
     )
 
 
+def run_close_quickdev_bug(
+    governance_repo: Path,
+    slug: str,
+    summary: str = "Implemented the QuickDev fix",
+    validation_summary: str = "Focused tests passed",
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "close-quickdev-bug",
+            "--governance-repo", str(governance_repo),
+            "--slug", slug,
+            "--summary", summary,
+            "--validation-summary", validation_summary,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+
 def run_migrate_quickdev_bugs(governance_repo: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [
@@ -276,6 +297,64 @@ class TestCreateBugEndToEnd(unittest.TestCase):
         record = run_record_quickdev_pr(self.governance_repo, slug, "https://github.com/org/repo/pull/55")
         self.assertEqual(record.returncode, 1)
         self.assertIn("not created by /lens-bug-quickdev", record.stderr)
+
+    def test_close_quickdev_bug_moves_pr_recorded_artifact_to_fixed(self) -> None:
+        """QuickDev closeout documents summary/validation and moves the artifact to Fixed."""
+        result = run_create_bug(self.governance_repo, chat_log=QUICKDEV_MARKER, queue="QuickDev")
+        data = json.loads(result.stdout)
+        quickdev_path = Path(data["path"])
+        record = run_record_quickdev_pr(self.governance_repo, data["slug"], "https://github.com/org/repo/pull/77")
+        self.assertEqual(record.returncode, 0, record.stderr)
+
+        close = run_close_quickdev_bug(
+            self.governance_repo,
+            data["slug"],
+            summary="Added mandatory branch PR closeout workflow",
+            validation_summary="Contract tests passed",
+        )
+
+        self.assertEqual(close.returncode, 0, close.stderr)
+        close_data = json.loads(close.stdout)
+        fixed_path = Path(close_data["path"])
+        self.assertFalse(quickdev_path.exists())
+        self.assertTrue(fixed_path.exists())
+        self.assertIn("bugs/Fixed", str(fixed_path).replace("\\", "/"))
+        content = fixed_path.read_text(encoding="utf-8")
+        self.assertIn("status: Fixed", content)
+        self.assertIn("closed_at:", content)
+        self.assertIn("closeout_summary:", content)
+        self.assertIn("validation_summary:", content)
+        self.assertIn("## QuickDev Closeout", content)
+        self.assertIn("Summary: Added mandatory branch PR closeout workflow", content)
+        self.assertIn("Validation: Contract tests passed", content)
+
+    def test_close_quickdev_bug_requires_recorded_pr(self) -> None:
+        """QuickDev closeout blocks until a PR URL has been recorded."""
+        result = run_create_bug(self.governance_repo, chat_log=QUICKDEV_MARKER, queue="QuickDev")
+        data = json.loads(result.stdout)
+
+        close = run_close_quickdev_bug(self.governance_repo, data["slug"])
+
+        self.assertEqual(close.returncode, 1)
+        self.assertIn("recorded PR URL", close.stderr)
+
+    def test_record_quickdev_pr_updates_already_fixed_artifact(self) -> None:
+        """PR recording remains idempotent after QuickDev closeout."""
+        result = run_create_bug(self.governance_repo, chat_log=QUICKDEV_MARKER, queue="QuickDev")
+        data = json.loads(result.stdout)
+        run_record_quickdev_pr(self.governance_repo, data["slug"], "https://github.com/org/repo/pull/88")
+        close = run_close_quickdev_bug(self.governance_repo, data["slug"])
+        self.assertEqual(close.returncode, 0, close.stderr)
+
+        record = run_record_quickdev_pr(self.governance_repo, data["slug"], "https://github.com/org/repo/pull/89")
+
+        self.assertEqual(record.returncode, 0, record.stderr)
+        record_data = json.loads(record.stdout)
+        fixed_path = Path(record_data["path"])
+        self.assertIn("bugs/Fixed", str(fixed_path).replace("\\", "/"))
+        content = fixed_path.read_text(encoding="utf-8")
+        self.assertIn('status: Fixed', content)
+        self.assertIn('pr_url: "https://github.com/org/repo/pull/89"', content)
 
 
 if __name__ == "__main__":

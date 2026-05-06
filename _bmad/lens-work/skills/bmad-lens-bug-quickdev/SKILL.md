@@ -18,6 +18,7 @@ This skill is a thin conductor. It orchestrates inputs and delegation only.
 - Revert any no-implicit-commit behavior for this flow: if this run writes changes in a touched repo, commit and push them before final response.
 - Never leave implementation, governance, or control-repo changes uncommitted as a manual handoff.
 - Never tell the user to commit, push, or open the PR themselves when the required automation commands are available.
+- The complete target-project workflow is mandatory: checkout/pull base, create or reuse the QuickDev branch, implement, validate, commit, push, create or reuse the PR, document the changes, and close the QuickDev bug artifact.
 
 ## Required Inputs
 
@@ -75,6 +76,7 @@ Required workflow in target project:
        --base-branch develop
     ```
     Capture `working_branch` from the JSON output and use it for all subsequent target-repo validation, push, and PR steps. If this command exits non-zero, stop and surface the exact error.
+   This command is mandatory because it checks out the base branch, pulls the base branch, and creates or reuses the QuickDev working branch. Do not replace it with narrative instructions or skip it when the target repo already appears to be on a usable branch.
 2) Before implementing, identify the primary affected Lens command and inspect the same command in `TargetProjects/lens-dev/old-codebase/lens.core.src` to understand legacy behavior and identify gaps. Use the same command name and closest matching prompt/skill/script entrypoint when available. If no legacy match exists, record that as a gap.
 3) If the legacy comparison reveals large gaps that materially change expected behavior, workflow, or outputs, stop and use `vscode_askQuestions` to confirm user intent before implementing.
 4) Implement the fix and run relevant validation.
@@ -104,7 +106,16 @@ Required workflow in target project:
        --slug {bug_slug} \
        --pr-url "{pr_url}"
     ```
-    Capture the returned `path` as the final `bug_artifact_path` and include it in the Output Contract response. If this command exits non-zero, stop and surface the exact error.
+    Capture the returned `path` as `bug_artifact_path`. If this command exits non-zero, stop and surface the exact error.
+    Then document the changes and close out the QuickDev bug by executing this terminal command from the workspace root:
+    ```bash
+      uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py close-quickdev-bug \
+       --governance-repo {governance_repo} \
+       --slug {bug_slug} \
+       --summary "{concise_change_summary}" \
+       --validation-summary "{validation_summary}"
+    ```
+    Capture the returned `path` as the final `bug_artifact_path`; it must point under `bugs/Fixed/`. If this command exits non-zero, stop and surface the exact error.
     If the create-pr command exits non-zero, surface the exact error and run this fallback from the `{target_project}` directory:
    ```bash
    gh pr create \
@@ -113,7 +124,7 @@ Required workflow in target project:
      --title "fix(lens): {title}" \
      --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
    ```
-   Capture the PR URL from the `gh pr create` output, then execute the same `record-quickdev-pr` command above with the captured PR URL. Do NOT ask the user to create the PR themselves."
+    Capture the PR URL from the `gh pr create` output, then execute the same `record-quickdev-pr` and `close-quickdev-bug` commands above with the captured PR URL. Do NOT ask the user to create the PR themselves."
 
 7. After quick-dev delegation returns, run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
    - Verify the target project is still on `{working_branch}`.
@@ -124,10 +135,11 @@ Required workflow in target project:
    - Re-run the standard Lens push command from step 6 with `--branch {working_branch}` to verify the branch is pushed. If it exits non-zero, stop and surface the exact error.
    - Verify governance and control repos are clean for changes introduced by this flow after required pushes complete.
    - Re-run the idempotent PR creation command from step 9, capture `pr_url`, and include it as `PR URL`. The command must reuse an existing open PR when present.
-   - Re-run `record-quickdev-pr` with `bug_slug` and the final `pr_url`, capture the returned `path`, and use it as `bug_artifact_path`.
+   - Re-run `record-quickdev-pr` with `bug_slug` and the final `pr_url`, capture the returned `path`, and use it as `bug_artifact_path` until closeout completes.
+   - Re-run `close-quickdev-bug` with `bug_slug`, a concise change summary, and validation summary. Capture the returned `path` as the final `bug_artifact_path`, and verify it points under `bugs/Fixed/`.
    - If the user requested automatic completion after the dev cycle, invoke `lens-complete` after the target PR is recorded. The conductor must run `complete-ops.py finalize --control-repo {project-root} --confirm` for the active feature, commit and push governance archival changes, and include the completion result or structured blocker in the final response.
    - For automatic completion requests, switch the control repo to `{feature_id}-dev` before the completion handoff and rely on `complete-ops.py` to validate related branches, create and merge the `{feature_id}-dev` → `main` PR, and delete related control branches after merge.
-   - Do not answer with the Output Contract until `working_branch`, `commit hash`, `PR URL`, and `bug_artifact_path` are all non-empty, the PR URL has been recorded in the bug artifact, and the target repo has no uncommitted implementation changes.
+   - Do not answer with the Output Contract until `working_branch`, `commit hash`, `PR URL`, and `bug_artifact_path` are all non-empty, the PR URL has been recorded in the bug artifact, the QuickDev closeout section documents the changes and validation, the bug artifact is under `bugs/Fixed/`, and the target repo has no uncommitted implementation changes.
    - Do not answer with the Output Contract if governance/control-repo changes created by this flow remain uncommitted or unpushed.
    - Never say "left uncommitted", "you can create the PR", or equivalent manual handoff language for this flow. Either complete commit/push/PR verification or surface the exact blocking command/error.
 

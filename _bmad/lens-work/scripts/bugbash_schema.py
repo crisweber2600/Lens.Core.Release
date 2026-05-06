@@ -14,6 +14,7 @@ Allowed transitions:
   intake  → New              (new artifact; no prior state)
     intake  → QuickDev         (quickdev artifact; no prior state)
   New     → Inprogress       (requires featureId set first)
+    QuickDev → Fixed           (quickdev PR opened and closeout recorded)
   Inprogress → Fixed         (completion)
 
 Forbidden (hard-blocked):
@@ -43,6 +44,7 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 _ALLOWED_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
     {
         ("New", "Inprogress"),
+        ("QuickDev", "Fixed"),
         ("Inprogress", "Fixed"),
     }
 )

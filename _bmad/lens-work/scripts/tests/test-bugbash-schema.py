@@ -8,6 +8,7 @@ Covers regression category § 7.1 from tech-plan:
   - Intake missing description → rejected; no file written
   - Status set to invalid value → operation rejected; prior state preserved
   - Invalid transition (New→Fixed) → blocked; explicit error
+    - QuickDev → Fixed → allowed for direct quickdev closeout
   - Invalid transition (Fixed→New) → blocked
   - Invalid transition (Inprogress→New) → blocked
 """
@@ -98,6 +99,9 @@ class TestValidateTransition(unittest.TestCase):
 
     def test_inprogress_to_fixed_allowed(self) -> None:
         validate_transition("Inprogress", "Fixed")
+
+    def test_quickdev_to_fixed_allowed(self) -> None:
+        validate_transition("QuickDev", "Fixed")
 
     def test_new_to_fixed_blocked(self) -> None:
         """Invalid transition New→Fixed → blocked; explicit error."""

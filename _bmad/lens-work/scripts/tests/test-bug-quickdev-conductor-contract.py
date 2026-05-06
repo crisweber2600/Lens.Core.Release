@@ -58,6 +58,9 @@ def test_workflow_uses_git_orchestration_prepare_dev_branch():
     assert "working_branch" in text, (
         "SKILL.md must capture working_branch from prepare-dev-branch output"
     )
+    assert "checks out the base branch" in text
+    assert "pulls the base branch" in text
+    assert "creates or reuses the QuickDev working branch" in text
 
 
 def test_workflow_uses_git_orchestration_push():
@@ -111,6 +114,17 @@ def test_pr_step_records_pr_url_to_bug_artifact():
     assert "{bug_slug}" in text, "record-quickdev-pr command must target the captured bug slug"
 
 
+def test_pr_step_documents_changes_and_closes_bug_artifact():
+    """After PR recording, the flow must document changes and move the QuickDev bug to Fixed."""
+    text = _skill_text()
+
+    assert "close-quickdev-bug" in text
+    assert "--summary" in text
+    assert "--validation-summary" in text
+    assert "bugs/Fixed/" in text
+    assert "QuickDev closeout section" in text
+
+
 def test_pr_step_has_failure_fallback():
     """Step 9 must define a failure fallback that does not delegate to the user."""
     text = _skill_text()
@@ -138,7 +152,9 @@ def test_completion_gate_verifies_commit_push_and_pr_before_returning():
         "PR URL",
         "pr_url",
         "record-quickdev-pr",
+        "close-quickdev-bug",
         "bug_artifact_path",
+        "bugs/Fixed/",
     ):
         assert required in text, f"Completion gate missing required check: {required}"
 

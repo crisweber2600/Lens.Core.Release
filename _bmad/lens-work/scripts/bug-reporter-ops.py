@@ -9,6 +9,7 @@ bug-reporter-ops.py — Bug intake artifact creation for the lens-bugbash suite.
 Commands:
     create-bug            --title STR --description STR --chat-log STR --governance-repo PATH [--queue New|QuickDev]
     record-quickdev-pr    --governance-repo PATH --slug STR --pr-url URL
+    close-quickdev-bug    --governance-repo PATH --slug STR --summary STR --validation-summary STR
     migrate-quickdev-bugs --governance-repo PATH
 
 Exit codes:
@@ -159,6 +160,43 @@ def _replace_quickdev_pr_section(content: str, pr_url: str, recorded_at: str) ->
     return prefix + "\n" + section + suffix
 
 
+def _body_value(value: str) -> str:
+    stripped = value.strip()
+    if "\n" not in stripped:
+        return stripped
+    return "\n  " + "\n  ".join(stripped.splitlines())
+
+
+def _replace_quickdev_closeout_section(content: str, summary: str, validation_summary: str, closed_at: str) -> str:
+    marker = "\n## QuickDev Closeout\n"
+    section = (
+        "\n## QuickDev Closeout\n\n"
+        f"- Summary: {_body_value(summary)}\n"
+        f"- Validation: {_body_value(validation_summary)}\n"
+        f"- Closed at: {closed_at}\n"
+    )
+    start = content.find(marker)
+    if start == -1:
+        return content.rstrip() + "\n" + section
+
+    next_heading = content.find("\n## ", start + len(marker))
+    prefix = content[:start].rstrip()
+    suffix = content[next_heading:] if next_heading != -1 else ""
+    return prefix + "\n" + section + suffix
+
+
+def _require_quickdev_marker(content: str, path: Path) -> str | None:
+    if QUICKDEV_MARKER in content:
+        return None
+    return f"Bug artifact {path.name} was not created by /lens-bug-quickdev"
+
+
+def _require_non_empty(value: str, flag: str) -> str | None:
+    if value.strip():
+        return None
+    return f"{flag} is required and must not be empty"
+
+
 def _write_quickdev_artifact(
     source_path: Path,
     dest_path: Path,
@@ -245,33 +283,32 @@ def cmd_record_quickdev_pr(args: argparse.Namespace) -> int:
     if source_path is None:
         print(f"ERROR: Bug artifact not found for slug: {args.slug}", file=sys.stderr)
         return 1
-    if source_path.parent.name not in {"New", "QuickDev"}:
+    if source_path.parent.name not in {"New", "QuickDev", "Fixed"}:
         print(
-            f"ERROR: Bug artifact is in bugs/{source_path.parent.name}; expected New or QuickDev for quickdev PR recording.",
+            f"ERROR: Bug artifact is in bugs/{source_path.parent.name}; expected New, QuickDev, or Fixed for quickdev PR recording.",
             file=sys.stderr,
         )
         return 1
 
-    # Guard: artifacts in bugs/New must carry the QuickDev marker to avoid
-    # accidentally corrupting normal bug records.
-    if source_path.parent.name == "New":
-        try:
-            new_content_check = source_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            print(f"ERROR: Could not read artifact {source_path}: {exc}", file=sys.stderr)
-            return 1
-        if QUICKDEV_MARKER not in new_content_check:
-            print(
-                f"ERROR: Bug artifact {source_path.name} in bugs/New was not created by "
-                "/lens-bug-quickdev; cannot record a QuickDev PR for it.",
-                file=sys.stderr,
-            )
+    try:
+        existing_content = source_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"ERROR: Could not read artifact {source_path}: {exc}", file=sys.stderr)
+        return 1
+
+    # Guard: artifacts outside the QuickDev queue must carry the QuickDev marker
+    # to avoid accidentally corrupting normal bug records.
+    if source_path.parent.name in {"New", "Fixed"}:
+        marker_error = _require_quickdev_marker(existing_content, source_path)
+        if marker_error:
+            print(f"ERROR: {marker_error}; cannot record a QuickDev PR for it.", file=sys.stderr)
             return 1
 
     recorded_at = _now_iso()
-    dest_path = governance_repo / "bugs" / "QuickDev" / source_path.name
+    dest_status = "Fixed" if source_path.parent.name == "Fixed" else "QuickDev"
+    dest_path = governance_repo / "bugs" / dest_status / source_path.name
     updates = {
-        "status": "QuickDev",
+        "status": dest_status,
         "updated_at": recorded_at,
         "pr_url": args.pr_url.strip(),
         "pr_recorded_at": recorded_at,
@@ -291,6 +328,82 @@ def cmd_record_quickdev_pr(args: argparse.Namespace) -> int:
         "path": str(dest_path),
         "status": "updated",
         "pr_url": args.pr_url.strip(),
+    }
+    print(json.dumps(result))
+    return 0
+
+
+def cmd_close_quickdev_bug(args: argparse.Namespace) -> int:
+    governance_repo = Path(args.governance_repo).resolve()
+    assert_governance_repo_exists(governance_repo)
+
+    slug_error = _validate_slug(args.slug)
+    if slug_error:
+        print(f"ERROR: {slug_error}", file=sys.stderr)
+        return 1
+    for value, flag in ((args.summary, "--summary"), (args.validation_summary, "--validation-summary")):
+        value_error = _require_non_empty(value, flag)
+        if value_error:
+            print(f"ERROR: {value_error}", file=sys.stderr)
+            return 1
+
+    source_path = _find_bug_artifact(governance_repo, args.slug)
+    if source_path is None:
+        print(f"ERROR: Bug artifact not found for slug: {args.slug}", file=sys.stderr)
+        return 1
+    if source_path.parent.name == "New":
+        print(
+            "ERROR: QuickDev bug must have its PR recorded before closeout; "
+            "run record-quickdev-pr first.",
+            file=sys.stderr,
+        )
+        return 1
+    if source_path.parent.name not in {"QuickDev", "Fixed"}:
+        print(
+            f"ERROR: Bug artifact is in bugs/{source_path.parent.name}; expected QuickDev or Fixed for quickdev closeout.",
+            file=sys.stderr,
+        )
+        return 1
+
+    closed_at = _now_iso()
+    dest_path = governance_repo / "bugs" / "Fixed" / source_path.name
+    updates = {
+        "status": "Fixed",
+        "updated_at": closed_at,
+        "closed_at": closed_at,
+        "closeout_summary": args.summary.strip(),
+        "validation_summary": args.validation_summary.strip(),
+    }
+
+    try:
+        content = source_path.read_text(encoding="utf-8")
+        marker_error = _require_quickdev_marker(content, source_path)
+        if marker_error:
+            print(f"ERROR: {marker_error}; cannot close it as a QuickDev bug.", file=sys.stderr)
+            return 1
+        if "pr_url:" not in content:
+            print(
+                "ERROR: QuickDev bug must have a recorded PR URL before closeout; "
+                "run record-quickdev-pr first.",
+                file=sys.stderr,
+            )
+            return 1
+        updated = _update_frontmatter(content, updates)
+        updated = _replace_quickdev_closeout_section(
+            updated,
+            args.summary.strip(),
+            args.validation_summary.strip(),
+            closed_at,
+        )
+        _write_quickdev_artifact(source_path, dest_path, governance_repo, updated)
+    except (OSError, ValueError, ScopeViolationError) as exc:
+        print(f"ERROR: Failed to close QuickDev bug {args.slug}: {exc}", file=sys.stderr)
+        return 3
+
+    result = {
+        "slug": args.slug,
+        "path": str(dest_path),
+        "status": "closed",
     }
     print(json.dumps(result))
     return 0
@@ -357,6 +470,12 @@ def _build_parser() -> argparse.ArgumentParser:
     record_pr.add_argument("--slug", required=True, help="Bug slug returned by create-bug")
     record_pr.add_argument("--pr-url", required=True, help="Pull request URL to record")
 
+    close_quickdev = sub.add_parser("close-quickdev-bug", help="Document and close a QuickDev bug artifact.")
+    close_quickdev.add_argument("--governance-repo", required=True, help="Absolute path to the governance repository root")
+    close_quickdev.add_argument("--slug", required=True, help="Bug slug returned by create-bug")
+    close_quickdev.add_argument("--summary", required=True, help="Concise implementation/change summary")
+    close_quickdev.add_argument("--validation-summary", required=True, help="Validation performed before closeout")
+
     migrate = sub.add_parser("migrate-quickdev-bugs", help="Move existing /lens-bug-quickdev bugs into QuickDev.")
     migrate.add_argument("--governance-repo", required=True, help="Absolute path to the governance repository root")
 
@@ -371,6 +490,8 @@ def main() -> int:
         return cmd_create_bug(args)
     if args.command == "record-quickdev-pr":
         return cmd_record_quickdev_pr(args)
+    if args.command == "close-quickdev-bug":
+        return cmd_close_quickdev_bug(args)
     if args.command == "migrate-quickdev-bugs":
         return cmd_migrate_quickdev_bugs(args)
 
