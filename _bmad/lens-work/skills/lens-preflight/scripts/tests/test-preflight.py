@@ -50,6 +50,20 @@ def test_sync_governance_repo_warns_for_read_only_requests(tmp_path: Path):
     assert "read-only request" in detail
 
 
+def test_sync_governance_repo_warns_for_control_write_requests_on_dirty_feature_branch(tmp_path: Path):
+    ops = load_preflight_module()
+    _, gov = init_main_repo_with_remote(tmp_path)
+
+    subprocess.run(["git", "-C", str(gov), "checkout", "-b", "feature/test-branch"], check=True, capture_output=True)
+    (gov / "LOCAL.txt").write_text("local\n", encoding="utf-8")
+
+    ok, detail = ops.sync_governance_repo(gov, request_class="control-write")
+
+    assert ok is True
+    assert detail.startswith("warn:")
+    assert "skipping mutable governance sync" in detail
+
+
 def test_sync_control_repo_blocks_mutating_request_when_worktree_dirty(tmp_path: Path):
     ops = load_preflight_module()
     _, control = init_main_repo_with_remote(tmp_path)
@@ -60,6 +74,18 @@ def test_sync_control_repo_blocks_mutating_request_when_worktree_dirty(tmp_path:
     assert ok is False
     assert detail.startswith("block:")
     assert "policy-blocked sync" in detail
+
+
+def test_sync_control_repo_warns_for_governance_write_requests_when_worktree_dirty(tmp_path: Path):
+    ops = load_preflight_module()
+    _, control = init_main_repo_with_remote(tmp_path)
+    (control / "LOCAL.txt").write_text("local\n", encoding="utf-8")
+
+    ok, detail = ops.sync_control_repo(control, request_class="governance-write")
+
+    assert ok is True
+    assert detail.startswith("warn:")
+    assert "skipping mutable control sync for governance-write request" in detail
 
 
 def test_sync_control_repo_pulls_clean_mutating_request(tmp_path: Path):
@@ -122,6 +148,22 @@ def test_classify_request_prefers_explicit_override():
     ops = load_preflight_module()
 
     assert ops.classify_request("lens-constitution", "mixed") == "mixed"
+
+
+def test_classify_request_marks_no_governance_write_planning_callers_as_control_write():
+    ops = load_preflight_module()
+
+    assert ops.classify_request("lens-expressplan") == "control-write"
+    assert ops.classify_request("lens-preplan") == "control-write"
+
+
+def test_classify_request_marks_governance_only_callers_as_governance_write():
+    ops = load_preflight_module()
+
+    assert ops.classify_request("lens-bug-reporter") == "governance-write"
+    assert ops.classify_request("lens-discover") == "governance-write"
+    assert ops.classify_request("lens-new-domain") == "governance-write"
+    assert ops.classify_request("lens-new-service") == "governance-write"
 
 
 def test_post_request_sync_decision_defaults_only_for_touched_repos():

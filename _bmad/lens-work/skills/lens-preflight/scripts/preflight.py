@@ -613,21 +613,25 @@ READ_ONLY_CALLERS = {
     "lens-switch",
     "onboard",
 }
+CONTROL_WRITE_CALLERS = {
+    "lens-expressplan",
+    "lens-preplan",
+}
+GOVERNANCE_WRITE_CALLERS = {
+    "lens-bug-reporter",
+    "lens-discover",
+    "lens-new-domain",
+    "lens-new-service",
+}
 MIXED_CALLERS = {
     "lens-bug-fixer",
     "lens-bug-quickdev",
-    "lens-bug-reporter",
     "lens-bugbash",
     "lens-businessplan",
     "lens-complete",
     "lens-dev",
-    "lens-discover",
-    "lens-expressplan",
     "lens-finalizeplan",
-    "lens-new-domain",
     "lens-new-feature",
-    "lens-new-service",
-    "lens-preplan",
     "lens-split-feature",
     "lens-techplan",
     "lens-upgrade",
@@ -659,6 +663,10 @@ def classify_request(caller: str, explicit_request_class: str = "") -> str:
     normalized_caller = str(caller or "").strip().lower()
     if normalized_caller in READ_ONLY_CALLERS:
         return "read-only"
+    if normalized_caller in CONTROL_WRITE_CALLERS:
+        return "control-write"
+    if normalized_caller in GOVERNANCE_WRITE_CALLERS:
+        return "governance-write"
     if normalized_caller in MIXED_CALLERS:
         return "mixed"
     return "mixed"
