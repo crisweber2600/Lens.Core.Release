@@ -104,6 +104,11 @@ phases:
     display_name: FinalizePlan
     agent: lens
     description: Consolidate approved planning and prepare execution artifacts.
+    input_contracts_by_track:
+      full: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      express: [business-plan, tech-plan, sprint-plan]
+      quickdev: [business-plan, tech-plan, sprint-plan]
+      hotfix-express: [architecture]
     artifacts:
       - review-report
       - epics

@@ -21,6 +21,7 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 
 - The execution contract has exactly three ordered steps: `review-and-push`, `plan-pr-readiness`, `downstream-bundle-and-final-pr`.
 - The predecessor gate accepts `techplan-complete` OR `expressplan-complete` as explicit ready states. Active `techplan` or `expressplan` wording is allowed only for a phase-complete resume when review-ready validation proves the predecessor artifacts are complete.
+- FinalizePlan must use the lifecycle `input-ready` contract for the active track before downstream bundle delegation. Missing generic BMAD input names such as `prd`, `architecture`, or `ux` are not blockers when the track-specific input contract passes.
 - No direct governance file creation is allowed. Governance writes route only through the `publish-to-governance` CLI, `lens-git-orchestration`, or `lens-feature-yaml`.
 - `lens-adversarial-review` and `lens-bmad-skill` are skill delegations in this flow. Satisfy them by loading the referenced `SKILL.md` files and invoking them with the stated args; do not block on finding separate `*ops.py` wrappers for those two skills.
 - A non-fail adversarial review verdict must explicitly direct the user to review the generated review artifact before FinalizePlan continues.
@@ -44,12 +45,13 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 2. Resolve `{governance_repo}`, `{control_repo}`, `{feature_id}`, and `{module_path}`.
 3. Load `feature.yaml` through `lens-feature-yaml` and resolve `domain`, `service`, `track`, `phase`, `docs.path`, and branch names.
 4. Validate the current branch model: `{featureId}` and `{featureId}-plan` must exist in the control repo before FinalizePlan proceeds.
-5. Validate the predecessor phase gate:
-   - Accept `techplan-complete`.
-   - Accept `expressplan-complete`.
-   - If phase wording is active `techplan` or active `expressplan`, continue only when `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase {phase} --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json` passes and the user is resuming a phase-complete handoff.
+5. Resolve staged docs path from `feature.yaml.docs.path` with fallback `docs/{domain}/{service}/{featureId}` in `{control_repo}`.
+6. Validate the predecessor phase gate and capture `predecessor_phase`:
+   - `techplan-complete` or active `techplan` -> `predecessor_phase=techplan`.
+   - `expressplan-complete` or active `expressplan` -> `predecessor_phase=expressplan`.
+   - For every accepted predecessor state, run `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase {predecessor_phase} --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json` and stop if it fails.
+   - If phase wording is active `techplan` or active `expressplan`, continue only when the review-ready validation passes and the user is resuming a phase-complete handoff.
    - Otherwise stop with: "FinalizePlan requires TechPlan or ExpressPlan completion before it can begin."
-6. Resolve staged docs path from `feature.yaml.docs.path` with fallback `docs/{domain}/{service}/{featureId}` in `{control_repo}`.
 7. Load domain constitution through `lens-constitution` for final cross-feature and governance context.
 8. Confirm write boundaries before continuing:
    - Staged planning artifacts are read from the control repo docs path.
@@ -120,6 +122,21 @@ gh pr create --base {featureId} --head {featureId}-plan --title "[plan] {feature
 ### Step 3 - downstream-bundle-and-final-pr
 
 1. After the planning PR has landed or the user confirms `{featureId}` contains the reviewed planning state, and only after the review-driven planning fixes from Step 1 are applied, generate the downstream planning bundle through `lens-bmad-skill` in this exact order:
+   First run the track-specific FinalizePlan input gate. Flatten the `found_files` dict values into a single sorted list of relative file paths and use that list as `approved_input_documents`:
+
+```bash
+uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py \
+   --phase finalizeplan \
+   --contract input-ready \
+   --track {track} \
+   --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml \
+   --docs-root {staged_docs_path} \
+   --json
+```
+
+   If this gate fails, stop before any `lens-bmad-skill` delegation and surface the track-specific missing artifacts. For express-track features, the approved input set is `business-plan.md`, `tech-plan.md`, and `sprint-plan.md`; do not ask the user to provide PRD-, architecture-, or UX-named documents when the express input contract passes. Include `expressplan-adversarial-review.md` and `finalizeplan-review.md` as supporting review context when present.
+   `approved_input_documents` is a flat list of relative file paths obtained by concatenating all lists in `found_files` values (e.g. `[p for paths in found_files.values() for p in paths]`) and sorting the result. Pass this list to every downstream wrapper call as `finalizeplan_input_documents` / `approved_input_documents`. Downstream BMAD prerequisite discovery must treat that set as the already confirmed analysis set for this Lens phase; it may ask only for genuinely missing track-required artifacts reported by the shared validator, not for generic BMAD document names absent from the selected track.
+
    Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-bmad-skill/SKILL.md` and invoke these wrapper calls in order. Treat each line below as a skill handoff, not as a requirement to discover a standalone `lens-bmad-skill-ops.py` entrypoint.
    1. `lens-bmad-skill --skill bmad-create-epics-and-stories`
    2. `lens-bmad-skill --skill bmad-check-implementation-readiness`

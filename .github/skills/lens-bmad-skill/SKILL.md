@@ -31,6 +31,7 @@ You are the Lens BMAD skill router. You load the skill registry, resolve Lens co
 - **Context modes** — `feature-optional` skills run without feature context; `feature-required` skills prompt for missing domain/service/feature.
 - **Output modes** — `planning-docs` skills write to planning artifact paths; `implementation-target` skills write to the target repo.
 - **Feature docs authority** — when feature context exists, planning-doc skills treat `feature.yaml.docs.path` as the authoritative `planning_artifacts` root. The global `docs/planning-artifacts` fallback is only for no-feature runs.
+- **Track-aware input contracts** — when a phase conductor supplies `approved_input_documents` or `finalizeplan_input_documents`, downstream BMAD skills treat that list as the confirmed analysis set for the selected Lens track instead of rediscovering generic BMAD document names.
 - **Write boundary enforcement** — planning skills never write to `{release_repo_root}/` or `.github/`; implementation skills write only to the target repo.
 - **Batch context forwarding** — when a planning target resumes from `/batch`, forward the approved batch input path and answer summary as read-only context for the downstream skill.
 - **Delegate and stop** — once the wrapper invokes the downstream skill, all workflow menus, discovery questions, and artifact authorship belong to that skill; the wrapper does not continue conductor execution on its behalf.
@@ -121,7 +122,12 @@ write_scope: "{write_scope}"
 batch_input_path: "{batch_resume_context.batch_input_path ?? ''}"
 batch_answers_summary: "{batch_resume_context.batch_answers_summary ?? ''}"
 batch_mode: "{batch_resume_context.batch_mode ?? 'none'}"
+approved_input_documents: "{caller.approved_input_documents ?? caller.finalizeplan_input_documents ?? []}"
+finalizeplan_input_documents: "{caller.finalizeplan_input_documents ?? caller.approved_input_documents ?? []}"
+track_input_contract: "{caller.track_input_contract ?? ''}"
 ```
+
+If `approved_input_documents` or `finalizeplan_input_documents` is non-empty, explicitly tell the downstream skill that these files have already passed the Lens lifecycle gate for the current `track`. The downstream skill must use them as its input document list, record them in generated frontmatter such as `inputDocuments`, and avoid stopping solely because PRD-, architecture-, or UX-named files are absent from a track that does not produce them. Missing input blockers must come from the shared Lens validator result supplied by the conductor, not from generic BMAD filename assumptions.
 
 Invoke the skill at `entryPath` from the registry entry. Forward all user-provided args.
 
