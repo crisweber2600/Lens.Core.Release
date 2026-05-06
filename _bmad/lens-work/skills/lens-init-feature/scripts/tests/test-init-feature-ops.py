@@ -502,6 +502,53 @@ class TestCreate:
         assert data["phase"] == "expressplan"
         assert data["team"] == [{"username": "testuser", "role": "lead"}]
 
+    def test_create_feature_without_control_repo_skips_branch_activation(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        gov.mkdir()
+        (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
+        (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
+        (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-no-control",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--name", "No Control",
+            "--track", "full",
+        ])
+
+        assert completed.returncode == 0
+        assert payload["status"] == "pass"
+        assert payload["remaining_commands"] == []
+        assert payload["planning_pr_created"] is False
+        assert payload["gh_commands"] == []
+
+    def test_create_feature_governance_control_repo_skips_branch_activation(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        gov.mkdir()
+        (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
+        (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
+        (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-gov-control",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--name", "Gov Control",
+            "--track", "full",
+            "--control-repo", str(gov),
+        ])
+
+        assert completed.returncode == 0
+        assert payload["status"] == "pass"
+        assert payload["remaining_commands"] == []
+        assert payload["planning_pr_created"] is False
+        assert payload["gh_commands"] == []
+
     def test_create_feature_writes_summary_md(self, tmp_path: Path):
         gov = tmp_path / "gov"
         gov.mkdir()
@@ -529,7 +576,9 @@ class TestCreate:
 
     def test_create_feature_updates_feature_index(self, tmp_path: Path):
         gov = tmp_path / "gov"
+        control = tmp_path / "control"
         gov.mkdir()
+        control.mkdir()
         (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
         (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
         (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
@@ -542,6 +591,7 @@ class TestCreate:
             "--service", "new-codebase",
             "--name", "Index Test",
             "--track", "full",
+            "--control-repo", str(control),
         ])
 
         assert completed.returncode == 0
@@ -696,7 +746,9 @@ class TestCreate:
 
     def test_create_feature_non_express_emits_planning_pr_command(self, tmp_path: Path):
         gov = tmp_path / "gov"
+        control = tmp_path / "control"
         gov.mkdir()
+        control.mkdir()
         (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
         (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
         (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
@@ -711,6 +763,7 @@ class TestCreate:
                 "--service", "new-codebase",
                 "--name", f"PR test {non_express_track}",
                 "--track", non_express_track,
+                "--control-repo", str(control),
             ])
 
             assert completed.returncode == 0, f"track={non_express_track}: {payload.get('error')}"

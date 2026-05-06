@@ -106,6 +106,21 @@ def unique_paths(paths: list[str]) -> list[str]:
     return ordered
 
 
+def is_same_path(first: str, second: str) -> bool:
+    try:
+        return Path(first).resolve() == Path(second).resolve()
+    except OSError:
+        return os.path.abspath(first) == os.path.abspath(second)
+
+
+def resolve_control_repo_for_feature(control_repo: str | None, governance_repo: str) -> str | None:
+    if not control_repo:
+        return None
+    if is_same_path(control_repo, governance_repo):
+        return None
+    return control_repo
+
+
 def ensure_git_worktree(repo: str) -> None:
     result = subprocess.run(
         git_command_argv(repo, ["rev-parse", "--is-inside-work-tree"]),
@@ -1015,7 +1030,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
     track = args.track
     username = args.username if args.username else ""
     governance_repo = args.governance_repo
-    control_repo = args.control_repo if args.control_repo else governance_repo
+    control_repo = resolve_control_repo_for_feature(args.control_repo, governance_repo)
     description = args.description if args.description else ""
 
     if not track:
@@ -1094,18 +1109,20 @@ def cmd_create(args: argparse.Namespace) -> dict:
     )
     governance_git_commands = [git_command_text(governance_repo, step) for step in gov_steps]
 
-    remaining_commands = [
-        (
-            f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/"
-            f"scripts/git-orchestration-ops.py create-feature-branches "
-            f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} --feature-id {shlex.quote(feature_id)}"
-        ),
-        (
-            f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-switch/"
-            f"scripts/switch-ops.py switch "
-            f"--governance-repo {shlex.quote(governance_repo)} --feature-id {shlex.quote(feature_id)} --control-repo {shlex.quote(control_repo)}"
-        ),
-    ]
+    remaining_commands: list[str] = []
+    if control_repo:
+        remaining_commands = [
+            (
+                f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/"
+                f"scripts/git-orchestration-ops.py create-feature-branches "
+                f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} --feature-id {shlex.quote(feature_id)}"
+            ),
+            (
+                f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-switch/"
+                f"scripts/switch-ops.py switch "
+                f"--governance-repo {shlex.quote(governance_repo)} --feature-id {shlex.quote(feature_id)} --control-repo {shlex.quote(control_repo)}"
+            ),
+        ]
 
     # Duplicate detection
     index_data = _load_feature_index(gov_path)
@@ -1243,7 +1260,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
 
     is_express = track == "express"
     gh_commands: list[str] = []
-    if not is_express:
+    if not is_express and control_repo:
         gh_commands = [
             (
                 f"gh pr create --repo {shlex.quote(control_repo)} "
@@ -1265,7 +1282,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
         "starting_phase": starting_phase,
         "recommended_command": "/next",
         "router_command": "/next",
-        "planning_pr_created": not is_express,
+        "planning_pr_created": bool(gh_commands),
         "gh_commands": gh_commands,
         "path": str(feature_yaml_path),
         "summary_path": str(summary_md_path),
@@ -1310,7 +1327,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     create = subparsers.add_parser("create", help="Initialize a new feature")
     create.add_argument("--governance-repo", required=True)
-    create.add_argument("--control-repo")
+    create.add_argument(
+        "--control-repo",
+        help="Separate control repo for feature branches; omitted or governance-equivalent values skip branch activation commands.",
+    )
     create.add_argument("--feature-id", required=True)
     create.add_argument("--domain", required=True)
     create.add_argument("--service", required=True)
