@@ -172,6 +172,33 @@ def test_completion_gate_forbids_uncommitted_or_manual_handoff_response():
     )
 
 
+def test_flow_explicitly_reverts_no_implicit_commit_behavior():
+    """The flow must explicitly require commit+push for touched repos."""
+    text = _skill_text()
+
+    assert "no-implicit-commit" in text or "no implicit commit" in text.lower(), (
+        "SKILL.md should explicitly describe the no-implicit-commit behavior being reverted"
+    )
+    assert "commit and push" in text.lower(), (
+        "SKILL.md must explicitly require commit and push as part of the flow"
+    )
+
+
+def test_completion_gate_checks_governance_and_control_repo_state():
+    """Completion gate must verify and clear governance/control dirty state when produced by the flow."""
+    text = _skill_text()
+
+    assert "git -C {governance_repo} status --short" in text, (
+        "Completion gate must inspect governance repo status"
+    )
+    assert "git -C {project-root} status --short" in text, (
+        "Completion gate must inspect control-repo status"
+    )
+    assert "governance/control-repo changes" in text, (
+        "Completion gate must block output contract when governance/control changes remain uncommitted"
+    )
+
+
 def test_quick_dev_skill_path_is_project_root_relative():
     """The delegated quick-dev skill path must not be hard-coded to a local workspace copy."""
     text = _skill_text()
