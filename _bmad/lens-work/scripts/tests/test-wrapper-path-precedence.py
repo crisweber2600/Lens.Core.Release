@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -22,12 +23,19 @@ def _read(path: Path) -> str:
 
 
 def test_public_wrappers_use_normalized_module_relative_paths():
-    """Prompt wrappers must not route through lens.core-prefixed paths."""
+    """Preflight command in prompt wrappers must not route through lens.core-prefixed paths.
+
+    The delegate redirect (ONLY AFTER ...) correctly uses lens.core/ to point at the
+    installed module prompt; only the preflight *command* must stay workspace-relative.
+    """
     for prompt in sorted(GITHUB_PROMPTS.glob("lens-*.prompt.md")):
         text = _read(prompt)
-        assert "lens.core/_bmad/lens-work" not in text, (
-            f"{prompt.name} still uses lens.core-prefixed path"
-        )
+        # Extract just the bash block(s) to avoid false-positives on the delegate path.
+        bash_blocks = re.findall(r"```bash\n(.*?)```", text, re.DOTALL)
+        for block in bash_blocks:
+            assert "lens.core/_bmad/lens-work" not in block, (
+                f"{prompt.name} preflight command still uses lens.core-prefixed path"
+            )
 
 
 def test_public_wrappers_use_standard_preflight_command():

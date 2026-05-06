@@ -47,6 +47,28 @@ def test_pr_step_uses_git_orchestration_create_pr():
     )
 
 
+def test_workflow_uses_git_orchestration_prepare_dev_branch():
+    """The target repo working branch must be prepared via git-orchestration, not raw git checkout steps."""
+    text = _skill_text()
+    assert "git-orchestration-ops.py prepare-dev-branch" in text, (
+        "SKILL.md must prepare the target repo branch via git-orchestration-ops.py prepare-dev-branch"
+    )
+    assert "--feature-slug bugfix-{bug-title-slug}" in text
+    assert "--mode feature-id" in text
+    assert "working_branch" in text, (
+        "SKILL.md must capture working_branch from prepare-dev-branch output"
+    )
+
+
+def test_workflow_uses_git_orchestration_push():
+    """The target repo push must run through the shared git-orchestration push command."""
+    text = _skill_text()
+    assert "git-orchestration-ops.py push" in text, (
+        "SKILL.md must push target repo branches via git-orchestration-ops.py push"
+    )
+    assert "--branch {working_branch}" in text
+
+
 def test_pr_step_specifies_base_develop():
     """Step 9 must pass --base develop to the create-pr command."""
     block = _create_pr_command_block(_skill_text())
@@ -65,6 +87,9 @@ def test_pr_step_specifies_target_repo():
     assert "{target_project}" in block, (
         "Step 9 create-pr --repo must use {target_project} placeholder, "
         "not a hardcoded path"
+    )
+    assert "--head {working_branch}" in block, (
+        "Step 9 create-pr must use the working_branch returned by prepare-dev-branch"
     )
 
 
@@ -107,7 +132,8 @@ def test_completion_gate_verifies_commit_push_and_pr_before_returning():
     for required in (
         "git status --short",
         "git rev-parse --short HEAD",
-        "git push -u origin feature/bugfix-{bug-title-slug}",
+        "git-orchestration-ops.py push",
+        "working_branch",
         "commit hash",
         "PR URL",
         "pr_url",
