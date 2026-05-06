@@ -646,6 +646,28 @@ class RepoSyncDecision(NamedTuple):
     branch: str | None = None
 
 
+def branch_cleanup_fallback_branch(repo_label: str, branch: str) -> str | None:
+    if repo_label != "control":
+        return None
+    if not branch or branch == "HEAD" or branch.endswith(("-plan", "-dev")):
+        return None
+    return f"{branch}-dev"
+
+
+def checkout_branch_cleanup_fallback(repo: Path, remote: str, fallback_branch: str) -> tuple[bool, str | None]:
+    fetch_result = repo_git_repo(
+        repo,
+        ["fetch", remote, f"refs/heads/{fallback_branch}:refs/remotes/{remote}/{fallback_branch}"],
+    )
+    if fetch_result.returncode != 0:
+        return False, f"failed to fetch {remote}/{fallback_branch}: {repo_git_error(fetch_result)}"
+
+    checked_out, checkout_detail = repo_ensure_local_branch(repo, fallback_branch)
+    if not checked_out:
+        return False, f"failed to checkout {fallback_branch}: {checkout_detail}"
+    return True, None
+
+
 def normalize_request_class(value: str) -> str:
     normalized = str(value or "").strip().lower()
     if not normalized:
@@ -768,6 +790,54 @@ def pre_request_sync(
     if remote_branch_error is not None:
         return RepoSyncDecision(repo_label, "block", remote_branch_error, True, local_branch)
     if not has_remote_branch:
+        fallback_branch = branch_cleanup_fallback_branch(repo_label, remote_branch)
+        if fallback_branch:
+            fallback_exists, fallback_error = repo_remote_branch_exists(repo, remote, fallback_branch)
+            if fallback_error is not None:
+                return RepoSyncDecision(repo_label, "block", fallback_error, True, local_branch)
+            if fallback_exists:
+                checked_out, checkout_detail = checkout_branch_cleanup_fallback(repo, remote, fallback_branch)
+                if not checked_out:
+                    return RepoSyncDecision(repo_label, "block", checkout_detail or "failed to checkout branch cleanup fallback", True, local_branch)
+                local_branch = fallback_branch
+                remote_branch = fallback_branch
+            else:
+                fallback_branch = None
+
+        if fallback_branch:
+            pull_result = repo_git_repo(repo, ["pull", "--rebase", "--autostash", remote, remote_branch])
+            if pull_result.returncode != 0:
+                return RepoSyncDecision(
+                    repo_label,
+                    "block",
+                    f"pull failed on {remote}/{remote_branch}: {repo_git_error(pull_result)}",
+                    True,
+                    local_branch,
+                )
+
+            ahead, ahead_detail = repo_commits_ahead_of_remote(repo, remote, remote_branch)
+            if ahead_detail:
+                return RepoSyncDecision(repo_label, "block", ahead_detail, True, local_branch)
+            if ahead > 0:
+                return RepoSyncDecision(
+                    repo_label,
+                    "warn",
+                    (
+                        f"{remote}/{remote_branch_or_error} missing after branch cleanup; "
+                        f"switched to {remote_branch}; local branch remains {ahead} commit(s) ahead and publish is deferred"
+                    ),
+                    True,
+                    local_branch,
+                )
+
+            return RepoSyncDecision(
+                repo_label,
+                "pull-only",
+                f"{remote}/{remote_branch_or_error} missing after branch cleanup; switched to {remote_branch} and pulled {remote}/{remote_branch}",
+                True,
+                local_branch,
+            )
+
         return RepoSyncDecision(
             repo_label,
             "block",

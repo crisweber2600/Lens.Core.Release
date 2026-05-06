@@ -164,6 +164,34 @@ def test_sync_control_repo_pulls_clean_mutating_request(tmp_path: Path):
     assert "pulled origin/main" in detail
 
 
+def test_pre_request_sync_switches_to_dev_branch_when_feature_remote_was_deleted(tmp_path: Path):
+    ops = load_preflight_module()
+    _, control = init_main_repo_with_remote(tmp_path)
+
+    feature_branch = "lens-dev-new-codebase-example"
+    dev_branch = f"{feature_branch}-dev"
+    subprocess.run(["git", "-C", str(control), "checkout", "-b", feature_branch], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(control), "push", "-u", "origin", feature_branch], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(control), "checkout", "-b", dev_branch, "main"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(control), "push", "-u", "origin", dev_branch], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(control), "checkout", feature_branch], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(control), "push", "origin", f":{feature_branch}"], check=True, capture_output=True)
+
+    decision = ops.pre_request_sync(control, "control", "mixed")
+
+    assert decision.outcome == "pull-only"
+    assert decision.branch == dev_branch
+    assert f"origin/{feature_branch} missing after branch cleanup" in decision.detail
+    assert f"switched to {dev_branch}" in decision.detail
+    current_branch = subprocess.run(
+        ["git", "-C", str(control), "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert current_branch.stdout.strip() == dev_branch
+
+
 def test_sync_release_repo_resets_hard_and_retries_when_pull_is_blocked(tmp_path: Path):
     ops = load_preflight_module()
     remote, release = init_main_repo_with_remote(tmp_path)
