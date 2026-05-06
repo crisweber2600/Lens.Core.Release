@@ -134,6 +134,8 @@ class TestFinalizePlanContract:
         assert "open_questions" in step_three
         assert "dependency paths" in step_three
         assert "target repositories" in step_three
+        assert "every story referenced by `sprint-status.yaml`" in step_three
+        assert "single seeded story file" in step_three
         assert "story_id" in step_three
         assert "depends_on" in step_three
         assert "updated_at" in step_three

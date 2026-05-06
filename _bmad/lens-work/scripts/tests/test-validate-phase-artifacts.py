@@ -148,6 +148,97 @@ class TestValidatePhaseArtifactsStoryFiles:
         assert payload["status"] == "pass"
         assert payload["metadata_errors"] == []
 
+    def test_strict_metadata_rejects_missing_story_file_referenced_by_sprint_status(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        (docs_root / "sprint-status.yaml").write_text(
+            """
+sprints:
+  - sprint_number: 1
+    stories:
+      - story_id: PF-1.1
+        status: ready-for-dev
+      - story_id: PF-1.2
+        status: ready-for-dev
+""".lstrip(),
+            encoding="utf-8",
+        )
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text(_story_frontmatter("PF-1.1"), encoding="utf-8")
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "fail"
+        assert payload["failure_reason"] == "metadata_errors"
+        assert payload["metadata_errors"] == [
+            "sprint-status.yaml references story IDs without matching story files: PF-1.2"
+        ]
+
+    def test_strict_metadata_accepts_all_sprint_status_story_files(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        (docs_root / "sprint-status.yaml").write_text(
+            """
+sprints:
+  - sprint_number: 1
+    stories:
+      - story_id: PF-1.1
+        status: ready-for-dev
+      - story_id: PF-1.2
+        status: ready-for-dev
+""".lstrip(),
+            encoding="utf-8",
+        )
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text(_story_frontmatter("PF-1.1"), encoding="utf-8")
+        (stories_dir / "story-PF-1.2.md").write_text(_story_frontmatter("PF-1.2"), encoding="utf-8")
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "pass"
+        assert payload["metadata_errors"] == []
+
+    def test_strict_metadata_requires_sprint_status_yaml_for_story_coverage(self, tmp_path):
+        docs_root = _make_docs(tmp_path)
+        (docs_root / "sprint-status.yaml").unlink()
+        (docs_root / "sprint-backlog.md").write_text("# Sprint Backlog\n", encoding="utf-8")
+        stories_dir = docs_root / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "story-PF-1.1.md").write_text(_story_frontmatter("PF-1.1"), encoding="utf-8")
+
+        result = _run(
+            "--phase", "finalizeplan",
+            "--lifecycle-path", str(LIFECYCLE),
+            "--docs-root", str(docs_root),
+            "--strict-metadata",
+            "--json",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "fail"
+        assert payload["failure_reason"] == "metadata_errors"
+        assert payload["metadata_errors"] == [
+            "strict metadata requires sprint-status.yaml to verify story-file coverage; "
+            "sprint-backlog.md alone is insufficient"
+        ]
+
     def test_strict_metadata_rejects_draft_sprint_plan(self, tmp_path):
         docs_root = _make_docs(tmp_path)
         stories_dir = docs_root / "stories"

@@ -197,6 +197,70 @@ def yaml_metadata_from_file(path: Path) -> dict | None:
         return None
 
 
+def collect_story_ids(value: object) -> set[str]:
+    story_ids: set[str] = set()
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in {"story_id", "storyId"} and item:
+                story_ids.add(str(item))
+            else:
+                story_ids.update(collect_story_ids(item))
+    elif isinstance(value, list):
+        for item in value:
+            story_ids.update(collect_story_ids(item))
+
+    return story_ids
+
+
+def sprint_status_story_ids(docs_root: Path) -> tuple[set[str], str | None]:
+    sprint_status = docs_root / "sprint-status.yaml"
+    if not sprint_status.exists() or sprint_status.stat().st_size == 0:
+        sprint_backlog = docs_root / "sprint-backlog.md"
+        if sprint_backlog.exists() and sprint_backlog.stat().st_size > 0:
+            return (
+                set(),
+                "strict metadata requires sprint-status.yaml to verify story-file coverage; "
+                "sprint-backlog.md alone is insufficient"
+            )
+        return set(), None
+
+    try:
+        documents = list(yaml.safe_load_all(sprint_status.read_text(encoding="utf-8")))
+    except yaml.YAMLError:
+        return set(), "sprint-status.yaml has malformed YAML (parse error)"
+
+    story_ids: set[str] = set()
+    for document in documents:
+        story_ids.update(collect_story_ids(document))
+    return story_ids, None
+
+
+def story_ids_for_file(story_file: Path) -> set[str]:
+    story_ids: set[str] = set()
+    metadata = yaml_metadata_from_file(story_file)
+    if isinstance(metadata, dict):
+        story_id = metadata.get("story_id")
+        if story_id:
+            story_ids.add(str(story_id))
+
+    stem = story_file.stem
+    story_ids.add(stem)
+    if stem.startswith("story-"):
+        story_ids.add(stem.removeprefix("story-"))
+    if stem.startswith("dev-story-"):
+        story_ids.add(stem.removeprefix("dev-story-"))
+
+    return story_ids
+
+
+def existing_story_ids(docs_root: Path) -> set[str]:
+    story_ids: set[str] = set()
+    for story_file in existing_artifact_files(docs_root, "story-files"):
+        story_ids.update(story_ids_for_file(story_file))
+    return story_ids
+
+
 def metadata_field_missing(metadata: dict, field: str) -> bool:
     if field not in metadata:
         return True
@@ -209,6 +273,17 @@ def strict_metadata_errors(phase: str, contract: str, docs_root: Path) -> list[s
         return []
 
     errors: list[str] = []
+
+    sprint_story_ids, sprint_error = sprint_status_story_ids(docs_root)
+    if sprint_error:
+        errors.append(sprint_error)
+    elif sprint_story_ids:
+        missing_story_ids = sorted(sprint_story_ids - existing_story_ids(docs_root))
+        if missing_story_ids:
+            errors.append(
+                "sprint-status.yaml references story IDs without matching story files: "
+                + ", ".join(missing_story_ids)
+            )
 
     for story_file in existing_artifact_files(docs_root, "story-files"):
         metadata = yaml_metadata_from_file(story_file)

@@ -145,6 +145,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-
 2. Run the post-bundle metadata reconciliation gate before validation or commit:
    - Re-read predecessor review artifacts, `finalizeplan-review.md`, and any PR review suggestions already received for this bundle.
    - Apply accepted metadata findings to `business-plan.md`, `tech-plan.md`, `sprint-plan.md`, and related feature metadata while the feature is still in FinalizePlan. Typical fixes include promoting dev-ready planning artifacts out of `draft`, clearing resolved `open_questions`, updating dependency paths to the live target surfaces, and registering target repositories required for `/dev`.
+   - Ensure every story referenced by `sprint-status.yaml` has a corresponding story file produced by `bmad-create-story`. Do not treat a single seeded story file as sufficient when `sprint-status.yaml` contains a larger queue.
    - Ensure every story file produced by `bmad-create-story` has YAML frontmatter containing `feature`, `story_id`, `doc_type: story`, `status`, `title`, `depends_on`, and `updated_at`, and that those identifiers correlate with `sprint-status.yaml`.
    - Refresh `finalizeplan-review.md` with the metadata fixes applied in this gate or an explicit deferral rationale for any accepted finding not applied.
 3. Validate that bundle outputs exist in the resolved docs path and pass strict handoff metadata checks by executing:
