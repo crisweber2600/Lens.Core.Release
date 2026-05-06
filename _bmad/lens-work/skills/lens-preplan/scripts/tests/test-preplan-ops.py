@@ -42,7 +42,7 @@ def section(text: str, heading: str) -> str:
 
 def test_stub_preflight_then_release_prompt():
     text = read_text(STUB_PROMPT)
-    preflight = "uv run _bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
+    preflight = "uv run --script lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
     release_prompt = "_bmad/lens-work/prompts/lens-preplan.prompt.md"
 
     assert preflight in text

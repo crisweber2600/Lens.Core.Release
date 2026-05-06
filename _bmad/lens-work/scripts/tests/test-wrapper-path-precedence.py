@@ -23,23 +23,23 @@ def _read(path: Path) -> str:
 
 
 def test_public_wrappers_use_normalized_module_relative_paths():
-    """Preflight command in prompt wrappers must not route through lens.core-prefixed paths.
+    """Preflight command in prompt wrappers must not use legacy root-relative _bmad paths.
 
-    The delegate redirect (ONLY AFTER ...) correctly uses lens.core/ to point at the
-    installed module prompt; only the preflight *command* must stay workspace-relative.
+    Prompt stubs run from control workspace root where the installed module lives under
+    lens.core/_bmad, so the preflight command must use the lens.core-prefixed script path.
     """
     for prompt in sorted(GITHUB_PROMPTS.glob("lens-*.prompt.md")):
         text = _read(prompt)
         # Extract just the bash block(s) to avoid false-positives on the delegate path.
         bash_blocks = re.findall(r"```bash\n(.*?)```", text, re.DOTALL)
         for block in bash_blocks:
-            assert "lens.core/_bmad/lens-work" not in block, (
-                f"{prompt.name} preflight command still uses lens.core-prefixed path"
+            assert "uv run _bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py" not in block, (
+                f"{prompt.name} preflight command still uses legacy _bmad root-relative path"
             )
 
 
 def test_public_wrappers_use_standard_preflight_command():
-    expected = "uv run _bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
+    expected = "uv run --script lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
     for prompt in sorted(GITHUB_PROMPTS.glob("lens-*.prompt.md")):
         text = _read(prompt)
         assert expected in text, f"{prompt.name} missing normalized preflight command"
