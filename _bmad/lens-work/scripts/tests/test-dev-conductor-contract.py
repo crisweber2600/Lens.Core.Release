@@ -84,6 +84,22 @@ def test_phase_entry_validates_finalizeplan_complete():
     )
 
 
+def test_control_dev_branch_activation_precedes_phase_entry_validation():
+    """Conductor switches to {feature_id}-dev before story validation reads feature docs."""
+    text = _skill_text()
+    activation_index = text.find("## Control Dev Branch Activation")
+    validation_index = text.find("## Phase Entry Validation")
+
+    assert activation_index != -1, "SKILL.md must document Control Dev Branch Activation"
+    assert validation_index != -1, "SKILL.md must document Phase Entry Validation"
+    assert activation_index < validation_index, (
+        "Control dev branch activation must be documented before phase entry validation"
+    )
+    assert "{feature_id}-dev" in text
+    assert "control_dev_branch_checkout_failed" in text
+    assert "Do not proceed to `sprint_status_missing`, `story_file_missing`" in text
+
+
 def test_sprint_boundary_pause_documented():
     """Sprint boundary pause is documented as mandatory."""
     text = _skill_text()

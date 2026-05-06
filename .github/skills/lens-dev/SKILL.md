@@ -27,6 +27,7 @@ Optional inputs:
 Preconditions:
 - FinalizePlan artifacts exist and are review-ready.
 - Governance feature state is readable.
+- Control repo can check out the feature dev branch before reading feature docs.
 - Target repo is reachable and has no unresolved merge state.
 
 ## Output Contract
@@ -44,6 +45,7 @@ Secondary outputs:
 
 Hard-stop errors:
 - Missing required inputs or unresolved feature context.
+- Control repo dev branch checkout failure.
 - FinalizePlan gate not satisfied.
 - Target repo branch prep failure.
 - Commit/push failure for a completed story slice.
@@ -59,12 +61,29 @@ Never continue silently after a hard-stop error.
 Validate this contract with focused tests that assert:
 - Required input keys are named in this skill.
 - Output contract includes story commit references and dev-session updates.
+- Control repo `{feature_id}-dev` branch activation is required before phase entry story validation.
 - Hard-stop and recoverable error categories are explicitly documented.
 - Scope statement keeps this skill orchestration-only.
 
+## Control Dev Branch Activation
+
+Before any Phase Entry Validation that reads `sprint-status.yaml`, story files, or other feature docs, the conductor MUST ensure the control repo is on the feature dev branch for the active feature.
+
+1. Resolve `feature_id` from the explicit input, active session context, or governance feature selection before reading control-repo feature docs.
+2. Set `control_dev_branch = {feature_id}-dev`.
+3. Inspect the current control-repo branch with `git -C {control_repo} branch --show-current`.
+4. If the current branch is not `control_dev_branch`, attempt to check out the dev branch:
+   - Prefer an existing local `control_dev_branch` when present.
+   - Otherwise fetch and check out `origin/{control_dev_branch}` when present.
+   - Pull `origin/{control_dev_branch}` after checkout when the remote exists.
+5. If checkout or pull fails, emit `control_dev_branch_checkout_failed` hard-stop with the attempted branch and git error. Do not proceed to `sprint_status_missing`, `story_file_missing`, or story queue validation while still on the wrong branch.
+6. If checkout succeeds, use the docs on `control_dev_branch` as the source for all Phase Entry Validation and dev-cycle docs updates.
+
+This branch activation is mandatory for `/lens-dev` because finalized planning docs are delivered on `{feature_id}-dev`. A `story_file_missing` result from `main`, `{feature_id}`, `{feature_id}-plan`, or any unrelated branch is not authoritative until this dev-branch activation has succeeded.
+
 ## Phase Entry Validation
 
-Before execution begins, the conductor MUST validate all of the following. Fail fast on any violation.
+After Control Dev Branch Activation succeeds, the conductor MUST validate all of the following. Fail fast on any violation.
 
 1. **feature.yaml phase gate**: Read `feature.yaml` from the governance repo. The `phase` field MUST be `finalizeplan-complete`. If the phase is any other value:
    - If phase is `dev` or `dev-complete`: Resume dev execution from the recorded `dev-session.yaml` checkpoint.
@@ -146,12 +165,13 @@ All timestamps are ISO 8601. All writes emit this schema exactly. Read-time comp
 
 ## Execution Flow
 
-1. **Phase entry validation**: Validate feature.yaml phase, sprint-status.yaml, story files, target repo state, and dev-session.yaml integrity.
-2. **Story queue resolution**: Build ready queue from sprint-status.yaml and dev-session.yaml completed list.
-3. **Branch context**: Confirm or prepare target repo branch via `lens-git-orchestration`.
-4. **Story loop**: For each ready story, validate, delegate, test, commit, record, and advance.
-5. **Sprint boundary**: Pause after each sprint for user confirmation.
-6. **Completion**: When all stories are done, emit `sprint_complete` and update `feature.yaml` to `dev-complete`. If the invocation requested automatic post-dev completion, immediately run `lens-complete` preconditions and then `complete-ops.py finalize --control-repo {control_repo} --confirm`; treat the user's auto-complete request as the explicit confirmation for that finalize call. If completion preconditions fail, surface the structured blocker and do not simulate completion.
+1. **Control dev branch activation**: Resolve the active feature and switch the control repo to `{feature_id}-dev` before reading `sprint-status.yaml` or story files.
+2. **Phase entry validation**: Validate feature.yaml phase, sprint-status.yaml, story files, target repo state, and dev-session.yaml integrity on `{feature_id}-dev`.
+3. **Story queue resolution**: Build ready queue from sprint-status.yaml and dev-session.yaml completed list.
+4. **Branch context**: Confirm or prepare target repo branch via `lens-git-orchestration`.
+5. **Story loop**: For each ready story, validate, delegate, test, commit, record, and advance.
+6. **Sprint boundary**: Pause after each sprint for user confirmation.
+7. **Completion**: When all stories are done, emit `sprint_complete` and update `feature.yaml` to `dev-complete`. If the invocation requested automatic post-dev completion, immediately run `lens-complete` preconditions and then `complete-ops.py finalize --control-repo {control_repo} --confirm`; treat the user's auto-complete request as the explicit confirmation for that finalize call. If completion preconditions fail, surface the structured blocker and do not simulate completion.
 
 ## Automatic Complete Handoff
 
