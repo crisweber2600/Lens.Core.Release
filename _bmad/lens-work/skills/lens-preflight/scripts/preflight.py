@@ -836,6 +836,42 @@ def log_repo_sync_decision(decision: RepoSyncDecision) -> None:
     echo(f"  {icon} {decision.repo_label.capitalize()} repo [{decision.outcome}] {decision.detail}")
 
 
+def can_correct_pre_request_block(decision: RepoSyncDecision) -> bool:
+    return decision.outcome == "block" and decision.detail == "policy-blocked sync: local changes present"
+
+
+def run_pre_request_sync_with_correction(
+    repo: Path,
+    repo_label: str,
+    request_class: str,
+    *,
+    preferred_branch: str | None = None,
+) -> RepoSyncDecision:
+    decision = pre_request_sync(repo, repo_label, request_class, preferred_branch=preferred_branch)
+    log_repo_sync_decision(decision)
+    if not can_correct_pre_request_block(decision):
+        return decision
+
+    correction_decision = post_request_sync_decision(repo_label, touched=True, request_class=request_class)
+    log_repo_sync_decision(correction_decision)
+    corrected, correction_detail = publish_touched_repo(repo, repo_label)
+    if not corrected:
+        failed_decision = RepoSyncDecision(
+            repo_label,
+            "block",
+            f"automatic correction failed: {correction_detail}",
+            True,
+            decision.branch,
+        )
+        log_repo_sync_decision(failed_decision)
+        return failed_decision
+
+    echo(f"  ✓ {repo_label.capitalize()} repo {correction_detail}")
+    follow_up = pre_request_sync(repo, repo_label, request_class, preferred_branch=preferred_branch)
+    log_repo_sync_decision(follow_up)
+    return follow_up
+
+
 def sync_release_repo(release_repo: Path) -> tuple[bool, str]:
     return shared_sync_release_repo(release_repo)
 
@@ -1157,19 +1193,17 @@ def main() -> int:
     # Step 5: Pre-request mutable sync policy
     # ------------------------------------------------------------------
     echo("[preflight] Applying pre-request repo sync policy...")
-    control_decision = pre_request_sync(project_root, "control", request_class)
-    log_repo_sync_decision(control_decision)
+    control_decision = run_pre_request_sync_with_correction(project_root, "control", request_class)
     if control_decision.outcome == "block":
         return 1
 
     if governance_path:
-        governance_decision = pre_request_sync(
+        governance_decision = run_pre_request_sync_with_correction(
             governance_path,
             "governance",
             request_class,
             preferred_branch=repo_resolve_governance_branch(governance_path) if governance_path.is_dir() else None,
         )
-        log_repo_sync_decision(governance_decision)
         governance_sync_ok = governance_decision.outcome != "block"
         if governance_decision.outcome == "block":
             return 1

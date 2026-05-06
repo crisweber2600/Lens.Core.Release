@@ -76,6 +76,61 @@ def test_sync_control_repo_blocks_mutating_request_when_worktree_dirty(tmp_path:
     assert "policy-blocked sync" in detail
 
 
+def test_pre_request_sync_corrects_dirty_control_repo(tmp_path: Path):
+    ops = load_preflight_module()
+    _, control = init_main_repo_with_remote(tmp_path)
+    (control / "LOCAL.txt").write_text("local\n", encoding="utf-8")
+
+    decision = ops.run_pre_request_sync_with_correction(control, "control", "mixed")
+
+    assert decision.outcome == "pull-only"
+    assert "pulled origin/main" in decision.detail
+    status = subprocess.run(
+        ["git", "-C", str(control), "status", "--short"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert status.stdout.strip() == ""
+    ahead = subprocess.run(
+        ["git", "-C", str(control), "rev-list", "--count", "origin/main..HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert ahead.stdout.strip() == "0"
+
+
+def test_pre_request_sync_corrects_dirty_governance_repo(tmp_path: Path):
+    ops = load_preflight_module()
+    _, governance = init_main_repo_with_remote(tmp_path)
+    (governance / "feature-index.yaml").write_text("features: []\n", encoding="utf-8")
+
+    decision = ops.run_pre_request_sync_with_correction(
+        governance,
+        "governance",
+        "mixed",
+        preferred_branch="main",
+    )
+
+    assert decision.outcome == "pull-only"
+    assert "pulled origin/main" in decision.detail
+    status = subprocess.run(
+        ["git", "-C", str(governance), "status", "--short"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert status.stdout.strip() == ""
+    ahead = subprocess.run(
+        ["git", "-C", str(governance), "rev-list", "--count", "origin/main..HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert ahead.stdout.strip() == "0"
+
+
 def test_sync_control_repo_warns_for_governance_write_requests_when_worktree_dirty(tmp_path: Path):
     ops = load_preflight_module()
     _, control = init_main_repo_with_remote(tmp_path)
