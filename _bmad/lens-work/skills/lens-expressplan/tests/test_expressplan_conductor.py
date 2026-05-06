@@ -132,7 +132,7 @@ class TestExpressPlanDiscovery:
 
         assert "light-preflight.py" in github_prompt
         assert "vscode_askQuestions" in github_prompt
-        assert "_bmad/lens-work/prompts/lens-expressplan.prompt.md" in github_prompt
+        assert "lens.core/_bmad/lens-work/prompts/lens-expressplan.prompt.md" in github_prompt
         assert "lens-expressplan/SKILL.md" in release_prompt
         assert "only a redirect" in release_prompt.lower()
 

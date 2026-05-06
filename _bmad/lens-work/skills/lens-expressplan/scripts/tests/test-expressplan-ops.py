@@ -62,7 +62,7 @@ def test_stub_exists_and_preflights_before_release_prompt():
     assert STUB_PROMPT.exists(), f"Missing public stub: {STUB_PROMPT}"
     text = read_text(STUB_PROMPT)
     preflight = "light-preflight.py"
-    release = "_bmad/lens-work/prompts/lens-expressplan.prompt.md"
+    release = "lens.core/_bmad/lens-work/prompts/lens-expressplan.prompt.md"
     assert preflight in text, f"Stub missing preflight command: {preflight!r}"
     assert release in text, f"Stub missing release prompt reference: {release!r}"
     assert text.index(preflight) < text.index(release), (
