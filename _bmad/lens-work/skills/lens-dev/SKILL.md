@@ -20,7 +20,8 @@ Required inputs:
 
 Optional inputs:
 - target_repo_path: Explicit target repo path override.
-- epic: Epic selector (number or id) when the user narrows execution.
+- epic: Epic selector (number or id) when the user narrows execution; `all` or `all stories` when the user requests full dev-cycle execution.
+- continue_across_sprints: Boolean session flag set when the user explicitly requests `all stories`, `all sprints`, `run all the way through`, or automatic post-dev completion.
 - base_branch: Branch to fork from when branch prep is needed.
 - working_branch: Existing branch to resume if already prepared.
 
@@ -119,9 +120,19 @@ After phase entry passes:
 4. If the ready queue is empty and there are stories in `status == 'in-progress'` from a prior session: re-enqueue those stories as `ready` (crash recovery).
 5. If the ready queue is empty and no stories remain in `ready` or `in-progress`: the sprint is **complete**. Emit `sprint_complete` signal and update `feature.yaml` phase to `dev-complete`, then run the complete cycle automatically when the invocation requested post-dev completion.
 
-## Sprint Boundary Pause
+## Sprint Boundary Policy
 
-After completing every story in the ready queue for the current sprint, emit a `sprint_boundary` pause signal. The conductor MUST wait for explicit user confirmation before advancing to the next sprint. This is not optional and may not be bypassed.
+After completing every story in the ready queue for the current sprint, emit a `sprint_boundary` checkpoint.
+
+Default behavior:
+- For normal sprint-scoped or epic-scoped invocations, the conductor MUST wait for explicit user confirmation before advancing to the next sprint.
+- This default pause protects users from accidentally starting another sprint of target-repo work.
+
+All-stories behavior:
+- When the invocation explicitly requests `all stories`, `all sprints`, `run all the way through`, or automatic post-dev completion, set `continue_across_sprints: true` in session context before the first story loop.
+- In that mode, the original invocation is the explicit confirmation to cross sprint boundaries. The conductor MUST record the `sprint_boundary` checkpoint and immediately resolve the next unblocked sprint queue without rendering a numbered continue/stop menu.
+- Continue across sprint boundaries until every story in the selected scope is `done`, or until a hard-stop error, test failure, failed story, or blocked story requires user intervention.
+- The conductor MUST NOT stop merely because the current sprint completed while `continue_across_sprints: true` and additional unblocked stories remain.
 
 The pause message must include:
 - Stories completed in this sprint.
@@ -170,7 +181,7 @@ All timestamps are ISO 8601. All writes emit this schema exactly. Read-time comp
 3. **Story queue resolution**: Build ready queue from sprint-status.yaml and dev-session.yaml completed list.
 4. **Branch context**: Confirm or prepare target repo branch via `lens-git-orchestration`.
 5. **Story loop**: For each ready story, validate, delegate, test, commit, record, and advance.
-6. **Sprint boundary**: Pause after each sprint for user confirmation.
+6. **Sprint boundary**: Record a boundary checkpoint after each sprint. Pause for user confirmation by default; continue automatically when `continue_across_sprints: true` was set by an explicit all-stories/all-sprints/auto-complete invocation.
 7. **Completion**: When all stories are done, emit `sprint_complete` and update `feature.yaml` to `dev-complete`. If the invocation requested automatic post-dev completion, immediately run `lens-complete` preconditions and then `complete-ops.py finalize --control-repo {control_repo} --confirm`; treat the user's auto-complete request as the explicit confirmation for that finalize call. If completion preconditions fail, surface the structured blocker and do not simulate completion.
 
 ## Automatic Complete Handoff
