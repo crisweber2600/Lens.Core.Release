@@ -296,8 +296,10 @@ def _gh_merge_to_main(
     control_repo: Path,
     feature_id: str,
     dry_run: bool,
+    head_branch: str | None = None,
+    base_branch: str = "main",
 ) -> tuple[str | None, str | None]:
-    """Create and merge a PR from {feature_id}-dev → main in the control repo.
+    """Validate, merge, and clean up normal control-repo completion branches.
 
     Returns (pr_url, None) on success, or (None, error_msg) on failure.
     On dry_run, returns ('dry_run', None) without executing any commands.
@@ -305,8 +307,22 @@ def _gh_merge_to_main(
     if dry_run:
         return "dry_run", None
 
-    dev_branch = f"{feature_id}-dev"
+    head_branch = head_branch or f"{feature_id}-dev"
+    feature_branch = feature_id
+    plan_branch = f"{feature_id}-plan"
+    cleanup_branches = [plan_branch, feature_branch, head_branch]
     cwd = str(control_repo)
+
+    def _git(*cmd_args: str) -> tuple[int, str, str]:
+        try:
+            r = subprocess.run(
+                ["git", *cmd_args], cwd=cwd, capture_output=True, text=True, timeout=60
+            )
+            return r.returncode, r.stdout.strip(), r.stderr.strip()
+        except FileNotFoundError:
+            return -1, "", "git CLI not found."
+        except subprocess.TimeoutExpired:
+            return -1, "", "git command timed out after 60 s."
 
     def _gh(*cmd_args: str) -> tuple[int, str, str]:
         try:
@@ -319,11 +335,94 @@ def _gh_merge_to_main(
         except subprocess.TimeoutExpired:
             return -1, "", "gh command timed out after 60 s."
 
+    code, out, err = _git("status", "--porcelain")
+    if code != 0:
+        return None, f"control repo status failed: {err or out}"
+    if out:
+        return None, f"control repo has uncommitted changes; commit them on {head_branch} before finalizing."
+
+    def _branch_ref(branch: str, required: bool = True) -> tuple[str | None, str | None]:
+        code, out, err = _git("rev-parse", "--verify", branch)
+        if code == 0:
+            return branch, None
+        code, out, err = _git("rev-parse", "--verify", f"origin/{branch}")
+        if code == 0:
+            return f"origin/{branch}", None
+        if required:
+            return None, f"required control branch '{branch}' was not found locally or on origin."
+        return None, None
+
+    def _is_ancestor(ancestor_ref: str, descendant_ref: str) -> tuple[bool, str | None]:
+        code, out, err = _git("merge-base", "--is-ancestor", ancestor_ref, descendant_ref)
+        if code == 0:
+            return True, None
+        if code == 1:
+            return False, None
+        return False, err or out or f"git merge-base failed for {ancestor_ref} -> {descendant_ref}."
+
+    def _validate_merged(ancestor_branch: str, ancestor_ref: str, descendant_branch: str, descendant_ref: str) -> str | None:
+        merged, merge_error = _is_ancestor(ancestor_ref, descendant_ref)
+        if merge_error:
+            return merge_error
+        if not merged:
+            return (
+                f"control branch validation failed: '{ancestor_branch}' is not merged into "
+                f"'{descendant_branch}'. Merge related control branches before completing."
+            )
+        return None
+
+    code, out, err = _git("fetch", "--prune", "origin")
+    if code != 0:
+        return None, f"control repo fetch failed: {err or out}"
+
+    base_ref, ref_error = _branch_ref(f"origin/{base_branch}")
+    if ref_error:
+        return None, ref_error
+    head_ref, ref_error = _branch_ref(head_branch)
+    if ref_error:
+        return None, ref_error
+    feature_ref, ref_error = _branch_ref(feature_branch)
+    if ref_error:
+        return None, ref_error
+    plan_ref, ref_error = _branch_ref(plan_branch, required=False)
+    if ref_error:
+        return None, ref_error
+
+    if plan_ref and feature_ref:
+        validation_error = _validate_merged(plan_branch, plan_ref, feature_branch, feature_ref)
+        if validation_error:
+            return None, validation_error
+    if feature_ref and head_ref:
+        validation_error = _validate_merged(feature_branch, feature_ref, head_branch, head_ref)
+        if validation_error:
+            return None, validation_error
+
+    code, out, err = _git("rev-parse", "--verify", head_branch)
+    if code == 0:
+        code, out, err = _git("checkout", head_branch)
+        if code != 0:
+            return None, f"control repo checkout {head_branch} failed: {err or out}"
+    else:
+        start_point = head_ref or f"origin/{base_branch}"
+        code, out, err = _git("checkout", "-B", head_branch, start_point)
+        if code != 0:
+            return None, f"control repo checkout {head_branch} failed: {err or out}"
+
+    code, out, err = _git("rev-parse", "--verify", f"origin/{head_branch}")
+    if code == 0:
+        code, out, err = _git("pull", "--ff-only", "origin", head_branch)
+        if code != 0:
+            return None, f"control repo pull {head_branch} failed: {err or out}"
+
+    code, out, err = _git("push", "-u", "origin", head_branch)
+    if code != 0:
+        return None, f"control repo push {head_branch} failed: {err or out}"
+
     # Check for an existing open or merged PR to avoid duplicates
     code, out, err = _gh(
         "pr", "list",
-        "--head", dev_branch,
-        "--base", "main",
+        "--head", head_branch,
+        "--base", base_branch,
         "--json", "url,state",
         "--limit", "1",
         "--state", "all",
@@ -332,6 +431,7 @@ def _gh_merge_to_main(
         return None, f"PR lookup failed: {err or out}"
 
     pr_url: str | None = None
+    already_merged = False
     try:
         prs = json.loads(out or "[]")
     except json.JSONDecodeError:
@@ -341,14 +441,16 @@ def _gh_merge_to_main(
         existing = prs[0]
         state = str(existing.get("state") or "").upper()
         if state == "MERGED":
-            return existing.get("url", "already_merged"), None
-        pr_url = existing.get("url", "")
+            pr_url = existing.get("url", "already_merged")
+            already_merged = True
+        else:
+            pr_url = existing.get("url", "")
 
     if not pr_url:
         code, out, err = _gh(
             "pr", "create",
-            "--head", dev_branch,
-            "--base", "main",
+            "--head", head_branch,
+            "--base", base_branch,
             "--title", f"[complete] {feature_id} — docs delivery to main",
             "--body",
             (
@@ -360,9 +462,50 @@ def _gh_merge_to_main(
             return None, f"gh pr create failed: {err or out}"
         pr_url = out
 
-    code, out, err = _gh("pr", "merge", pr_url, "--merge")
+    if not already_merged:
+        code, out, err = _gh("pr", "merge", pr_url, "--merge")
+        if code != 0:
+            return pr_url, f"PR created at {pr_url} but merge failed: {err or out}"
+
+    code, out, err = _git("fetch", "--prune", "origin")
     if code != 0:
-        return pr_url, f"PR created at {pr_url} but merge failed: {err or out}"
+        return pr_url, f"PR merged at {pr_url} but post-merge fetch failed: {err or out}"
+
+    base_ref, ref_error = _branch_ref(base_branch)
+    if ref_error:
+        return pr_url, f"PR merged at {pr_url} but {ref_error}"
+    head_ref, _ = _branch_ref(head_branch, required=False)
+    if head_ref:
+        validation_error = _validate_merged(head_branch, head_ref, base_branch, base_ref or base_branch)
+        if validation_error:
+            return pr_url, f"PR merged at {pr_url} but {validation_error}"
+
+    code, out, err = _git("checkout", base_branch)
+    if code != 0:
+        return pr_url, f"PR merged at {pr_url} but checkout {base_branch} failed: {err or out}"
+    code, out, err = _git("pull", "--ff-only", "origin", base_branch)
+    if code != 0:
+        return pr_url, f"PR merged at {pr_url} but pull {base_branch} failed: {err or out}"
+
+    cleanup_errors: list[str] = []
+    for branch in cleanup_branches:
+        local_ref, _ = _branch_ref(branch, required=False)
+        if local_ref == branch:
+            code, out, err = _git("branch", "-d", branch)
+            if code != 0:
+                cleanup_errors.append(f"delete local {branch}: {err or out}")
+        remote_ref, _ = _branch_ref(f"origin/{branch}", required=False)
+        if remote_ref:
+            code, out, err = _git("push", "origin", "--delete", branch)
+            if code != 0:
+                cleanup_errors.append(f"delete remote {branch}: {err or out}")
+
+    code, out, err = _git("fetch", "--prune", "origin")
+    if code != 0:
+        cleanup_errors.append(f"final prune: {err or out}")
+
+    if cleanup_errors:
+        return pr_url, f"PR merged at {pr_url}, but branch cleanup failed: {'; '.join(cleanup_errors)}"
 
     return pr_url, None
 
@@ -593,7 +736,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     if control_repo is not None:
         planned_changes.append({
             "repo": str(control_repo),
-            "change": f"create and merge PR: {feature_id}-dev → main",
+            "change": f"validate branches and merge PR: {feature_id}-dev -> main; delete related branches",
         })
 
     doc_check = _check_document_project(feature_dir)
@@ -677,7 +820,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         {"path": str(summary_path.relative_to(governance_repo)), "change": "archive summary written"},
     ]
 
-    # Merge feature-dev → main in the control repo if requested
+    # Merge {featureId}-dev -> main in the control repo if requested
     merge_pr_url: str | None = None
     merge_warning: str | None = None
     if control_repo is not None:
@@ -689,7 +832,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         else:
             changes_applied.append({
                 "repo": str(control_repo),
-                "change": f"PR merged: {feature_id}-dev → main",
+                "change": f"PR merged and related branches deleted: {feature_id}-dev -> main",
                 "pr_url": merge_pr_url or "",
             })
 
@@ -826,7 +969,7 @@ def _build_parser() -> argparse.ArgumentParser:
                        help="Required for non-dry-run execution")
     p_fin.add_argument("--control-repo", dest="control_repo", default=None,
                        help="Path to the control repo. When provided, creates and merges a PR "
-                            "from {featureId}-dev → main after governance archival.")
+                           "from {featureId}-dev -> main after governance archival, then deletes related branches.")
 
     # archive-status
     sub.add_parser("archive-status", parents=[shared],

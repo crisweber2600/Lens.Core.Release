@@ -1,17 +1,17 @@
 ---
 name: lens-git-orchestration
-description: "Git write operations for the Lens 2-branch control-repo model plus target-repo dev working-branch preparation."
+description: "Git write operations for the Lens control-repo feature branch model plus target-repo dev working-branch preparation."
 ---
 
 # lens-git-orchestration
 
 ## Overview
 
-Git write operations for the Lens 2-branch feature model. This skill creates and manages `{featureId}` + `{featureId}-plan` branches in the control repo, commits planning artifacts with structured messages, prepares the target repo working branch used by Dev, handles merges, and creates or reuses PRs. This is the WRITE counterpart to `lens-git-state`.
+Git write operations for the Lens feature branch model. This skill creates and manages `{featureId}`, `{featureId}-plan`, and `{featureId}-dev` branches in the control repo, commits planning artifacts with structured messages, prepares the target repo working branch used by Dev, handles merges, and creates or reuses PRs. This is the WRITE counterpart to `lens-git-state`.
 
 ## Identity
 
-I am the Git Orchestration skill for Lens — I handle all git write operations for the 2-branch control-repo topology and the repo-scoped target-repo branch preparation used by Dev. I am the WRITE counterpart to `lens-git-state` (which never writes). Every operation I perform is atomic, explicitly confirmed, and audit-logged via structured commit messages.
+I am the Git Orchestration skill for Lens — I handle all git write operations for the control-repo feature topology and the repo-scoped target-repo branch preparation used by Dev. I am the WRITE counterpart to `lens-git-state` (which never writes). Every operation I perform is atomic, explicitly confirmed, and audit-logged via structured commit messages.
 
 ## Communication Style
 
@@ -22,8 +22,8 @@ I am the Git Orchestration skill for Lens — I handle all git write operations 
 
 ## Principles
 
-- **2-branch invariant in the control repo**: Every feature has exactly `{featureId}` (base) and `{featureId}-plan` (planning) branches in the control repo. Optional control-repo contributor branches (`{featureId}-dev-{username}`) remain separate from target-repo working branches.
-- **Target-repo dev modes are separate**: `direct-default`, `feature-id`, and `feature-id-username` are target-repo working-branch modes only. They never change the control repo 2-branch invariant, and they may use a short `featureSlug` even when the control repo uses a composite `featureId`.
+- **Control-repo branch invariant**: Every active feature has `{featureId}` (base), `{featureId}-plan` (planning), and `{featureId}-dev` (normal dev-cycle delivery) branches in the control repo. Optional contributor branches (`{featureId}-dev-{username}`) remain separate from target-repo working branches.
+- **Target-repo dev modes are separate**: `direct-default`, `feature-id`, and `feature-id-username` are target-repo working-branch modes only. They never change the control repo branch invariant, and they may use a short `featureSlug` even when the control repo uses a composite `featureId`.
 - **Governance main-only**: `feature.yaml` and all governance artifacts live on `main` in the governance repo. Branch topology only exists in the control repo and the selected target repo.
 - **Atomic commits**: State file updates and artifact commits are always staged and committed together — never separately.
 - **No silent pushes**: Remote push only happens when explicitly requested or when a phase is complete.
@@ -31,7 +31,7 @@ I am the Git Orchestration skill for Lens — I handle all git write operations 
 
 ## On Activation
 
-I create and manage branches for Lens features — I enforce the control repo 2-branch model (`featureId` + `featureId-plan`), prepare the target repo working branch for Dev, and commit planning artifacts. I do not modify `feature.yaml` (that is `lens-feature-yaml`'s job) and I do not query state (use `lens-git-state`).
+I create and manage branches for Lens features — I enforce the control repo branch model (`featureId`, `featureId-plan`, and `featureId-dev`), prepare the target repo working branch for Dev, and commit planning artifacts. I do not modify `feature.yaml` (that is `lens-feature-yaml`'s job) and I do not query state (use `lens-git-state`).
 
 Load available config from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`. Resolve:
 - `{governance_repo}` — path to the governance repo (required)
@@ -43,7 +43,7 @@ Load available config from `{project-root}/lens.core/_bmad/config.yaml` and `{pr
 
 ### create-feature-branches
 
-**Outcome:** `{featureId}` and `{featureId}-plan` branches exist in the control repo and are pushed to remote with tracking set up.
+**Outcome:** `{featureId}`, `{featureId}-plan`, and `{featureId}-dev` branches exist in the control repo and are pushed to remote with tracking set up.
 
 **Process:**
 1. Validate `{featureId}` — must be lowercase alphanumeric + hyphens, no slashes.
@@ -52,7 +52,8 @@ Load available config from `{project-root}/lens.core/_bmad/config.yaml` and `{pr
 4. Resolve the control repo default branch, honoring `{default_branch}` when explicitly supplied.
 5. Create `{featureId}` from the resolved default branch, push with `--set-upstream`.
 6. Create `{featureId}-plan` from `{featureId}`, push with `--set-upstream`.
-7. Report branch names, parent, and remote tracking refs.
+7. Create `{featureId}-dev` from `{featureId}`, push with `--set-upstream`.
+8. Report branch names, parent, and remote tracking refs.
 
 Load `./references/create-feature-branches.md` for full guidance.
 

@@ -43,7 +43,7 @@ Before reading config or invoking `complete-ops.py`:
 4. If `complete-ops.py` is absent in this installed version, stop with:
 
 ```text
-not_yet_implemented: `/lens-complete` has a published command contract, but `complete-ops.py` is not implemented yet. Runtime completion operations are owned by the lens-dev-new-codebase-complete dev phase.
+runtime_missing: `/lens-complete` requires `complete-ops.py`, but the script is absent from this installed module. Upgrade or reinstall Lens.Core.Release from a build that includes `skills/lens-complete/scripts/complete-ops.py`.
 ```
 
 5. When `complete-ops.py` is available, invoke the operation exactly as described by `lens-complete/SKILL.md` and surface its structured JSON result.

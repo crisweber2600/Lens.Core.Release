@@ -98,7 +98,7 @@ After phase entry passes:
 2. Build the **ready queue**: stories where `status == 'ready'` and all `blocked_by` entries are in the `completed` list of `dev-session.yaml`.
 3. If the `epic` input is set, filter the ready queue to stories matching that epic prefix.
 4. If the ready queue is empty and there are stories in `status == 'in-progress'` from a prior session: re-enqueue those stories as `ready` (crash recovery).
-5. If the ready queue is empty and no stories remain in `ready` or `in-progress`: the sprint is **complete**. Emit `sprint_complete` signal and update `feature.yaml` phase to `dev-complete`.
+5. If the ready queue is empty and no stories remain in `ready` or `in-progress`: the sprint is **complete**. Emit `sprint_complete` signal and update `feature.yaml` phase to `dev-complete`, then run the complete cycle automatically when the invocation requested post-dev completion.
 
 ## Sprint Boundary Pause
 
@@ -151,7 +151,26 @@ All timestamps are ISO 8601. All writes emit this schema exactly. Read-time comp
 3. **Branch context**: Confirm or prepare target repo branch via `lens-git-orchestration`.
 4. **Story loop**: For each ready story, validate, delegate, test, commit, record, and advance.
 5. **Sprint boundary**: Pause after each sprint for user confirmation.
-6. **Completion**: When all stories done, emit `sprint_complete`, update feature.yaml to `dev-complete`, prompt user for final PR creation if `requires_final_pr: true`.
+6. **Completion**: When all stories are done, emit `sprint_complete` and update `feature.yaml` to `dev-complete`. If the invocation requested automatic post-dev completion, immediately run `lens-complete` preconditions and then `complete-ops.py finalize --control-repo {control_repo} --confirm`; treat the user's auto-complete request as the explicit confirmation for that finalize call. If completion preconditions fail, surface the structured blocker and do not simulate completion.
+
+## Automatic Complete Handoff
+
+When a dev invocation includes an explicit post-dev completion request, the conductor MUST:
+
+1. Finish all normal dev closing actions first: story statuses, target repo commits, target PR, and `feature.yaml` phase `dev-complete`.
+2. Check out or create the control repo `{feature_id}-dev` branch and keep it as the working branch for dev-cycle docs delivery.
+3. Invoke the complete runtime from the installed module path:
+
+```bash
+uv run --script lens.core/_bmad/lens-work/skills/lens-complete/scripts/complete-ops.py finalize \
+   --governance-repo {governance_repo} \
+   --feature-id {feature_id} \
+   --control-repo {control_repo} \
+   --confirm
+```
+
+4. Commit and push governance archive changes to `main` after a successful finalize response.
+5. The complete runtime validates `{feature_id}-plan` -> `{feature_id}` -> `{feature_id}-dev`, merges `{feature_id}-dev` into `main`, and deletes the related control branches after a successful merge. Surface any `control_repo_merge_failed` warning from the complete runtime; do not report completion as blocked if governance archival succeeded.
 
 ## Integration Points
 

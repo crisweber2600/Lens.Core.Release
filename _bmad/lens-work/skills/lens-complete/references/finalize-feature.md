@@ -11,10 +11,10 @@ The feature is permanently archived. feature.yaml phase is `complete`, feature-i
 Before calling finalize, confirm all of the following:
 
 - [ ] `check-preconditions` returned status `pass` or `warn` (not `fail`)
-- [ ] `retrospective.md` exists in the feature directory (or user confirmed skip)
+- [ ] `retrospective.md` exists in the feature directory with `status: approved`
 - [ ] Project documentation captured via `lens-document-project`
 - [ ] Target repo feature branches are merged to their default base branch
-- [ ] Control repo feature branches (`{featureId}` and `{featureId}-plan`) have all commits that should land in `develop`
+- [ ] Control repo feature branches are merged in order: `{featureId}-plan` into `{featureId}`, then `{featureId}` into `{featureId}-dev`
 - [ ] User has explicitly confirmed finalize (this is irreversible)
 
 ## Confirmation Gate
@@ -46,32 +46,31 @@ Only proceed on explicit `yes`.
 Run the finalize operation:
 
 ```bash
-python3 ./scripts/complete-ops.py finalize \
+uv run --script ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {featureId} \
-  --domain {domain} \
-  --service {service}
+  --control-repo {control_repo} \
+  --confirm
 ```
 
 For dry-run preview (show what would change without writing):
 
 ```bash
-python3 ./scripts/complete-ops.py finalize \
+uv run --script ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {featureId} \
-  --domain {domain} \
-  --service {service} \
+  --control-repo {control_repo} \
   --dry-run
 ```
 
 ## What the Script Does
 
 1. Reads current feature.yaml
-2. Validates target repo feature branches are fully merged into each repo default branch
-3. Deletes merged feature branches (local + origin) in target repos during finalize (no deletion if dry-run)
-4. Updates `phase` to `complete` and sets `completed_at` to current UTC ISO timestamp
-5. Reads `{governance-repo}/feature-index.yaml` and updates the matching entry's `status` to `archived` and `updated_at` to current UTC ISO timestamp
-6. Writes `{feature-dir}/summary.md` with the archive summary
+2. Validates `retrospective.md` exists and has `status: approved`
+3. Updates `phase` to `complete` and sets `completed_at` to current UTC ISO timestamp
+4. Reads `{governance-repo}/feature-index.yaml` and updates the matching entry's `status` to `archived` and `updated_at` to current UTC ISO timestamp
+5. Writes `{feature-dir}/summary.md` with the archive summary
+6. When `--control-repo` is provided, checks out `{featureId}-dev`, validates related branch ancestry, pushes it, creates a PR from `{featureId}-dev` to `main`, merges it, and deletes related branches
 7. All writes are atomic (temp file + rename)
 
 ## Post-Script Git Sync
@@ -87,26 +86,22 @@ git -C {governance_repo} push origin main
 
 If `git push` fails (e.g., concurrent write conflict), report the error and instruct the user to resolve the conflict manually before retrying the push. Do NOT re-run the finalize script.
 
-## Post-Script Control Repo Branch Merge and Cleanup
+## Post-Script Control Repo Branch Merge
 
-After governance is committed, merge and delete the control repo feature branches:
+When `--control-repo` is passed, the script switches the control repo to `{featureId}-dev`, validates `{featureId}-plan` -> `{featureId}` -> `{featureId}-dev`, pushes the dev branch, creates a PR from `{featureId}-dev` to `main`, and merges it through GitHub CLI. After confirming the dev branch is merged to `main`, it deletes `{featureId}-plan`, `{featureId}`, and `{featureId}-dev` locally and on origin. Merge or cleanup failure is returned as a warning because governance archival has already succeeded.
 
 ```bash
-# Merge feature branch into develop
-git -C {control_repo} checkout develop
-git -C {control_repo} pull origin develop
-git -C {control_repo} merge --no-ff {featureId} -m "merge({featureId}): complete — {summary_line}"
-git -C {control_repo} push origin develop
-
-# Delete local and remote feature branches
-git -C {control_repo} branch -D {featureId}
-git -C {control_repo} push origin --delete {featureId}
-git -C {control_repo} branch -d {featureId}-plan 2>/dev/null || true
-git -C {control_repo} push origin --delete {featureId}-plan 2>/dev/null || true
-git -C {control_repo} fetch --prune
+git -C {control_repo} checkout {featureId}-dev
+git -C {control_repo} pull --ff-only origin {featureId}-dev
+git -C {control_repo} push -u origin {featureId}-dev
+gh pr create --head {featureId}-dev --base main --title "[complete] {featureId} - docs delivery to main" --body "..."
+gh pr merge <pr-url> --merge
+git -C {control_repo} checkout main
+git -C {control_repo} branch -d {featureId}-plan {featureId} {featureId}-dev
+git -C {control_repo} push origin --delete {featureId}-plan {featureId} {featureId}-dev
 ```
 
-> **Note:** After this step, `develop` is the working branch. The `{featureId}` and `{featureId}-plan` branches no longer exist. If merge conflicts arise on `docs/lens-work/event-log.jsonl` or `.lens/personal/.light-preflight-timestamp`, accept the feature branch version (`--theirs`) — those files are append-only or timestamp-only.
+> **Note:** After this step, `main` is the working branch. If the PR merge or branch cleanup cannot complete, do not roll back governance archive files; surface the returned warning.
 
 ## Output
 
@@ -160,9 +155,9 @@ If finalize fails midway (e.g., disk error after writing feature.yaml but before
 
 ```bash
 # Manual index update if script failed:
-python3 ./scripts/complete-ops.py finalize \
+uv run --script ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {featureId} \
-  --domain {domain} \
-  --service {service}
+  --control-repo {control_repo} \
+  --confirm
 ```

@@ -27,7 +27,7 @@ Act as a careful lifecycle archivist. Preserve the governance record, make irrev
 3. Resolve `{feature_id}` from the user request or active Lens context. If neither is available, ask for it.
 4. Resolve `{governance_repo}`. If unavailable, stop with `config_missing`.
 5. Resolve the script path: `{project-root}/lens.core/_bmad/lens-work/skills/lens-complete/scripts/complete-ops.py`.
-6. If the script is absent, stop with `not_yet_implemented` and explain that this skill currently provides the command contract only; do not simulate the operation.
+6. If the script is absent, stop with `runtime_missing` and explain that the installed module is incomplete; do not simulate the operation.
 
 ## Command Contract
 
@@ -44,7 +44,7 @@ Inputs:
 Guards:
 
 - Feature must exist in governance.
-- `feature.yaml.phase` must be in a completable state: `dev`, `dev-complete`, or `complete`.
+- `feature.yaml.phase` must be in a completable state: `dev` or `dev-complete`; already terminal phases are reported by `archive-status`.
 - **`retrospective.md` is a blocking prerequisite** (not advisory): the file MUST exist in the feature docs folder. If absent, return `status: fail` with `blocker: retrospective_missing` and a message directing the user to run `lens-retrospective` first. This check may not be downgraded to a warning.
 - **`retrospective.md` status must be `approved`**: the file's YAML frontmatter `status` field MUST equal `approved`. If the file exists but `status` is not `approved`, return `status: fail` with `blocker: retrospective_not_approved` and the current status value.
 - Missing document-project output is advisory and returns `status: warn` with `document_project_skipped: true`.
@@ -107,7 +107,7 @@ Inputs:
 - `--feature-id <id>`: feature identifier.
 - `--dry-run`: preview planned changes without writing.
 - `--confirm`: required for non-dry-run execution in non-interactive contexts.
-- `--control-repo <path>` *(optional)*: path to the control repo. When provided, creates and merges a PR from `{featureId}-dev → main` after governance archival. Requires `gh` CLI to be authenticated. If the merge fails, governance writes are **not** rolled back — the failure is surfaced as a warning in the response.
+- `--control-repo <path>` *(optional)*: path to the control repo. When provided, switches to `{featureId}-dev`, validates that related branches are already merged (`{featureId}-plan` into `{featureId}`, then `{featureId}` into `{featureId}-dev`), creates and merges a PR from `{featureId}-dev` to `main`, and deletes `{featureId}-plan`, `{featureId}`, and `{featureId}-dev` after the merge. Requires `gh` CLI to be authenticated. If the merge or cleanup fails, governance writes are **not** rolled back — the failure is surfaced as a warning in the response.
 
 Confirmation gate:
 
@@ -119,7 +119,7 @@ Operations:
 2. Update `feature.yaml.phase` to `complete` and set `completed_at`.
 3. Update the matching `feature-index.yaml` entry to `status: archived` and set `updated_at`.
 4. Write `summary.md` if absent, or update only the generated archive section if a managed section exists.
-5. If `--control-repo` is given, create and merge a PR from `{featureId}-dev → main`. An existing merged PR is treated as success. A merge failure is non-fatal (warning only).
+5. If `--control-repo` is given, switch to `{featureId}-dev`, validate related branch ancestry, push it, create and merge a PR from `{featureId}-dev` to `main`, validate the dev branch reached `main`, then delete `{featureId}-plan`, `{featureId}`, and `{featureId}-dev` locally and on origin. An existing merged PR is treated as success. A merge or cleanup failure is non-fatal (warning only).
 6. Return all applied changes in structured JSON.
 
 Dry-run return shape:
@@ -163,7 +163,7 @@ uv run ./scripts/complete-ops.py finalize \
   --feature-id {feature_id} \
   --confirm
 
-# With control-repo merge (feature-dev → main):
+# With control-repo merge ({featureId}-dev -> main):
 uv run ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {feature_id} \
@@ -203,13 +203,14 @@ uv run ./scripts/complete-ops.py archive-status \
 
 ## Prerequisite Handling Decision
 
-Graceful degradation is canonical. A missing retrospective or missing project-documentation artifact means the feature can still be completed when the user accepts the warning. These prerequisites are quality signals, not lifecycle state guards.
+Graceful degradation applies only to optional project-documentation output. A missing or unapproved retrospective is a lifecycle blocker and must stop completion.
 
 Hard blockers are limited to state and integrity failures:
 
 - Feature not found.
 - `feature.yaml` or `feature-index.yaml` cannot be parsed.
 - Current phase is not completable.
+- Required retrospective is missing or not approved.
 - Required confirmation is absent for a non-dry-run finalize.
 - Atomic write fails.
 
@@ -252,11 +253,11 @@ Known error codes:
 - `wrong_phase`
 - `confirmation_required`
 - `write_failed`
-- `not_yet_implemented`
+- `runtime_missing`
 
 ## Test Contract
 
-The scaffolded tests in `scripts/tests/test-complete-ops.py` define the red-phase contract for the future `complete-ops.py` implementation. Each test is marked `@pytest.mark.xfail(strict=True)` and raises `NotImplementedError`, so the suite reports expected failures (xfail) now and will go red (xpass → failure) if a test starts passing before the implementation is merged.
+The tests in `scripts/tests/test-complete-ops.py` define the executable regression contract for `complete-ops.py`, including precondition checks, finalize writes, archive-status behavior, `{featureId}-dev` to `main` PR automation, branch ancestry validation, and related-branch cleanup.
 
 Focused validation for the scaffold:
 

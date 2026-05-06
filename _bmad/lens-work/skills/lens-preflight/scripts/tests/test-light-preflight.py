@@ -54,11 +54,19 @@ def test_parser_accepts_documented_arguments():
     ops = load_light_module()
 
     args = ops.build_parser().parse_args(
-        ["--caller", "onboard", "--governance-path", "TargetProjects/lens/lens-governance"]
+        [
+            "--caller",
+            "onboard",
+            "--governance-path",
+            "TargetProjects/lens/lens-governance",
+            "--request-class",
+            "mixed",
+        ]
     )
 
     assert args.caller == "onboard"
     assert args.governance_path == "TargetProjects/lens/lens-governance"
+    assert args.request_class == "mixed"
 
 
 def test_parser_rejects_undocumented_arguments():
@@ -77,11 +85,15 @@ def test_main_delegates_to_full_preflight(tmp_path: Path, monkeypatch):
 
     def fake_delegate(args: Namespace, project_root: Path) -> int:
         seen["caller"] = args.caller
+        seen["request_class"] = args.request_class
         seen["project_root"] = project_root
         return 0
 
     monkeypatch.setattr(ops, "delegate_preflight", fake_delegate)
-    monkeypatch.setattr("sys.argv", ["light-preflight.py", "--caller", "lens-dev"])
+    monkeypatch.setattr(
+        "sys.argv",
+        ["light-preflight.py", "--caller", "lens-dev", "--request-class", "mixed"],
+    )
 
     assert ops.main() == 0
-    assert seen == {"caller": "lens-dev", "project_root": tmp_path}
+    assert seen == {"caller": "lens-dev", "request_class": "mixed", "project_root": tmp_path}

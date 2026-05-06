@@ -36,12 +36,17 @@ ALLOWED_WRITE_FILES = {"feature.yaml", "feature-index.yaml", "summary.md"}
 
 def _script_main():
     """Import and return the main() entry point from complete-ops.py."""
+    return _script_module().main
+
+
+def _script_module():
+    """Import and return the complete-ops.py module."""
     script_path = Path(__file__).resolve().parents[1] / "complete-ops.py"
     spec = importlib.util.spec_from_file_location("complete_ops", script_path)
     assert spec is not None and spec.loader is not None, f"Could not load {script_path}"
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-    return mod.main
+    return mod
 
 
 def _run(argv: list[str], capsys: pytest.CaptureFixture) -> tuple[int, dict[str, Any]]:
@@ -474,3 +479,170 @@ def test_prerequisite_missing_degradation(capsys: pytest.CaptureFixture, gov_pas
     assert "document_project_skipped" in result.get("warnings", []), (
         "Expected 'document_project_skipped' warning when project-documentation.md is absent"
     )
+
+
+def test_control_repo_merge_validates_and_cleans_feature_dev_branch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Control repo automation validates related branches, merges featureId-dev, and cleans up."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        assert cwd == str(control_repo)
+        assert capture_output is True
+        assert text is True
+        assert timeout == 60
+        calls.append(cmd)
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return Result()
+        if cmd == ["git", "fetch", "--prune", "origin"]:
+            return Result()
+        if cmd[:3] == ["git", "rev-parse", "--verify"]:
+            return Result()
+        if cmd[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return Result()
+        if cmd == ["git", "checkout", "lens-dev-example-dev"]:
+            return Result()
+        if cmd == ["git", "pull", "--ff-only", "origin", "lens-dev-example-dev"]:
+            return Result()
+        if cmd == ["git", "push", "-u", "origin", "lens-dev-example-dev"]:
+            return Result()
+        if cmd == ["git", "checkout", "main"]:
+            return Result()
+        if cmd == ["git", "pull", "--ff-only", "origin", "main"]:
+            return Result()
+        if cmd[:3] == ["git", "branch", "-d"]:
+            return Result()
+        if cmd[:3] == ["git", "push", "origin"] and "--delete" in cmd:
+            return Result()
+        if cmd[:3] == ["gh", "pr", "list"]:
+            return Result(stdout="[]")
+        if cmd[:3] == ["gh", "pr", "create"]:
+            return Result(stdout="https://github.com/example/control/pull/7")
+        if cmd[:3] == ["gh", "pr", "merge"]:
+            return Result()
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    pr_url, error = mod._gh_merge_to_main(control_repo, "lens-dev-example", dry_run=False)
+
+    assert error is None
+    assert pr_url == "https://github.com/example/control/pull/7"
+    assert ["git", "checkout", "lens-dev-example-dev"] in calls
+    assert ["git", "push", "-u", "origin", "lens-dev-example-dev"] in calls
+    assert ["git", "merge-base", "--is-ancestor", "lens-dev-example-plan", "lens-dev-example"] in calls
+    assert ["git", "merge-base", "--is-ancestor", "lens-dev-example", "lens-dev-example-dev"] in calls
+    assert any(
+        cmd[:3] == ["gh", "pr", "create"] and "--head" in cmd and "lens-dev-example-dev" in cmd
+        for cmd in calls
+    )
+    assert any(cmd[:3] == ["gh", "pr", "create"] and "--base" in cmd and "main" in cmd for cmd in calls)
+    assert ["git", "branch", "-d", "lens-dev-example-plan"] in calls
+    assert ["git", "branch", "-d", "lens-dev-example"] in calls
+    assert ["git", "branch", "-d", "lens-dev-example-dev"] in calls
+    assert ["git", "push", "origin", "--delete", "lens-dev-example-plan"] in calls
+    assert ["git", "push", "origin", "--delete", "lens-dev-example"] in calls
+    assert ["git", "push", "origin", "--delete", "lens-dev-example-dev"] in calls
+
+
+def test_control_repo_merge_blocks_unmerged_related_branch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Completion refuses to merge main when feature branches are not already merged."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    class Result:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return Result()
+        if cmd == ["git", "fetch", "--prune", "origin"]:
+            return Result()
+        if cmd[:3] == ["git", "rev-parse", "--verify"]:
+            return Result()
+        if cmd == ["git", "merge-base", "--is-ancestor", "lens-dev-example", "lens-dev-example-dev"]:
+            return Result(returncode=1)
+        if cmd[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return Result()
+        raise AssertionError(f"unexpected command after validation failure: {cmd}")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    pr_url, error = mod._gh_merge_to_main(control_repo, "lens-dev-example", dry_run=False)
+
+    assert pr_url is None
+    assert error is not None
+    assert "lens-dev-example" in error
+    assert "lens-dev-example-dev" in error
+    assert "not merged" in error
+
+
+def test_control_repo_cleanup_runs_for_already_merged_pr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An already-merged completion PR still triggers related branch deletion."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        calls.append(cmd)
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return Result()
+        if cmd == ["git", "fetch", "--prune", "origin"]:
+            return Result()
+        if cmd[:3] == ["git", "rev-parse", "--verify"]:
+            return Result()
+        if cmd[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return Result()
+        if cmd in (
+            ["git", "checkout", "lens-dev-example-dev"],
+            ["git", "checkout", "main"],
+        ):
+            return Result()
+        if cmd in (
+            ["git", "pull", "--ff-only", "origin", "lens-dev-example-dev"],
+            ["git", "pull", "--ff-only", "origin", "main"],
+        ):
+            return Result()
+        if cmd == ["git", "push", "-u", "origin", "lens-dev-example-dev"]:
+            return Result()
+        if cmd[:3] == ["git", "branch", "-d"]:
+            return Result()
+        if cmd[:3] == ["git", "push", "origin"] and "--delete" in cmd:
+            return Result()
+        if cmd[:3] == ["gh", "pr", "list"]:
+            return Result(stdout='[{"url":"https://github.com/example/control/pull/7","state":"MERGED"}]')
+        if cmd[:3] == ["gh", "pr", "merge"]:
+            raise AssertionError("already merged PR should not be merged again")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    pr_url, error = mod._gh_merge_to_main(control_repo, "lens-dev-example", dry_run=False)
+
+    assert error is None
+    assert pr_url == "https://github.com/example/control/pull/7"
+    assert ["git", "branch", "-d", "lens-dev-example-plan"] in calls
+    assert ["git", "branch", "-d", "lens-dev-example"] in calls
+    assert ["git", "branch", "-d", "lens-dev-example-dev"] in calls

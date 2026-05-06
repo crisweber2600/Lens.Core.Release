@@ -22,6 +22,11 @@ _spec = importlib.util.spec_from_file_location("git_orchestration_ops", _script_
 ops = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ops)
 
+_sync_helper_path = Path(__file__).parent.parent / "repo_sync.py"
+_sync_spec = importlib.util.spec_from_file_location("lens_repo_sync", _sync_helper_path)
+sync_helpers = importlib.util.module_from_spec(_sync_spec)
+_sync_spec.loader.exec_module(sync_helpers)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -130,6 +135,21 @@ def _no_args(**kwargs):
     return a
 
 
+def init_main_repo_with_remote(base_tmp: Path) -> tuple[Path, Path]:
+    """Create a bare remote and a local main branch clone for sync-helper tests."""
+    remote = base_tmp / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
+
+    local = base_tmp / "local"
+    subprocess.run(["git", "clone", str(remote), str(local)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local), "checkout", "-b", "main"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(local), "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "-C", str(local), "commit", "--allow-empty", "-m", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local), "push", "-u", "origin", "main"], check=True, capture_output=True)
+    return remote, local
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -186,6 +206,46 @@ class TestVerifyClean:
     def test_dirty_repo(self, repo):
         (repo / "dirty.txt").write_text("dirty")
         assert ops.verify_clean(str(repo)) is not None
+
+
+class TestRepoSyncHelper:
+    def test_detect_interrupted_merge_state(self, repo):
+        git_dir = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        merge_head = (repo / git_dir / "MERGE_HEAD").resolve()
+        merge_head.write_text("deadbeef\n", encoding="utf-8")
+
+        assert sync_helpers.detect_interrupted_state(repo) == "merge in progress"
+
+    def test_sync_release_repo_resets_hard_and_retries_when_pull_is_blocked(self, tmp_path):
+        remote, release = init_main_repo_with_remote(tmp_path)
+
+        (release / "tracked.txt").write_text("base\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(release), "add", "tracked.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(release), "commit", "-m", "add tracked"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(release), "push", "origin", "main"], check=True, capture_output=True)
+
+        peer = tmp_path / "peer"
+        subprocess.run(["git", "clone", str(remote), str(peer)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "checkout", "-b", "main", "origin/main"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "config", "user.email", "peer@example.com"], check=True)
+        subprocess.run(["git", "-C", str(peer), "config", "user.name", "Peer User"], check=True)
+        (peer / "tracked.txt").write_text("remote\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(peer), "add", "tracked.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "commit", "-m", "remote update"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "push", "origin", "main"], check=True, capture_output=True)
+
+        (release / "tracked.txt").write_text("local blocker\n", encoding="utf-8")
+
+        ok, detail = sync_helpers.sync_release_repo(release)
+
+        assert ok is True
+        assert detail == "pull blocked; reset --hard; pulled origin"
+        assert (release / "tracked.txt").read_text(encoding="utf-8") == "remote\n"
 
 
 class TestFindFeatureYaml:

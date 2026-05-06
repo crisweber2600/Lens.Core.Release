@@ -42,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-constitution", action="store_true")
     parser.add_argument("--caller", default="")
     parser.add_argument("--governance-path", default="")
+    parser.add_argument(
+        "--request-class",
+        choices=("read-only", "control-write", "governance-write", "mixed"),
+        default="",
+    )
     return parser
 
 
@@ -55,6 +60,8 @@ def delegate_preflight(args: argparse.Namespace, project_root: Path) -> int:
         command.extend(["--caller", args.caller])
     if args.governance_path:
         command.extend(["--governance-path", args.governance_path])
+    if args.request_class:
+        command.extend(["--request-class", args.request_class])
 
     result = subprocess.run(command, cwd=project_root)
     return result.returncode
