@@ -8,6 +8,7 @@ prompts:
   - lens-complete.prompt.md
   - lens-constitution.prompt.md
   - lens-dev.prompt.md
+  - lens-quickdev.prompt.md
   - lens-discover.prompt.md
   - lens-expressplan.prompt.md
   - lens-new-domain.prompt.md
@@ -29,6 +30,7 @@ skills:
   - lens-complete
   - lens-constitution
   - lens-dev
+  - lens-quickdev
   - lens-discover
   - lens-expressplan
   - lens-feature-yaml
