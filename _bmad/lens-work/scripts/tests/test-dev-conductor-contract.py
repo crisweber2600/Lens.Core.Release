@@ -100,6 +100,18 @@ def test_control_dev_branch_activation_precedes_phase_entry_validation():
     assert "Do not proceed to `sprint_status_missing`, `story_file_missing`" in text
 
 
+def test_control_dev_branch_pull_uses_ff_only_syntax():
+    """The pull step in Control Dev Branch Activation must use `--ff-only origin {branch}` form."""
+    text = _skill_text()
+    activation_start = text.find("## Control Dev Branch Activation")
+    activation_end = text.find("##", activation_start + 1)
+    section = text[activation_start:activation_end]
+    assert "pull --ff-only origin" in section, (
+        "Control Dev Branch Activation pull step must use "
+        "`git pull --ff-only origin {control_dev_branch}` (not `origin/{branch}` ref form)"
+    )
+
+
 def test_sprint_boundary_pause_documented():
     """Sprint boundary pause remains documented for default invocations."""
     text = _skill_text()

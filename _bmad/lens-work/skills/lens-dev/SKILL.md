@@ -81,7 +81,7 @@ Before any Phase Entry Validation that reads `sprint-status.yaml`, story files, 
 4. If the current branch is not `control_dev_branch`, attempt to check out the dev branch:
    - Prefer an existing local `control_dev_branch` when present.
    - Otherwise fetch and check out `origin/{control_dev_branch}` when present.
-   - Pull `origin/{control_dev_branch}` after checkout when the remote exists.
+   - Run `git -C {control_repo} pull --ff-only origin {control_dev_branch}` after checkout when the remote exists.
 5. If checkout or pull fails, emit `control_dev_branch_checkout_failed` hard-stop with the attempted branch and git error. Do not proceed to `sprint_status_missing`, `story_file_missing`, or story queue validation while still on the wrong branch.
 6. If checkout succeeds, use the docs on `control_dev_branch` as the source for all Phase Entry Validation and dev-cycle docs updates.
 
