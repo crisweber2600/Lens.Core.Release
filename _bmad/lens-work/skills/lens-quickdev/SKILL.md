@@ -187,7 +187,7 @@ Validation failures use explicit recovery paths and never rewrite shared history
 	- do not rewrite shared history;
 	- record fix-forward guidance when the branch can continue;
 	- record blocked PR recovery when the PR must remain open but blocked.
-4. This failure policy applies only to `lens-quickdev`. The existing `/lens-bug-quickdev` route remains separate and keeps its mandatory commit, push, PR, bug-artifact recording, and closeout behavior.
+4. This failure policy applies only to `lens-quickdev`. The `/lens-core-bugfix` route remains separate and keeps its mandatory fresh branch, commit, push, PR, bug-artifact recording, and closeout behavior.
 
 ## Governance Publication
 
@@ -220,7 +220,7 @@ Protect the wrapper from silently broadening beyond the approved source and feat
 3. Before broader non-source work proceeds, emit a `quickdev_scope_expansion_warning` that names the proposed paths, why they exceed approved scope, and the approval needed to continue.
 4. If the user approves the expansion, record `scope_expansion_override`, approved paths, approving instruction, timestamp, and rationale in the versioned quickdev artifact.
 5. If approval is not present, stop before editing broader non-source files and record `quickdev_scope_expansion_blocked`.
-6. Before completion, run a final audit readiness check covering command surface registration, dev-ready gate, target repo resolution, versioned evidence, delegation packet, branch policy, validation failure handling, governance publication, metadata reconciliation, scope guard, and `/lens-bug-quickdev` compatibility.
+6. Before completion, run a final audit readiness check covering command surface registration, dev-ready gate, target repo resolution, versioned evidence, delegation packet, branch policy, validation failure handling, governance publication, metadata reconciliation, scope guard, and `/lens-core-bugfix` compatibility.
 7. Record unresolved blockers or `audit_ready: true` in the versioned quickdev artifact and completion summary.
 
 ## Output Contract
@@ -274,7 +274,7 @@ Validate this contract with focused tests or inspection that assert:
 - Pre-commit validation failures create no commit and mark the artifact `blocked`.
 - Local post-commit validation failures do not push or create PRs and record `validation-failed` guidance.
 - Pushed or PR validation failures do not rewrite shared history and record fix-forward or blocked PR recovery.
-- `/lens-bug-quickdev` remains separate with mandatory commit, push, PR, bug-artifact recording, and closeout behavior.
+- `/lens-core-bugfix` remains separate with mandatory fresh branch, commit, push, PR, bug-artifact recording, and closeout behavior.
 - Exact versioned artifacts publish to `feature.yaml.docs.governance_docs_path/quickdev/`.
 - Publication uses the sanctioned Lens publication helper instead of direct governance authoring.
 - Published reruns preserve unique `vNNN` suffixes.
@@ -286,4 +286,4 @@ Validate this contract with focused tests or inspection that assert:
 - Broader non-source work triggers `quickdev_scope_expansion_warning` before edits proceed.
 - Approved scope overrides record `scope_expansion_override`, approved paths, approving instruction, timestamp, and rationale.
 - Unapproved broader non-source work stops with `quickdev_scope_expansion_blocked` before editing files.
-- Final audit readiness covers command surface, evidence versioning, governance publication, metadata, scope, and bug quickdev compatibility, then records `audit_ready: true` or unresolved blockers.
+- Final audit readiness covers command surface, evidence versioning, governance publication, metadata, scope, and core bugfix compatibility, then records `audit_ready: true` or unresolved blockers.

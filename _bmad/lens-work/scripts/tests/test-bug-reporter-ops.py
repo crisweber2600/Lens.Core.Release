@@ -16,7 +16,8 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).parent.parent / "bug-reporter-ops.py"
-QUICKDEV_MARKER = "Bug report submitted via /lens-bug-quickdev."
+QUICKDEV_MARKER = "Bug report submitted via /lens-core-bugfix."
+LEGACY_QUICKDEV_MARKER = "Bug report submitted via /lens-bug-quickdev."
 
 
 def run_create_bug(
@@ -209,6 +210,15 @@ class TestCreateBugEndToEnd(unittest.TestCase):
         self.assertIn("## QuickDev PR", content)
         self.assertIn("PR URL: https://github.com/org/repo/pull/12", content)
 
+    def test_record_quickdev_pr_accepts_legacy_bug_quickdev_marker(self) -> None:
+        """Legacy /lens-bug-quickdev artifacts remain compatible with PR recording."""
+        result = run_create_bug(self.governance_repo, chat_log=LEGACY_QUICKDEV_MARKER, queue="QuickDev")
+        slug = json.loads(result.stdout)["slug"]
+
+        record = run_record_quickdev_pr(self.governance_repo, slug, "https://github.com/org/repo/pull/14")
+
+        self.assertEqual(record.returncode, 0, record.stderr)
+
     def test_record_quickdev_pr_moves_legacy_new_artifact(self) -> None:
         """Recording a PR moves a legacy quickdev artifact from New to QuickDev."""
         result = run_create_bug(self.governance_repo, chat_log=QUICKDEV_MARKER)
@@ -284,7 +294,7 @@ class TestCreateBugEndToEnd(unittest.TestCase):
         self.assertEqual(record.returncode, 0, record.stderr)
 
     def test_record_quickdev_pr_rejects_non_quickdev_new_bug(self) -> None:
-        """record-quickdev-pr rejects a New bug that was not created by /lens-bug-quickdev."""
+        """record-quickdev-pr rejects a New bug that was not created by a core bugfix flow."""
         result = run_create_bug(
             self.governance_repo,
             title="Normal bug",
@@ -296,7 +306,7 @@ class TestCreateBugEndToEnd(unittest.TestCase):
 
         record = run_record_quickdev_pr(self.governance_repo, slug, "https://github.com/org/repo/pull/55")
         self.assertEqual(record.returncode, 1)
-        self.assertIn("not created by /lens-bug-quickdev", record.stderr)
+        self.assertIn("not created by /lens-core-bugfix", record.stderr)
 
     def test_close_quickdev_bug_moves_pr_recorded_artifact_to_fixed(self) -> None:
         """QuickDev closeout documents summary/validation and moves the artifact to Fixed."""

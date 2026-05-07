@@ -12,8 +12,7 @@ After this flow completes:
 - `feature-index.yaml` on `main` has a new entry for `{featureId}`
 - `summary.md` stub exists at `{governance-repo}/features/{domain}/{service}/{featureId}/summary.md` on `main`
 - All governance artifacts are committed directly to `main` — the governance repo never leaves `main`
-- A PR exists from `{featureId}-plan` → `{featureId}` titled "Planning: {feature name}" when the selected track creates a planning PR immediately
-- For the `express` track, the plan branch is created but the planning PR is deferred until planning artifacts exist
+- The plan branch is created, and planning PR creation is deferred until planning artifacts exist on `{featureId}-plan`
 
 ## Process
 
@@ -82,11 +81,11 @@ The script:
 3. Adds an entry to `{governance-repo}/feature-index.yaml` (creates if absent)
 4. Creates `{governance-repo}/features/{domain}/{service}/{featureId}/summary.md` stub
 5. Executes governance checkout/pull/add/commit/push directly on `main`
-6. Returns `featureSlug`, `governance_git_commands`, `control_repo_git_commands`, `control_repo_activation_commands`, `remaining_git_commands`, `remaining_commands`, `governance_git_executed`, and `governance_commit_sha`, plus `gh_commands`, plus `planning_pr_created`, `starting_phase`, `recommended_command`, and `router_command` so the handoff matches `lifecycle.yaml`
+6. Returns `featureSlug`, `governance_git_commands`, `control_repo_git_commands`, `control_repo_activation_commands`, `remaining_git_commands`, `remaining_commands`, `governance_git_executed`, and `governance_commit_sha`, plus `gh_commands`, `planning_pr_followup_commands`, `planning_pr_deferred_reason`, `planning_pr_created`, `starting_phase`, `recommended_command`, and `router_command` so the handoff matches `lifecycle.yaml`
 
 ### Step 4: Execute Git and GitHub Commands
 
-When `--execute-governance-git` succeeds, the script has already published governance artifacts on `main`. Execute the returned `remaining_commands` in order, then the `gh_commands` when present. Do not rewrite the returned branch-creation step into raw `git checkout -b` commands; the generated git-orchestration command anchors the feature topology to the control repo's default branch, and the activation step switches to `{featureId}-plan` while updating local Lens context.
+When `--execute-governance-git` succeeds, the script has already published governance artifacts on `main`. Execute the returned `remaining_commands` in order. Do not execute planning PR commands immediately after initialization; use `planning_pr_followup_commands` only after planning commits exist on `{featureId}-plan`. Do not rewrite the returned branch-creation step into raw `git checkout -b` commands; the generated git-orchestration command anchors the feature topology to the control repo's default branch, and the activation step switches to `{featureId}-plan` while updating local Lens context.
 
 ```bash
 # Each command in remaining_commands runs in order
@@ -103,7 +102,8 @@ When `--execute-governance-git` succeeds, the script has already published gover
 #   --control-repo {control_repo} \
 #   --personal-folder {personal_output_folder}
 
-# Then gh_commands when `planning_pr_created == true`
+# Planning PR creation is deferred.
+# Use planning_pr_followup_commands only after plan-branch planning commits exist.
 # (PR is in the control repo, not governance):
 # gh pr create --repo {control_repo} --head {featureId}-plan --base {featureId} ...
 ```
@@ -129,7 +129,7 @@ Present the initialization summary to the user:
 | Domain Marker | `features/{domain}/domain.yaml` ✓ |
 | Service Marker | `features/{domain}/{service}/service.yaml` ✓ |
 | Feature YAML | `features/{domain}/{service}/{featureId}/feature.yaml` (governance `main`) |
-| PR | Immediate planning PR for non-`express` tracks; deferred for `express` until planning artifacts exist |
+| PR | Deferred until planning artifacts exist on `{featureId}-plan` |
 | Index | `feature-index.yaml` (governance `main`) ✓ |
 | Summary | `features/{domain}/{service}/{featureId}/summary.md` (governance `main`) ✓ |
 

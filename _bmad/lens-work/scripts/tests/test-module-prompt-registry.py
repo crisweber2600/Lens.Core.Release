@@ -51,6 +51,7 @@ def test_defect_7_expected_prompt_stubs_now_exist():
         "lens-upgrade.prompt.md",
         "lens-complete.prompt.md",
         "lens-new-feature.prompt.md",
+        "lens-core-bugfix.prompt.md",
     ]
     missing_release = [name for name in expected if not (PROMPTS_DIR / name).exists()]
     missing_public = [name for name in expected if not (PUBLIC_PROMPTS_DIR / name).exists()]

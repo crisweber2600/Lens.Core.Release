@@ -549,35 +549,41 @@ jobs:
             fi
           done
 
-          # lens-bug-quickdev is explicitly exempt from the preflight requirement;
+          # lens-core-bugfix is explicitly exempt from the preflight requirement;
           # enforce that it must NOT contain preflight.
-          QUICKDEV_PROMPT_NAME="lens-bug-quickdev.prompt.md"
-          QUICKDEV_PROMPT=".github/prompts/$QUICKDEV_PROMPT_NAME"
-          if [ -f "$QUICKDEV_PROMPT" ]; then
-            qd_target="build-output/.github/prompts/$QUICKDEV_PROMPT_NAME"
-            if [ ! -f "$qd_target" ]; then
-              echo "::error::Missing published prompt file: $qd_target"
+          CORE_BUGFIX_PROMPT_NAME="lens-core-bugfix.prompt.md"
+          CORE_BUGFIX_PROMPT=".github/prompts/$CORE_BUGFIX_PROMPT_NAME"
+          if [ -f "$CORE_BUGFIX_PROMPT" ]; then
+            cb_target="build-output/.github/prompts/$CORE_BUGFIX_PROMPT_NAME"
+            if [ ! -f "$cb_target" ]; then
+              echo "::error::Missing published prompt file: $cb_target"
               MISSING=1
-            elif ! cmp -s "$QUICKDEV_PROMPT" "$qd_target"; then
-              echo "::error::Published prompt file differs from source: $qd_target"
+            elif ! cmp -s "$CORE_BUGFIX_PROMPT" "$cb_target"; then
+              echo "::error::Published prompt file differs from source: $cb_target"
               MISSING=1
-            elif grep -qi 'preflight' "$QUICKDEV_PROMPT"; then
-              echo "::error::lens-bug-quickdev prompt must not contain preflight: $QUICKDEV_PROMPT"
+            elif grep -qi 'preflight' "$CORE_BUGFIX_PROMPT"; then
+              echo "::error::lens-core-bugfix prompt must not contain preflight: $CORE_BUGFIX_PROMPT"
               MISSING=1
-            elif ! grep -q 'vscode_askQuestions' "$QUICKDEV_PROMPT"; then
-              echo "::error::Source prompt missing question-tool guidance: $QUICKDEV_PROMPT"
+            elif ! grep -q 'vscode_askQuestions' "$CORE_BUGFIX_PROMPT"; then
+              echo "::error::Source prompt missing question-tool guidance: $CORE_BUGFIX_PROMPT"
               MISSING=1
-            elif ! grep -q "lens.core/_bmad/lens-work/prompts/$QUICKDEV_PROMPT_NAME" "$QUICKDEV_PROMPT"; then
-              echo "::error::Source prompt delegates to the wrong release prompt: $QUICKDEV_PROMPT"
+            elif ! grep -q "lens.core/_bmad/lens-work/prompts/$CORE_BUGFIX_PROMPT_NAME" "$CORE_BUGFIX_PROMPT"; then
+              echo "::error::Source prompt delegates to the wrong release prompt: $CORE_BUGFIX_PROMPT"
               MISSING=1
             else
-              echo "✅ $qd_target"
+              echo "✅ $cb_target"
             fi
+          fi
+
+          LEGACY_BUGFIX_PROMPT=".github/prompts/lens-bug-quickdev.prompt.md"
+          if [ -f "$LEGACY_BUGFIX_PROMPT" ]; then
+            echo "::error::Legacy redirect prompt must not be published: $LEGACY_BUGFIX_PROMPT"
+            MISSING=1
           fi
 
           for src in .github/prompts/*.md; do
             [ -f "$src" ] || continue
-            [ "$(basename "$src")" = "$QUICKDEV_PROMPT_NAME" ] && continue
+            [ "$(basename "$src")" = "$CORE_BUGFIX_PROMPT_NAME" ] && continue
             target="build-output/.github/prompts/$(basename "$src")"
             if [ ! -f "$target" ]; then
               echo "::error::Missing published prompt file: $target"

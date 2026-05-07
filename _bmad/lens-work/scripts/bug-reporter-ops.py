@@ -42,7 +42,9 @@ from bugbash_schema import SchemaValidationError, validate_intake_fields
 
 BUG_STATUS_FOLDERS = ("New", "QuickDev", "Inprogress", "Fixed")
 INTAKE_QUEUES = ("New", "QuickDev")
-QUICKDEV_MARKER = "Bug report submitted via /lens-bug-quickdev"
+QUICKDEV_MARKER = "Bug report submitted via /lens-core-bugfix"
+LEGACY_QUICKDEV_MARKER = "Bug report submitted via /lens-bug-quickdev"
+QUICKDEV_MARKERS = (QUICKDEV_MARKER, LEGACY_QUICKDEV_MARKER)
 SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*-[0-9a-f]{8}$")
 
 
@@ -186,9 +188,9 @@ def _replace_quickdev_closeout_section(content: str, summary: str, validation_su
 
 
 def _require_quickdev_marker(content: str, path: Path) -> str | None:
-    if QUICKDEV_MARKER in content:
+    if any(marker in content for marker in QUICKDEV_MARKERS):
         return None
-    return f"Bug artifact {path.name} was not created by /lens-bug-quickdev"
+    return f"Bug artifact {path.name} was not created by /lens-core-bugfix or legacy /lens-bug-quickdev"
 
 
 def _require_non_empty(value: str, flag: str) -> str | None:
@@ -476,7 +478,7 @@ def _build_parser() -> argparse.ArgumentParser:
     close_quickdev.add_argument("--summary", required=True, help="Concise implementation/change summary")
     close_quickdev.add_argument("--validation-summary", required=True, help="Validation performed before closeout")
 
-    migrate = sub.add_parser("migrate-quickdev-bugs", help="Move existing /lens-bug-quickdev bugs into QuickDev.")
+    migrate = sub.add_parser("migrate-quickdev-bugs", help="Move existing /lens-core-bugfix and legacy /lens-bug-quickdev bugs into QuickDev.")
     migrate.add_argument("--governance-repo", required=True, help="Absolute path to the governance repository root")
 
     return parser
