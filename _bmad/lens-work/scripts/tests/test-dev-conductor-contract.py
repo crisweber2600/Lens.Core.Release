@@ -135,7 +135,7 @@ def test_all_stories_invocation_continues_across_sprint_boundaries():
     )
     # The original/initial invocation pre-confirms sprint-boundary crossings (key concept,
     # not an exact phrase — resilient to minor wording changes in SKILL.md).
-    assert re.search(r"invocation.{0,80}confirm", text, re.IGNORECASE), (
+    assert re.search(r"invocation.{0,80}confirm", text, re.IGNORECASE | re.DOTALL), (
         "All-stories mode must document that the initial invocation pre-confirms sprint boundary crossings"
     )
     # Continuation is automatic — no interactive numbered menu is shown.
@@ -143,12 +143,12 @@ def test_all_stories_invocation_continues_across_sprint_boundaries():
     # (within 80 chars), or 'record...boundary...immediately' — all signal the same concept.
     assert re.search(
         r"immediately.{0,80}sprint|without.{0,80}menu|record.{0,80}boundary.{0,80}immediately",
-        text, re.IGNORECASE,
+        text, re.IGNORECASE | re.DOTALL,
     ), (
         "All-stories mode must document automatic continuation without an interactive stop"
     )
     # Conductor MUST NOT stop merely because the current sprint completed
-    assert re.search(r"must not stop|not stop.{0,80}sprint", text, re.IGNORECASE), (
+    assert re.search(r"must not stop|not stop.{0,80}sprint", text, re.IGNORECASE | re.DOTALL), (
         "All-stories mode must not stop at sprint completion when additional unblocked work remains"
     )
 
