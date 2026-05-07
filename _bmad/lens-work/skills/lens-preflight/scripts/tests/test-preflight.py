@@ -243,7 +243,6 @@ def test_classify_request_marks_no_governance_write_planning_callers_as_control_
 def test_classify_request_marks_governance_only_callers_as_governance_write():
     ops = load_preflight_module()
 
-    assert ops.classify_request("lens-bug-reporter") == "governance-write"
     assert ops.classify_request("lens-discover") == "governance-write"
     assert ops.classify_request("lens-new-domain") == "governance-write"
     assert ops.classify_request("lens-new-service") == "governance-write"

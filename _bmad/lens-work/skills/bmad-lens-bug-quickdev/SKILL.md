@@ -32,6 +32,13 @@ Collect these fields before execution:
 
 If any field is missing, ask only for missing fields and stop until complete.
 
+## Branch Continuation Rule
+
+- If the user follow-up is an extension of the same active ask, continue on the existing branch from the most recent `/lens-bug-quickdev` run.
+- In continuation mode, reuse the prior `working_branch` and derive both `feature_id` and `feature_slug` from it by removing the `feature/` prefix.
+- Do not create a new feature branch in continuation mode. The follow-up must stay on the same branch.
+- Only derive `feature_id = bugfix-{bug-title-slug}` and `feature_slug = bugfix-{bug-title-slug}` for a new, independent ask.
+
 ## On Activation
 
 1. Ensure prompt-start preflight already succeeded.
@@ -39,7 +46,11 @@ If any field is missing, ask only for missing fields and stop until complete.
    - `governance_repo = {project-root}/TargetProjects/lens/lens-governance`
    - `target_project = {project-root}/TargetProjects/lens-dev/new-codebase/lens.core.src`
    - `legacy_project = {project-root}/TargetProjects/lens-dev/old-codebase/lens.core.src`
-3. Create bug intake artifact:
+3. Resolve branch context before any target-repo implementation:
+   - If this is a continuation follow-up, capture the prior `working_branch` from the most recent `/lens-bug-quickdev` output in the current conversation.
+   - In continuation mode, set `feature_id` and `feature_slug` to the prior branch name without the `feature/` prefix.
+   - Otherwise set `feature_id = bugfix-{bug-title-slug}` and `feature_slug = bugfix-{bug-title-slug}`.
+4. Create bug intake artifact:
 
 ```bash
 uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py create-bug \
@@ -50,12 +61,12 @@ uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py create-bug
   --queue QuickDev
 ```
 
-4. Parse script JSON:
+5. Parse script JSON:
    - `status: created` or `status: duplicate` are both valid; continue.
    - Capture `slug` as `bug_slug` and `path` as `bug_artifact_path` for the PR-recording step and Output Contract.
    - On non-zero exit, stop and surface error.
-5. Load and run `{project-root}/.github/skills/bmad-quick-dev/SKILL.md`.
-6. Use this implementation intent exactly:
+6. Load and run `{project-root}/.github/skills/bmad-quick-dev/SKILL.md`.
+7. Use this implementation intent exactly:
 
 "Fix this bug report in `TargetProjects/lens-dev/new-codebase/lens.core.src`.
 Title: {title}
@@ -70,12 +81,13 @@ Required workflow in target project:
     uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py prepare-dev-branch \
        --repo {target_project} \
        --governance-repo {governance_repo} \
-       --feature-id bugfix-{bug-title-slug} \
-       --feature-slug bugfix-{bug-title-slug} \
+       --feature-id {feature_id} \
+       --feature-slug {feature_slug} \
        --mode feature-id \
        --base-branch develop
     ```
     Capture `working_branch` from the JSON output and use it for all subsequent target-repo validation, push, and PR steps. If this command exits non-zero, stop and surface the exact error.
+   In continuation mode, `working_branch` must match the previously active branch; if it does not, stop and surface the mismatch.
    This command is mandatory because it checks out the base branch, pulls the base branch, and creates or reuses the QuickDev working branch. Do not replace it with narrative instructions or skip it when the target repo already appears to be on a usable branch.
 2) Before implementing, identify the primary affected Lens command and inspect the same command in `TargetProjects/lens-dev/old-codebase/lens.core.src` to understand legacy behavior and identify gaps. Use the same command name and closest matching prompt/skill/script entrypoint when available. If no legacy match exists, record that as a gap.
 3) If the legacy comparison reveals large gaps that materially change expected behavior, workflow, or outputs, stop and use `vscode_askQuestions` to confirm user intent before implementing.
@@ -126,7 +138,7 @@ Required workflow in target project:
    ```
     Capture the PR URL from the `gh pr create` output, then execute the same `record-quickdev-pr` and `close-quickdev-bug` commands above with the captured PR URL. Do NOT ask the user to create the PR themselves."
 
-7. After quick-dev delegation returns, run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
+8. After quick-dev delegation returns, run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
    - Verify the target project is still on `{working_branch}`.
    - Run `git status --short`. If implementation changes remain unstaged or uncommitted, commit them with a conventional commit message before continuing. Do not include unrelated user changes; stop and surface the blocker if unrelated changes are mixed into the same worktree.
    - Run `git -C {governance_repo} status --short`. If this flow produced governance changes (for example bug artifact updates), stage, commit, and push those changes before continuing. Do not include unrelated user changes; stop and surface the blocker if unrelated changes are mixed.
@@ -134,7 +146,7 @@ Required workflow in target project:
    - Run `git rev-parse --short HEAD` and capture the result as `commit hash`.
    - Re-run the standard Lens push command from step 6 with `--branch {working_branch}` to verify the branch is pushed. If it exits non-zero, stop and surface the exact error.
    - Verify governance and control repos are clean for changes introduced by this flow after required pushes complete.
-   - Re-run the idempotent PR creation command from step 9, capture `pr_url`, and include it as `PR URL`. The command must reuse an existing open PR when present.
+   - Re-run the idempotent PR creation command from step 7, capture `pr_url`, and include it as `PR URL`. The command must reuse an existing open PR when present.
    - Re-run `record-quickdev-pr` with `bug_slug` and the final `pr_url`, capture the returned `path`, and use it as `bug_artifact_path` until closeout completes.
    - Re-run `close-quickdev-bug` with `bug_slug`, a concise change summary, and validation summary. Capture the returned `path` as the final `bug_artifact_path`, and verify it points under `bugs/Fixed/`.
    - If the user requested automatic completion after the dev cycle, invoke `lens-complete` after the target PR is recorded. The conductor must run `complete-ops.py finalize --control-repo {project-root} --confirm` for the active feature, commit and push governance archival changes, and include the completion result or structured blocker in the final response.

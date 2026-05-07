@@ -618,15 +618,12 @@ CONTROL_WRITE_CALLERS = {
     "lens-preplan",
 }
 GOVERNANCE_WRITE_CALLERS = {
-    "lens-bug-reporter",
     "lens-discover",
     "lens-new-domain",
     "lens-new-service",
 }
 MIXED_CALLERS = {
-    "lens-bug-fixer",
     "lens-bug-quickdev",
-    "lens-bugbash",
     "lens-businessplan",
     "lens-complete",
     "lens-dev",
