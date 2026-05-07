@@ -1,0 +1,14 @@
+# LENS Workbench — module identity subset for setup merge
+# This file is consumed by merge-config.py during installation
+
+code: lens
+name: "LENS Workbench"
+module_version: "5.4.31"
+description: "LENS lifecycle workbench — feature context switching, initialization, planning, and governance."
+type: standalone
+default_selected: false
+dependencies:
+  - core
+optional_dependencies:
+  - cis
+  - tea

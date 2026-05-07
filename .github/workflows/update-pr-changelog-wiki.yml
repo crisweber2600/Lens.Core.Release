@@ -1,0 +1,93 @@
+name: Update PR Changelog Wiki
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: update-pr-changelog-wiki
+  cancel-in-progress: false
+
+jobs:
+  update-wiki:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prepare git askpass
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASKPASS="$RUNNER_TEMP/wiki-askpass.sh"
+          cat >"$ASKPASS" <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf '%s\n' "x-access-token" ;;
+            *) printf '%s\n' "$GITHUB_TOKEN" ;;
+          esac
+          EOF
+          chmod 500 "$ASKPASS"
+          {
+            echo "GIT_ASKPASS=$ASKPASS"
+            echo "GIT_TERMINAL_PROMPT=0"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare wiki checkout
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          WIKI_URL="https://github.com/${GITHUB_REPOSITORY}.wiki.git"
+          rm -rf wiki
+
+          if git clone "$WIKI_URL" wiki; then
+            echo "✅ Cloned wiki repository"
+          else
+            echo "ℹ️ Wiki repository not initialized yet; creating a fresh checkout"
+            mkdir -p wiki
+            cd wiki
+            git init
+            git checkout -b master
+            git remote add origin "$WIKI_URL"
+          fi
+
+      - name: Update wiki changelog pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: |
+          python3 .github/scripts/pr_changelog_wiki.py \
+            --wiki-dir "$PWD/wiki"
+
+      - name: Commit and push wiki changes
+        working-directory: wiki
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No wiki changes to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+
+          if git diff --cached --quiet; then
+            echo "No staged wiki changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Update PR changelog wiki"
+          git push origin HEAD

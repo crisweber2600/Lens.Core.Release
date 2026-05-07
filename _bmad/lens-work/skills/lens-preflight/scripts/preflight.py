@@ -1,0 +1,1299 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""Synchronise authority repos and validate workspace state before workflow execution."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import NamedTuple
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def echo(msg: str) -> None:
+    print(msg)
+
+
+CONTROL_AUTO_SYNC_COMMIT_MESSAGE = "chore(control): auto-sync local changes"
+GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local changes"
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_hash_manifest(path: Path) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    if not path.is_file():
+        return hashes
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^([0-9a-fA-F]+)\s{2}(.+)$", line)
+        if m:
+            hashes[m.group(2)] = m.group(1).lower()
+    return hashes
+
+
+def remove_empty_parent_dirs(start_dir: Path, stop_dir: Path) -> None:
+    current = start_dir
+    while current != stop_dir and current.is_dir():
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        current = current.parent
+
+
+def lens_dir(project_root: Path) -> Path:
+    return project_root / ".lens"
+
+
+def lens_version_file(project_root: Path) -> Path:
+    return lens_dir(project_root) / "LENS_VERSION"
+
+
+def legacy_lens_version_file(project_root: Path) -> Path:
+    return project_root / "LENS_VERSION"
+
+
+def personal_dir(project_root: Path) -> Path:
+    return lens_dir(project_root) / "personal"
+
+
+def legacy_personal_dir(project_root: Path) -> Path:
+    return project_root / ".github" / "lens" / "personal"
+
+
+PERSONAL_ARTIFACT_NAMES = (".github-hashes", ".preflight-timestamp", "context.yaml", "profile.yaml")
+
+
+def relocate_root_personal_files(project_root: Path, active_dir: Path) -> None:
+    active_root = lens_dir(project_root)
+    active_root.mkdir(parents=True, exist_ok=True)
+    active_dir.mkdir(parents=True, exist_ok=True)
+
+    relocated: list[str] = []
+    removed_duplicates: list[str] = []
+    conflicts: list[str] = []
+
+    for name in PERSONAL_ARTIFACT_NAMES:
+        source = active_root / name
+        destination = active_dir / name
+
+        if not source.is_file():
+            continue
+
+        try:
+            if destination.is_file():
+                if source.read_bytes() == destination.read_bytes():
+                    source.unlink()
+                    removed_duplicates.append(name)
+                else:
+                    conflicts.append(name)
+                continue
+
+            source.replace(destination)
+            relocated.append(name)
+        except OSError as exc:
+            echo(f"  ⚠ Unable to relocate misplaced personal file {name}: {exc}")
+
+    if relocated:
+        echo(
+            "[preflight] Relocated misplaced personal files from .lens root to .lens/personal: "
+            + ", ".join(relocated)
+        )
+    if removed_duplicates:
+        echo(
+            "[preflight] Removed duplicate personal files from .lens root: "
+            + ", ".join(removed_duplicates)
+        )
+    if conflicts:
+        echo(
+            "[preflight] Found conflicting personal files in .lens root; leaving them for manual cleanup: "
+            + ", ".join(conflicts)
+        )
+
+
+def migrate_legacy_personal_dir(project_root: Path) -> Path:
+    active_dir = personal_dir(project_root)
+    active_root = lens_dir(project_root)
+    legacy_dir = legacy_personal_dir(project_root)
+
+    if active_dir.exists():
+        if legacy_dir.exists():
+            echo("[preflight] .lens/personal already exists; leaving the legacy personal directory untouched")
+        relocate_root_personal_files(project_root, active_dir)
+        return active_dir
+
+    active_root.mkdir(parents=True, exist_ok=True)
+
+    if not legacy_dir.exists():
+        active_dir.mkdir(parents=True, exist_ok=True)
+        relocate_root_personal_files(project_root, active_dir)
+        return active_dir
+
+    echo("[preflight] Migrating local personal state from the legacy personal directory to .lens/personal...")
+    import shutil
+
+    shutil.move(str(legacy_dir), str(active_dir))
+    remove_empty_parent_dirs(legacy_dir.parent, project_root / ".github")
+    echo("[preflight] Personal state migration complete")
+    relocate_root_personal_files(project_root, active_dir)
+    return active_dir
+
+
+def ensure_lens_version_file(project_root: Path) -> str:
+    active_file = lens_version_file(project_root)
+    legacy_file = legacy_lens_version_file(project_root)
+
+    if active_file.is_file():
+        return active_file.read_text(encoding="utf-8").strip()
+
+    if not legacy_file.is_file():
+        return ""
+
+    lens_dir(project_root).mkdir(parents=True, exist_ok=True)
+    version = legacy_file.read_text(encoding="utf-8").strip()
+    active_file.write_text(version, encoding="utf-8")
+    echo("[preflight] Seeded .lens/LENS_VERSION from the legacy root LENS_VERSION file")
+    return version
+
+
+def governance_setup_file(project_root: Path) -> Path:
+    return lens_dir(project_root) / "governance-setup.yaml"
+
+
+def legacy_personal_governance_setup_file(project_root: Path) -> Path:
+    return personal_dir(project_root) / "governance-setup.yaml"
+
+
+def legacy_governance_setup_file(project_root: Path) -> Path:
+    return project_root / "docs" / "lens-work" / "governance-setup.yaml"
+
+
+def _read_scalar_yaml_value(content: str, key: str) -> str | None:
+    match = re.search(rf"^{re.escape(key)}:\s*(.+)$", content, re.MULTILINE)
+    if not match:
+        return None
+
+    raw_value = match.group(1).strip()
+    if len(raw_value) >= 2 and raw_value[0] == raw_value[-1] and raw_value[0] in ('"', "'"):
+        return raw_value[1:-1]
+    return raw_value
+
+
+def load_governance_setup(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+
+    values: dict[str, str] = {}
+    for key in ("governance_repo_path", "governance_remote_url"):
+        value = _read_scalar_yaml_value(content, key)
+        if value:
+            values[key] = value
+    return values
+
+
+def ensure_governance_setup_file(project_root: Path) -> dict[str, str]:
+    active_file = governance_setup_file(project_root)
+    legacy_personal_file = legacy_personal_governance_setup_file(project_root)
+    legacy_file = legacy_governance_setup_file(project_root)
+
+    if active_file.is_file():
+        if legacy_personal_file.is_file():
+            try:
+                if active_file.read_bytes() == legacy_personal_file.read_bytes():
+                    legacy_personal_file.unlink()
+                    echo("[preflight] Removed duplicate legacy governance setup from .lens/personal/governance-setup.yaml")
+                else:
+                    echo("[preflight] Found conflicting legacy governance setup at .lens/personal/governance-setup.yaml; using .lens/governance-setup.yaml")
+            except OSError as exc:
+                echo(f"  ⚠ Unable to reconcile legacy governance setup file: {exc}")
+        return load_governance_setup(active_file)
+
+    for source_file, source_label, prune_parent in (
+        (legacy_personal_file, ".lens/personal/governance-setup.yaml", False),
+        (legacy_file, "docs/lens-work/governance-setup.yaml", True),
+    ):
+        if not source_file.is_file():
+            continue
+
+        try:
+            contents = source_file.read_text(encoding="utf-8")
+            active_file.parent.mkdir(parents=True, exist_ok=True)
+            active_file.write_text(contents, encoding="utf-8")
+            source_file.unlink()
+            if prune_parent:
+                remove_empty_parent_dirs(source_file.parent, project_root / "docs")
+            echo(f"[preflight] Migrated governance setup from {source_label} to .lens/governance-setup.yaml")
+        except OSError as exc:
+            echo(f"  ⚠ Unable to migrate governance setup file: {exc}")
+            return load_governance_setup(source_file)
+
+        return load_governance_setup(active_file)
+
+    bmadconfig_values = _load_bmadconfig_governance(project_root)
+    if bmadconfig_values:
+        return bmadconfig_values
+
+    return {}
+
+
+def _load_bmadconfig_governance(project_root: Path) -> dict[str, str]:
+    """Fallback governance settings read from lens-work bmadconfig.yaml.
+
+    Allows light-preflight and other callers to sync the governance repo even
+    when the per-user .lens/governance-setup.yaml has not been created yet.
+    """
+
+    candidates = [
+        project_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
+        project_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
+    ]
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        values = load_governance_setup(candidate)
+        if not values:
+            continue
+        resolved: dict[str, str] = {}
+        for key, raw_value in values.items():
+            resolved[key] = raw_value.replace("{project-root}", str(project_root))
+        if resolved.get("governance_repo_path"):
+            return resolved
+    return {}
+
+
+def resolve_workspace_path(project_root: Path, raw_path: str) -> Path:
+    raw_path = raw_path.replace("{project-root}", str(project_root))
+    path = Path(raw_path).expanduser()
+    return path if path.is_absolute() else project_root / path
+
+
+def parse_compat_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    args, extras = parser.parse_known_args()
+    if not extras or extras == ["."]:
+        return args
+
+    parser.error(f"unrecognized arguments: {' '.join(extras)}")
+    raise AssertionError("argparse parser.error should exit")
+
+
+def resolve_project_root(script_dir: Path) -> Path:
+    """Locate the workspace/control-repo root.
+
+    Requires the workspace layout: a directory that contains
+    lens.core/_bmad/lens-work/lifecycle.yaml.
+
+    This function does not support standalone source-repo roots because
+    preflight.py depends on the lens.core/ checkout for syncing operations.
+    Invoke via light-preflight.py from a workspace root instead.
+    """
+    current = Path.cwd().resolve()
+    script_dir = script_dir.resolve()
+
+    candidates: list[Path] = []
+    for start in (current, script_dir):
+        for candidate in (start, *start.parents):
+            if candidate not in candidates:
+                candidates.append(candidate)
+
+    for candidate in candidates:
+        if (candidate / "lens.core" / "_bmad" / "lens-work" / "lifecycle.yaml").is_file():
+            return candidate
+
+    raise RuntimeError(
+        "Unable to resolve project root: could not find "
+        "lens.core/_bmad/lens-work/lifecycle.yaml. "
+        "Run preflight from a workspace root that contains a lens.core/ checkout."
+    )
+
+
+def prune_stale_synced_github_files(
+    project_root: Path,
+    stored_hashes: dict[str, str],
+    new_hashes: dict[str, str],
+) -> int:
+    github_root = project_root / ".github"
+    removed = 0
+
+    for rel_path in sorted(set(stored_hashes) - set(new_hashes)):
+        if not rel_path.startswith(".github/"):
+            continue
+
+        local_file = project_root / rel_path
+        if not local_file.is_file():
+            continue
+
+        local_file.unlink()
+        removed += 1
+        remove_empty_parent_dirs(local_file.parent, github_root)
+
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# Prompt catalog metadata — (experience, role)
+# Kept in sync with setup.py. Unknown stems are always included.
+# ---------------------------------------------------------------------------
+_PROMPT_METADATA: dict[str, tuple[str, str | None]] = {
+    "lens-adversarial-review":           ("full",  "any"),
+    "lens-batch":                         ("both",  "any"),
+    "lens-bmad-brainstorming":            ("full",  "plan"),
+    "lens-bmad-code-review":              ("full",  "dev"),
+    "lens-bmad-create-architecture":      ("full",  "plan"),
+    "lens-bmad-create-epics-and-stories": ("full",  "plan"),
+    "lens-bmad-create-prd":               ("full",  "plan"),
+    "lens-bmad-create-story":             ("full",  "plan"),
+    "lens-bmad-create-ux-design":         ("full",  "plan"),
+    "lens-bmad-domain-research":          ("full",  "plan"),
+    "lens-bmad-market-research":          ("full",  "plan"),
+    "lens-bmad-product-brief":            ("full",  "plan"),
+    "lens-bmad-quick-dev":                ("full",  "dev"),
+    "lens-bmad-sprint-planning":          ("full",  "plan"),
+    "lens-bmad-technical-research":       ("full",  "plan"),
+    "lens-businessplan":                  ("both",  "plan"),
+    "lens-complete":                      ("both",  "any"),
+    "lens-constitution":                  ("full",  "admin"),
+    "lens-dev":                           ("both",  "dev"),
+    "lens-discover":                      ("both",  "any"),
+    "lens-expressplan":                   ("both",  "any"),
+    "lens-finalizeplan":                  ("both",  "plan"),
+    "lens-help":                          ("both",  "any"),
+    "lens-log-problem":                   ("full",  None),
+    "lens-move-feature":                  ("full",  "plan"),
+    "lens-new-domain":                    ("any",   "plan"),
+    "lens-new-feature":                   ("both",  "any"),
+    "lens-new-project":                   ("both",  "any"),
+    "lens-new-service":                   ("both",  "any"),
+    "lens-next":                          ("both",  "any"),
+    "lens-preflight":                     ("both",  "any"),
+    "lens-preplan":                       ("both",  "plan"),
+    "lens-split-feature":                 ("both",  "plan"),
+    "lens-switch":                        ("both",  "any"),
+    "lens-techplan":                      ("both",  "plan"),
+    "lens-theme":                         ("both",  "any"),
+    "lens-upgrade":                       ("full",  "admin"),
+}
+
+
+def _should_include_prompt(stem: str, experience: str, role: str) -> bool:
+    """Return True if a prompt should be present for the given profile."""
+    meta = _PROMPT_METADATA.get(stem)
+    if meta is None:
+        return True  # unknown stem → always keep (forward-compatible)
+
+    exp, prole = meta
+
+    if experience == "lite" and exp == "full":
+        return False
+
+    if role == "admin":
+        return True
+
+    if prole == "admin":
+        return False
+
+    if role == "planner":
+        return prole in ("plan", "any", None)
+    if role == "dev":
+        return prole in ("dev", "any", None)
+    return True  # "both"
+
+
+def _load_user_profile(project_root: Path) -> dict[str, str]:
+    """Read .lens/personal/profile.yaml; return defaults if missing."""
+    profile_path = personal_dir(project_root) / "profile.yaml"
+    defaults: dict[str, str] = {"experience_mode": "full", "primary_role": "both"}
+    if not profile_path.is_file():
+        return defaults
+    try:
+        for line in profile_path.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^(experience_mode|primary_role):\s*(.+)$", line.strip())
+            if m:
+                defaults[m.group(1)] = m.group(2).strip()
+    except OSError:
+        pass
+    return defaults
+
+
+def emit_onboard_next_steps(project_root: Path) -> None:
+    """Print the role-aware next-step handoff for the /onboard prompt."""
+    profile = _load_user_profile(project_root)
+    role = profile.get("primary_role", "both").strip().lower()
+
+    echo("")
+    echo("[onboard] Next steps:")
+    if role == "dev":
+        echo("  1. Use /switch to load the feature you want to work on.")
+        echo("  2. Then use /dev to continue implementation for that feature.")
+    else:
+        echo("  Use /switch to continue existing work.")
+        echo("  Use /new-* to create new work.")
+    echo("  Use /next anytime to get the recommended next command for the current context.")
+
+
+def parse_timestamp(raw: str) -> datetime | None:
+    val = raw.strip()
+    if not val:
+        return None
+    # Unix epoch seconds
+    if re.match(r"^\d+$", val):
+        return datetime.fromtimestamp(int(val), tz=timezone.utc)
+    # ISO-8601
+    try:
+        return datetime.fromisoformat(val.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        echo(f"  ⚠ Ignoring invalid preflight timestamp: {val}")
+        return None
+
+
+def pull_window_seconds(branch: str) -> int:
+    if branch.startswith("alpha"):
+        return 3600
+    if branch.startswith("beta"):
+        return 10800
+    return 86400
+
+
+def _load_repo_sync_module():
+    helper_path = Path(__file__).resolve().parents[2] / "lens-git-orchestration" / "scripts" / "repo_sync.py"
+    spec = importlib.util.spec_from_file_location("lens_repo_sync", helper_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load repo sync helper from {helper_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_REPO_SYNC = _load_repo_sync_module()
+repo_current_branch = _REPO_SYNC.current_branch
+repo_detect_interrupted_state = _REPO_SYNC.detect_interrupted_state
+repo_git_has_clean_worktree = _REPO_SYNC.git_has_clean_worktree
+repo_resolve_governance_branch = _REPO_SYNC.resolve_governance_branch
+repo_ensure_local_branch = _REPO_SYNC.ensure_local_branch
+repo_resolve_sync_target = _REPO_SYNC.resolve_sync_target
+repo_remote_branch_exists = _REPO_SYNC.remote_branch_exists
+repo_commits_ahead_of_remote = _REPO_SYNC.commits_ahead_of_remote
+repo_git_repo = _REPO_SYNC.git_repo
+repo_git_error = _REPO_SYNC.git_error
+shared_sync_release_repo = _REPO_SYNC.sync_release_repo
+
+
+def auto_commit_local_changes(repo: Path, commit_message: str) -> tuple[bool, str]:
+    add_result = repo_git_repo(repo, ["add", "-A"])
+    if add_result.returncode != 0:
+        return False, f"failed to stage local changes: {repo_git_error(add_result)}"
+
+    staged_result = repo_git_repo(repo, ["diff", "--cached", "--quiet"])
+    if staged_result.returncode == 0:
+        return False, "local changes were detected but none could be staged for commit"
+    if staged_result.returncode != 1:
+        return False, f"failed to inspect staged changes: {repo_git_error(staged_result)}"
+
+    commit_result = repo_git_repo(repo, ["commit", "-m", commit_message])
+    if commit_result.returncode != 0:
+        return False, f"failed to commit local changes: {repo_git_error(commit_result)}"
+
+    sha_result = repo_git_repo(repo, ["rev-parse", "--short", "HEAD"])
+    sha = sha_result.stdout.strip() if sha_result.returncode == 0 else ""
+    detail = "committed local changes"
+    if sha:
+        detail = f"{detail} ({sha})"
+    return True, detail
+
+
+def sync_managed_repo(
+    repo: Path,
+    repo_label: str,
+    commit_message: str,
+    *,
+    preferred_branch: str | None = None,
+    preferred_remote: str | None = None,
+) -> tuple[bool, str]:
+    worktree_check = repo_git_repo(repo, ["rev-parse", "--is-inside-work-tree"])
+    if worktree_check.returncode != 0 or worktree_check.stdout.strip() != "true":
+        return False, f"not a git worktree ({repo_git_error(worktree_check)})"
+
+    interrupted = repo_detect_interrupted_state(repo)
+    if interrupted is not None:
+        return False, interrupted
+
+    active_branch = repo_current_branch(repo) or "HEAD"
+    branch = preferred_branch or active_branch
+    if not branch or branch == "HEAD":
+        return False, "detached HEAD; check out a branch before automatic sync"
+
+    if preferred_branch and active_branch != preferred_branch:
+        clean, clean_detail = repo_git_has_clean_worktree(repo)
+        if not clean:
+            if clean_detail == "local changes present":
+                return False, (
+                    f"local changes present on {active_branch}; switch to {preferred_branch} or clean the repo "
+                    f"before automatic {repo_label} sync"
+                )
+            return False, clean_detail or "unable to inspect worktree"
+
+        checked_out, checkout_detail = repo_ensure_local_branch(repo, preferred_branch)
+        if not checked_out:
+            return False, f"failed to checkout {preferred_branch}: {checkout_detail}"
+        branch = preferred_branch
+
+    remote, local_branch, remote_branch_or_error = repo_resolve_sync_target(repo, branch, preferred_remote)
+    if remote is None or local_branch is None:
+        return False, remote_branch_or_error
+
+    remote_branch = remote_branch_or_error
+    clean, clean_detail = repo_git_has_clean_worktree(repo)
+    sync_notes = [f"synced {local_branch}"]
+    if not clean:
+        if clean_detail != "local changes present":
+            return False, clean_detail or "unable to inspect worktree"
+
+        committed, commit_detail = auto_commit_local_changes(repo, commit_message)
+        if not committed:
+            return False, commit_detail
+        sync_notes.append(commit_detail)
+
+    has_remote_branch, remote_branch_error = repo_remote_branch_exists(repo, remote, remote_branch)
+    if remote_branch_error is not None:
+        return False, remote_branch_error
+
+    if has_remote_branch:
+        pull_result = repo_git_repo(repo, ["pull", "--rebase", "--autostash", remote, remote_branch])
+        if pull_result.returncode != 0:
+            return False, f"pull failed on {remote}/{remote_branch}: {repo_git_error(pull_result)}"
+        sync_notes.append(f"pulled {remote}/{remote_branch}")
+
+        ahead, ahead_detail = repo_commits_ahead_of_remote(repo, remote, remote_branch)
+        if ahead_detail:
+            return False, ahead_detail
+
+        if ahead > 0:
+            push_result = repo_git_repo(repo, ["push", remote, f"HEAD:{remote_branch}"])
+            if push_result.returncode != 0:
+                return False, f"push failed on {remote}/{remote_branch}: {repo_git_error(push_result)}"
+            sync_notes.append(f"pushed {ahead} local commit(s)")
+    else:
+        push_result = repo_git_repo(repo, ["push", "-u", remote, f"HEAD:{remote_branch}"])
+        if push_result.returncode != 0:
+            return False, f"push failed on {remote}/{remote_branch}: {repo_git_error(push_result)}"
+        sync_notes.append(f"created {remote}/{remote_branch}")
+
+    return True, "; ".join(sync_notes)
+
+REQUEST_CLASS_CHOICES = ("read-only", "control-write", "governance-write", "mixed")
+READ_ONLY_CALLERS = {
+    "",
+    "lens-constitution",
+    "lens-help",
+    "lens-next",
+    "lens-preflight",
+    "lens-switch",
+    "onboard",
+}
+CONTROL_WRITE_CALLERS = {
+    "lens-expressplan",
+    "lens-preplan",
+}
+GOVERNANCE_WRITE_CALLERS = {
+    "lens-discover",
+    "lens-new-domain",
+    "lens-new-service",
+}
+MIXED_CALLERS = {
+    "lens-bug-quickdev",
+    "lens-businessplan",
+    "lens-complete",
+    "lens-dev",
+    "lens-finalizeplan",
+    "lens-new-feature",
+    "lens-split-feature",
+    "lens-techplan",
+    "lens-upgrade",
+}
+
+
+class RepoSyncDecision(NamedTuple):
+    repo_label: str
+    outcome: str
+    detail: str
+    required: bool
+    branch: str | None = None
+
+
+def branch_cleanup_fallback_branch(repo_label: str, branch: str) -> str | None:
+    if repo_label != "control":
+        return None
+    if not branch or branch == "HEAD" or branch.endswith(("-plan", "-dev")):
+        return None
+    return f"{branch}-dev"
+
+
+def checkout_branch_cleanup_fallback(repo: Path, remote: str, fallback_branch: str) -> tuple[bool, str | None]:
+    fetch_result = repo_git_repo(
+        repo,
+        ["fetch", remote, f"refs/heads/{fallback_branch}:refs/remotes/{remote}/{fallback_branch}"],
+    )
+    if fetch_result.returncode != 0:
+        return False, f"failed to fetch {remote}/{fallback_branch}: {repo_git_error(fetch_result)}"
+
+    checked_out, checkout_detail = repo_ensure_local_branch(repo, fallback_branch)
+    if not checked_out:
+        return False, f"failed to checkout {fallback_branch}: {checkout_detail}"
+    return True, None
+
+
+def normalize_request_class(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return ""
+    if normalized not in REQUEST_CLASS_CHOICES:
+        raise ValueError(f"Unsupported request class: {value}")
+    return normalized
+
+
+def classify_request(caller: str, explicit_request_class: str = "") -> str:
+    normalized_explicit = normalize_request_class(explicit_request_class)
+    if normalized_explicit:
+        return normalized_explicit
+
+    normalized_caller = str(caller or "").strip().lower()
+    if normalized_caller in READ_ONLY_CALLERS:
+        return "read-only"
+    if normalized_caller in CONTROL_WRITE_CALLERS:
+        return "control-write"
+    if normalized_caller in GOVERNANCE_WRITE_CALLERS:
+        return "governance-write"
+    if normalized_caller in MIXED_CALLERS:
+        return "mixed"
+    return "mixed"
+
+
+def release_branch_name(release_dir: Path) -> str:
+    branch = repo_current_branch(release_dir)
+    return branch or "unknown"
+
+
+def request_requires_repo(request_class: str, repo_label: str) -> bool:
+    if request_class == "mixed":
+        return True
+    if request_class == "control-write":
+        return repo_label == "control"
+    if request_class == "governance-write":
+        return repo_label == "governance"
+    return False
+
+
+def pre_request_sync(
+    repo: Path,
+    repo_label: str,
+    request_class: str,
+    *,
+    preferred_branch: str | None = None,
+) -> RepoSyncDecision:
+    required = request_requires_repo(request_class, repo_label)
+
+    if not repo.is_dir():
+        if required:
+            return RepoSyncDecision(repo_label, "block", "missing required repo context", True)
+        if repo_label == "governance" and request_class == "read-only":
+            return RepoSyncDecision(repo_label, "warn", "governance freshness deferred for read-only request", False)
+        return RepoSyncDecision(repo_label, "no-op", f"{repo_label} repo not required for {request_class} request", False)
+
+    interrupted = repo_detect_interrupted_state(repo)
+    clean, clean_detail = repo_git_has_clean_worktree(repo)
+
+    if not required:
+        if repo_label == "governance" and request_class == "read-only":
+            return RepoSyncDecision(repo_label, "warn", "governance freshness deferred for read-only request", False)
+        if interrupted is not None:
+            return RepoSyncDecision(
+                repo_label,
+                "warn",
+                f"{interrupted}; skipping mutable {repo_label} sync for {request_class} request",
+                False,
+            )
+        if not clean and clean_detail == "local changes present":
+            return RepoSyncDecision(
+                repo_label,
+                "warn",
+                f"local changes present; skipping mutable {repo_label} sync for {request_class} request",
+                False,
+            )
+        return RepoSyncDecision(repo_label, "no-op", f"mutable {repo_label} sync not required for {request_class} request", False)
+
+    if interrupted is not None:
+        return RepoSyncDecision(repo_label, "block", interrupted, True)
+
+    if preferred_branch:
+        active_branch = repo_current_branch(repo)
+        if active_branch != preferred_branch:
+            if not clean:
+                return RepoSyncDecision(
+                    repo_label,
+                    "block",
+                    f"local changes present on {active_branch}; switch to {preferred_branch} before mutable sync",
+                    True,
+                    active_branch or None,
+                )
+            checked_out, checkout_detail = repo_ensure_local_branch(repo, preferred_branch)
+            if not checked_out:
+                return RepoSyncDecision(
+                    repo_label,
+                    "block",
+                    f"failed to checkout {preferred_branch}: {checkout_detail}",
+                    True,
+                    active_branch or None,
+                )
+
+    clean, clean_detail = repo_git_has_clean_worktree(repo)
+    if not clean:
+        if clean_detail == "local changes present":
+            return RepoSyncDecision(repo_label, "block", "policy-blocked sync: local changes present", True)
+        return RepoSyncDecision(repo_label, "block", clean_detail or "unable to inspect worktree", True)
+
+    branch = preferred_branch or repo_current_branch(repo)
+    if not branch or branch == "HEAD":
+        return RepoSyncDecision(repo_label, "block", "detached HEAD; check out a branch before mutable sync", True)
+
+    remote, local_branch, remote_branch_or_error = repo_resolve_sync_target(repo, branch, preferred_remote="origin")
+    if remote is None or local_branch is None:
+        return RepoSyncDecision(repo_label, "block", remote_branch_or_error, True, branch)
+
+    remote_branch = remote_branch_or_error
+    has_remote_branch, remote_branch_error = repo_remote_branch_exists(repo, remote, remote_branch)
+    if remote_branch_error is not None:
+        return RepoSyncDecision(repo_label, "block", remote_branch_error, True, local_branch)
+    if not has_remote_branch:
+        fallback_branch = branch_cleanup_fallback_branch(repo_label, remote_branch)
+        if fallback_branch:
+            fallback_exists, fallback_error = repo_remote_branch_exists(repo, remote, fallback_branch)
+            if fallback_error is not None:
+                return RepoSyncDecision(repo_label, "block", fallback_error, True, local_branch)
+            if fallback_exists:
+                checked_out, checkout_detail = checkout_branch_cleanup_fallback(repo, remote, fallback_branch)
+                if not checked_out:
+                    return RepoSyncDecision(repo_label, "block", checkout_detail or "failed to checkout branch cleanup fallback", True, local_branch)
+                local_branch = fallback_branch
+                remote_branch = fallback_branch
+            else:
+                fallback_branch = None
+
+        if fallback_branch:
+            pull_result = repo_git_repo(repo, ["pull", "--rebase", "--autostash", remote, remote_branch])
+            if pull_result.returncode != 0:
+                return RepoSyncDecision(
+                    repo_label,
+                    "block",
+                    f"pull failed on {remote}/{remote_branch}: {repo_git_error(pull_result)}",
+                    True,
+                    local_branch,
+                )
+
+            ahead, ahead_detail = repo_commits_ahead_of_remote(repo, remote, remote_branch)
+            if ahead_detail:
+                return RepoSyncDecision(repo_label, "block", ahead_detail, True, local_branch)
+            if ahead > 0:
+                return RepoSyncDecision(
+                    repo_label,
+                    "warn",
+                    (
+                        f"{remote}/{remote_branch_or_error} missing after branch cleanup; "
+                        f"switched to {remote_branch}; local branch remains {ahead} commit(s) ahead and publish is deferred"
+                    ),
+                    True,
+                    local_branch,
+                )
+
+            return RepoSyncDecision(
+                repo_label,
+                "pull-only",
+                f"{remote}/{remote_branch_or_error} missing after branch cleanup; switched to {remote_branch} and pulled {remote}/{remote_branch}",
+                True,
+                local_branch,
+            )
+
+        return RepoSyncDecision(
+            repo_label,
+            "block",
+            f"required remote branch {remote}/{remote_branch} not found",
+            True,
+            local_branch,
+        )
+
+    pull_result = repo_git_repo(repo, ["pull", "--rebase", "--autostash", remote, remote_branch])
+    if pull_result.returncode != 0:
+        return RepoSyncDecision(
+            repo_label,
+            "block",
+            f"pull failed on {remote}/{remote_branch}: {repo_git_error(pull_result)}",
+            True,
+            local_branch,
+        )
+
+    ahead, ahead_detail = repo_commits_ahead_of_remote(repo, remote, remote_branch)
+    if ahead_detail:
+        return RepoSyncDecision(repo_label, "block", ahead_detail, True, local_branch)
+    if ahead > 0:
+        return RepoSyncDecision(
+            repo_label,
+            "warn",
+            f"pulled {remote}/{remote_branch}; local branch remains {ahead} commit(s) ahead and publish is deferred",
+            True,
+            local_branch,
+        )
+
+    return RepoSyncDecision(repo_label, "pull-only", f"pulled {remote}/{remote_branch}", True, local_branch)
+
+
+def post_request_sync_decision(repo_label: str, *, touched: bool, request_class: str) -> RepoSyncDecision:
+    if not touched:
+        return RepoSyncDecision(repo_label, "no-op", f"{repo_label} repo untouched by this request", False)
+    if repo_label == "governance":
+        return RepoSyncDecision(repo_label, "publish", "qualifying governance changes default to publish", True)
+    return RepoSyncDecision(repo_label, "commit-push", f"qualifying {repo_label} changes default to commit and push", True)
+
+
+def publish_touched_repo(repo: Path, repo_label: str) -> tuple[bool, str]:
+    if repo_label == "governance":
+        branch = repo_resolve_governance_branch(repo)
+        return sync_managed_repo(
+            repo,
+            "governance repo",
+            GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE,
+            preferred_branch=branch,
+            preferred_remote="origin",
+        )
+
+    return sync_managed_repo(
+        repo,
+        "control repo",
+        CONTROL_AUTO_SYNC_COMMIT_MESSAGE,
+        preferred_remote="origin",
+    )
+
+
+def log_repo_sync_decision(decision: RepoSyncDecision) -> None:
+    if decision.outcome in {"no-op", "pull-only", "commit-push", "publish"}:
+        icon = "✓"
+    else:
+        icon = "⚠"
+    echo(f"  {icon} {decision.repo_label.capitalize()} repo [{decision.outcome}] {decision.detail}")
+
+
+def can_correct_pre_request_block(decision: RepoSyncDecision) -> bool:
+    return decision.outcome == "block" and decision.detail == "policy-blocked sync: local changes present"
+
+
+def run_pre_request_sync_with_correction(
+    repo: Path,
+    repo_label: str,
+    request_class: str,
+    *,
+    preferred_branch: str | None = None,
+) -> RepoSyncDecision:
+    decision = pre_request_sync(repo, repo_label, request_class, preferred_branch=preferred_branch)
+    log_repo_sync_decision(decision)
+    if not can_correct_pre_request_block(decision):
+        return decision
+
+    correction_decision = post_request_sync_decision(repo_label, touched=True, request_class=request_class)
+    log_repo_sync_decision(correction_decision)
+    corrected, correction_detail = publish_touched_repo(repo, repo_label)
+    if not corrected:
+        failed_decision = RepoSyncDecision(
+            repo_label,
+            "block",
+            f"automatic correction failed: {correction_detail}",
+            True,
+            decision.branch,
+        )
+        log_repo_sync_decision(failed_decision)
+        return failed_decision
+
+    echo(f"  ✓ {repo_label.capitalize()} repo {correction_detail}")
+    follow_up = pre_request_sync(repo, repo_label, request_class, preferred_branch=preferred_branch)
+    log_repo_sync_decision(follow_up)
+    return follow_up
+
+
+def sync_release_repo(release_repo: Path) -> tuple[bool, str]:
+    return shared_sync_release_repo(release_repo)
+
+
+def sync_control_repo(control_repo: Path, *, request_class: str = "mixed") -> tuple[bool, str]:
+    decision = pre_request_sync(control_repo, "control", request_class)
+    return decision.outcome != "block", f"{decision.outcome}: {decision.detail}"
+
+
+def sync_governance_repo(governance_repo: Path, *, request_class: str = "mixed") -> tuple[bool, str]:
+    decision = pre_request_sync(
+        governance_repo,
+        "governance",
+        request_class,
+        preferred_branch=repo_resolve_governance_branch(governance_repo),
+    )
+    return decision.outcome != "block", f"{decision.outcome}: {decision.detail}"
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Shared preflight: sync authority repos and validate workspace."
+    )
+    parser.add_argument("--skip-constitution", action="store_true")
+    parser.add_argument("--caller", default="")
+    parser.add_argument("--governance-path", default="")
+    parser.add_argument("--request-class", choices=REQUEST_CLASS_CHOICES, default="")
+    args = parse_compat_args(parser)
+
+    script_dir = Path(__file__).resolve().parent
+    project_root = resolve_project_root(script_dir)
+    active_personal_dir = migrate_legacy_personal_dir(project_root)
+    active_lens_dir = lens_dir(project_root)
+    release_dir = project_root / "lens.core"
+    timestamp_file = active_personal_dir / ".preflight-timestamp"
+    hash_file = active_personal_dir / ".github-hashes"
+    lifecycle_path = release_dir / "_bmad/lens-work/lifecycle.yaml"
+    governance_setup = ensure_governance_setup_file(project_root)
+    governance_path = None
+    if args.governance_path:
+        governance_path = resolve_workspace_path(project_root, args.governance_path)
+    elif governance_setup.get("governance_repo_path"):
+        governance_path = resolve_workspace_path(project_root, governance_setup["governance_repo_path"])
+        echo("[preflight] Resolved governance repo from .lens/governance-setup.yaml")
+
+    # Change to project root
+    import os
+    os.chdir(project_root)
+
+    request_class = classify_request(args.caller, args.request_class)
+    echo(f"[preflight] Request class: {request_class}")
+
+    # ------------------------------------------------------------------
+    # Layer 1: Every-request gates
+    # ------------------------------------------------------------------
+    echo("[preflight] Layer 1: validating release workspace and repo requirements...")
+    if not release_dir.is_dir():
+        echo(f"ERROR: lens.core directory not found at {release_dir}")
+        return 1
+
+    requires_governance = request_requires_repo(request_class, "governance")
+    if requires_governance and governance_path is None and args.caller != "onboard":
+        echo("ERROR: governance repo path is required for this request class")
+        return 1
+
+    last_time: datetime | None = None
+    now = datetime.now(tz=timezone.utc)
+    if timestamp_file.is_file():
+        raw = timestamp_file.read_text(encoding="utf-8").strip()
+        last_time = parse_timestamp(raw)
+
+    release_branch = release_branch_name(release_dir)
+    cadence_window = pull_window_seconds(release_branch)
+    elapsed_seconds: float | None = None
+    daily_due = True
+    weekly_due = True
+    if last_time is not None:
+        elapsed_seconds = (now - last_time).total_seconds()
+        daily_due = elapsed_seconds >= cadence_window
+        weekly_due = elapsed_seconds >= 7 * 86400
+
+    force_release_refresh = release_branch == "develop"
+    release_refresh_required = force_release_refresh or daily_due
+
+    if force_release_refresh:
+        echo("[preflight] Release repo is on develop; forcing every-request release refresh")
+    elif elapsed_seconds is not None and not daily_due:
+        echo(
+            f"[preflight] Timestamp fresh ({int(elapsed_seconds)}s < {cadence_window}s) on {release_branch}; "
+            "cadence-managed release refresh is skipped"
+        )
+
+    # ------------------------------------------------------------------
+    # Layer 2: Branch-sensitive release refresh
+    # ------------------------------------------------------------------
+    release_sync_ok = True
+    if release_refresh_required:
+        echo("[preflight] Layer 2: refreshing release repo...")
+        release_sync_ok, release_detail = sync_release_repo(release_dir)
+        if release_sync_ok:
+            echo(f"  ✓ Release repo {release_detail}")
+        else:
+            echo(f"  ⚠ Release repo sync failed: {release_detail}")
+            return 1
+    else:
+        echo("[preflight] Layer 2: release refresh skipped")
+
+    # ------------------------------------------------------------------
+    # Step 1a: Enforce LENS_VERSION compatibility
+    # ------------------------------------------------------------------
+    echo("[preflight] Verifying LENS_VERSION compatibility...")
+    if not lifecycle_path.is_file():
+        echo(f"ERROR: lifecycle.yaml not found at {lifecycle_path}")
+        return 1
+
+    module_schema = ""
+    for line in lifecycle_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("schema_version:"):
+            module_schema = line.split(":", 1)[1].strip()
+            break
+
+    if not module_schema:
+        echo("VERSION MISMATCH: lifecycle.yaml is missing or has empty 'schema_version:'. Run /lens-upgrade.")
+        return 1
+
+    control_version = ensure_lens_version_file(project_root)
+
+    if not control_version or (control_version != module_schema and control_version != f"{module_schema}.0.0"):
+        display_version = control_version or "missing"
+        echo(f"VERSION MISMATCH: control repo is v{display_version}, module expects v{module_schema}. Run /lens-upgrade.")
+        return 1
+
+    echo(f"  ✓ LENS_VERSION v{control_version} matches module schema")
+
+    # ------------------------------------------------------------------
+    # Layer 3: Daily hygiene
+    # ------------------------------------------------------------------
+    control_publish_ok = True
+    governance_sync_ok = True
+    release_github = release_dir / ".github"
+    local_github = project_root / ".github"
+    local_github.mkdir(parents=True, exist_ok=True)
+    stored_hashes: dict[str, str] = {}
+    new_hashes: dict[str, str] = {}
+    updated_count = 0
+    stale_removed = 0
+    managed_stale_removed = 0
+    profile_removed = 0
+    synced_entry_points = 0
+
+    if release_refresh_required:
+        echo("[preflight] Layer 3: syncing release-derived assets...")
+        if not release_github.is_dir():
+            echo(f"ERROR: Missing authority folder: {release_github}")
+            return 1
+
+        stored_hashes = load_hash_manifest(hash_file)
+        for src_file in sorted(release_github.rglob("*")):
+            if not src_file.is_file():
+                continue
+            rel = ".github/" + src_file.relative_to(release_github).as_posix()
+            r_hash = sha256_file(src_file)
+            s_hash = stored_hashes.get(rel, "")
+            local_file = project_root / rel
+            l_hash = sha256_file(local_file) if local_file.is_file() else ""
+
+            if r_hash != s_hash or l_hash != r_hash:
+                local_file.parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copy2(src_file, local_file)
+                updated_count += 1
+
+            new_hashes[rel] = r_hash
+
+        echo(f"  ✓ .github/ synced ({updated_count} file(s) updated)")
+
+        prompts_dir = project_root / ".github/prompts"
+        if prompts_dir.is_dir():
+            release_prompts = release_github / "prompts"
+            for pf in list(prompts_dir.iterdir()):
+                name = pf.name
+                if re.match(r"^(?:lens|len)-.*\.prompt\.md$", name):
+                    if not (release_prompts / name).exists():
+                        pf.unlink()
+                        profile_removed += 1
+                elif name.endswith(".prompt.md"):
+                    pf.unlink()
+                    profile_removed += 1
+
+            profile = _load_user_profile(project_root)
+            experience = profile.get("experience_mode", "full")
+            role = profile.get("primary_role", "both")
+            for pf in list(prompts_dir.iterdir()):
+                name = pf.name
+                if not re.match(r"^(?:lens|len)-.*\.prompt\.md$", name):
+                    continue
+                stem = name[: -len(".prompt.md")]
+                if not _should_include_prompt(stem, experience, role):
+                    pf.unlink()
+                    profile_removed += 1
+
+            if profile_removed:
+                echo(
+                    f"  ✓ Prompt hygiene removed {profile_removed} file(s) "
+                    f"(experience={experience}, role={role})"
+                )
+
+        for entry in ["CLAUDE.md"]:
+            src = release_dir / entry
+            if src.is_file():
+                local = project_root / entry
+                if not local.is_file():
+                    import shutil
+                    shutil.copy2(src, local)
+                    synced_entry_points += 1
+                    echo(f"  ✓ Synced {entry}")
+                elif release_refresh_required:
+                    result = subprocess.run(
+                        ["git", "-C", str(release_dir), "diff", "--name-only", "HEAD@{1}", "HEAD", "--", entry],
+                        capture_output=True, text=True,
+                    )
+                    if result.stdout.strip():
+                        import shutil
+                        shutil.copy2(src, local)
+                        synced_entry_points += 1
+                        echo(f"  ✓ Synced {entry}")
+    else:
+        echo("[preflight] Layer 3: daily hygiene skipped")
+
+    # Always prune hash-tracked deletions and persist the updated manifest
+    # whenever a release refresh ran, not just on the weekly cadence.  This
+    # prevents deleted release files from accumulating in the local .github/
+    # directory between weekly runs.
+    if release_refresh_required:
+        stale_removed = prune_stale_synced_github_files(project_root, stored_hashes, new_hashes)
+        if stale_removed:
+            echo(f"  ✓ Removed {stale_removed} stale synced .github file(s)")
+        hash_file.parent.mkdir(parents=True, exist_ok=True)
+        hash_file.write_text(
+            "\n".join(f"{v}  {k}" for k, v in sorted(new_hashes.items())) + "\n",
+            encoding="utf-8",
+        )
+
+    # ------------------------------------------------------------------
+    # Layer 4: Weekly hygiene (heavy name-pattern stale removal)
+    # ------------------------------------------------------------------
+    if release_refresh_required and weekly_due:
+        echo("[preflight] Layer 4: pruning stale managed files...")
+
+        for local_file in sorted(local_github.rglob("*")):
+            if not local_file.is_file():
+                continue
+
+            rel_path = local_file.relative_to(local_github)
+            if (release_github / rel_path).is_file():
+                continue
+
+            if re.match(r"^(?:lens|len)-", local_file.name):
+                local_file.unlink()
+                managed_stale_removed += 1
+                remove_empty_parent_dirs(local_file.parent, local_github)
+
+        if managed_stale_removed:
+            echo(f"  ✓ Removed {managed_stale_removed} stale managed .github file(s)")
+    else:
+        echo("[preflight] Layer 4: weekly hygiene skipped")
+
+    control_repo_touched = any(
+        count > 0 for count in (updated_count, stale_removed, managed_stale_removed, profile_removed, synced_entry_points)
+    )
+
+    # ------------------------------------------------------------------
+    # Step 4: Verify authority repos
+    # (checked before publishing cadence changes so that a missing
+    # governance clone is caught before any auto-commit/push occurs)
+    # ------------------------------------------------------------------
+    missing_release = not release_dir.is_dir()
+    governance_missing = governance_path is not None and not governance_path.is_dir()
+
+    if missing_release or governance_missing:
+        if args.caller == "onboard":
+            echo("[preflight] Authority repos incomplete — continuing so /onboard can show next steps")
+        elif missing_release:
+            echo("")
+            echo("⚠️  Missing authority repos — this workspace needs onboarding first.")
+            echo("")
+            echo("  Re-run setup-control-repo.py if the governance clone is missing.")
+            echo("  It takes about 2 minutes and only needs to run once.")
+            echo("")
+            echo("  Then run /new-project (or /new-domain for step-by-step setup) and retry this command.")
+            return 1
+        elif request_class == "read-only":
+            echo("⚠ Governance repo not found; freshness deferred for read-only request")
+        else:
+            echo("")
+            echo("⚠️  Missing authority repos — this workspace needs onboarding first.")
+            echo("")
+            echo("  Re-run setup-control-repo.py if the governance clone is missing.")
+            echo("  It takes about 2 minutes and only needs to run once.")
+            echo("")
+            echo("  Then run /new-project (or /new-domain for step-by-step setup) and retry this command.")
+            return 1
+
+    if control_repo_touched:
+        control_post_decision = post_request_sync_decision("control", touched=True, request_class=request_class)
+        log_repo_sync_decision(control_post_decision)
+        control_publish_ok, control_publish_detail = publish_touched_repo(project_root, "control")
+        if control_publish_ok:
+            echo(f"  ✓ Control repo {control_publish_detail}")
+        else:
+            echo(f"  ⚠ Control repo publish failed: {control_publish_detail}")
+            return 1
+
+    # ------------------------------------------------------------------
+    # Step 5: Pre-request mutable sync policy
+    # ------------------------------------------------------------------
+    echo("[preflight] Applying pre-request repo sync policy...")
+    control_decision = run_pre_request_sync_with_correction(project_root, "control", request_class)
+    if control_decision.outcome == "block":
+        return 1
+
+    if governance_path:
+        governance_decision = run_pre_request_sync_with_correction(
+            governance_path,
+            "governance",
+            request_class,
+            preferred_branch=repo_resolve_governance_branch(governance_path) if governance_path.is_dir() else None,
+        )
+        governance_sync_ok = governance_decision.outcome != "block"
+        if governance_decision.outcome == "block":
+            return 1
+    elif request_requires_repo(request_class, "governance") and args.caller != "onboard":
+        echo("ERROR: governance repo path is required for this request class")
+        return 1
+
+    # ------------------------------------------------------------------
+    # Step 6: Update timestamp
+    # ------------------------------------------------------------------
+    if release_refresh_required or weekly_due:
+        if control_publish_ok and release_sync_ok and governance_sync_ok:
+            timestamp_file.parent.mkdir(parents=True, exist_ok=True)
+            timestamp_file.write_text(now.strftime("%Y-%m-%dT%H:%M:%SZ"), encoding="utf-8")
+            echo("[preflight] Timestamp updated")
+        else:
+            echo("[preflight] Timestamp not updated because cadence-owned repo work did not complete cleanly")
+
+    echo("[preflight] Preflight complete ✓")
+    if args.caller == "onboard":
+        emit_onboard_next_steps(project_root)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

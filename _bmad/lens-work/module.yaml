@@ -1,0 +1,63 @@
+code: "lens"
+name: "Lens Workbench"
+description: "LENS lifecycle workbench — feature context switching, initialization, planning, and governance."
+module_version: "5.4.31"
+type: standalone
+prompts:
+  - lens-preflight.prompt.md
+  - lens-complete.prompt.md
+  - lens-constitution.prompt.md
+  - lens-dev.prompt.md
+  - lens-quickdev.prompt.md
+  - lens-discover.prompt.md
+  - lens-expressplan.prompt.md
+  - lens-new-domain.prompt.md
+  - lens-new-feature.prompt.md
+  - lens-new-service.prompt.md
+  - lens-next.prompt.md
+  - lens-split-feature.prompt.md
+  - lens-switch.prompt.md
+  - lens-techplan.prompt.md
+  - lens-finalizeplan.prompt.md
+  - lens-upgrade.prompt.md
+  - lens-businessplan.prompt.md
+  - lens-preplan.prompt.md
+skills:
+  - lens-adversarial-review
+  - lens-batch
+  - lens-bmad-skill
+  - lens-businessplan
+  - lens-complete
+  - lens-constitution
+  - lens-dev
+  - lens-quickdev
+  - lens-discover
+  - lens-expressplan
+  - lens-feature-yaml
+  - lens-finalizeplan
+  - lens-git-orchestration
+  - lens-git-state
+  - lens-init-feature
+  - lens-new-domain
+  - lens-next
+  - lens-preflight
+  - lens-preplan
+  - lens-split-feature
+  - lens-switch
+  - lens-techplan
+  - lens-upgrade
+  - lens-new-domain
+  - lens-new-service
+  - lens-new-feature
+  # DEFERRED: lens-document-project — skill absent in new-codebase.
+  # Full specification available in old-codebase: skills/lens-document-project/SKILL.md.
+  # Scope: feature-aware output path routing, governance docs copy, prompt stub, module.yaml registration.
+  # Schedule for next release cycle.
+
+# Internal skills are not exposed as public commands or prompt stubs.
+# They are invoked programmatically by other skills only.
+internal_skills:
+  - name: lens-quickplan
+    classification: internal
+    invoked_by: lens-bmad-skill
+    description: "Internal express planning pipeline for ExpressPlan. Has no public prompt stub."

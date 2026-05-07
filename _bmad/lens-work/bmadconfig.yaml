@@ -1,0 +1,25 @@
+# Lens Workbench target module configuration
+schema_version: 1
+module_code: lens
+
+# Governance and topology defaults
+governance_repo_path: "{project-root}/../../../lens/lens-governance"
+control_topology: 3-branch
+target_projects_path: "{project-root}/../../.."
+default_git_remote: origin
+lifecycle_contract: "{module-root}/lifecycle.yaml"
+
+# Target repo development defaults
+default_branch: develop
+target_branch_strategy: "feature/{featureStub}"
+github_username: ""
+
+user_config:
+  path: "{module-root}/config.user.yaml"
+  overridable_fields:
+    - github_username
+    - default_branch
+    - target_branch_strategy
+    - governance_repo_path
+    - target_projects_path
+    - default_git_remote

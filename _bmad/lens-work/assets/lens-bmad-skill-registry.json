@@ -1,0 +1,111 @@
+{
+  "version": "1.0.0",
+  "skills": {
+    "bmad-brainstorming": {
+      "displayName": "BMAD Brainstorming",
+      "contextMode": "feature-optional",
+      "outputMode": "planning-docs",
+      "phaseHints": ["preplan"],
+      "entryPath": "skills/bmad-brainstorming/SKILL.md"
+    },
+    "bmad-product-brief": {
+      "displayName": "BMAD Product Brief",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["preplan"],
+      "entryPath": "skills/bmad-product-brief/SKILL.md"
+    },
+    "bmad-domain-research": {
+      "displayName": "BMAD Domain Research",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["preplan"],
+      "entryPath": "skills/bmad-domain-research/SKILL.md"
+    },
+    "bmad-market-research": {
+      "displayName": "BMAD Market Research",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["preplan"],
+      "entryPath": "skills/bmad-market-research/SKILL.md"
+    },
+    "bmad-technical-research": {
+      "displayName": "BMAD Technical Research",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["preplan"],
+      "entryPath": "skills/bmad-technical-research/SKILL.md"
+    },
+    "bmad-create-prd": {
+      "displayName": "BMAD Create PRD",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["businessplan"],
+      "entryPath": "skills/bmad-create-prd/SKILL.md"
+    },
+    "bmad-create-ux-design": {
+      "displayName": "BMAD Create UX Design",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["businessplan"],
+      "entryPath": "skills/bmad-create-ux-design/SKILL.md"
+    },
+    "bmad-create-architecture": {
+      "displayName": "BMAD Create Architecture",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["techplan"],
+      "entryPath": "skills/bmad-create-architecture/SKILL.md"
+    },
+    "lens-quickplan": {
+      "displayName": "Lens QuickPlan Internal",
+      "surface": "internal",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["expressplan"],
+      "entryPath": "skills/lens-quickplan/SKILL.md"
+    },
+    "bmad-create-epics-and-stories": {
+      "displayName": "BMAD Create Epics and Stories",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["finalizeplan"],
+      "entryPath": "skills/bmad-create-epics-and-stories/SKILL.md"
+    },
+    "bmad-check-implementation-readiness": {
+      "displayName": "BMAD Implementation Readiness",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["finalizeplan"],
+      "entryPath": "skills/bmad-check-implementation-readiness/SKILL.md"
+    },
+    "bmad-sprint-planning": {
+      "displayName": "BMAD Sprint Planning",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["finalizeplan"],
+      "entryPath": "skills/bmad-sprint-planning/SKILL.md"
+    },
+    "bmad-create-story": {
+      "displayName": "BMAD Create Story",
+      "contextMode": "feature-required",
+      "outputMode": "planning-docs",
+      "phaseHints": ["finalizeplan"],
+      "entryPath": "skills/bmad-create-story/SKILL.md"
+    },
+    "bmad-quick-dev": {
+      "displayName": "BMAD Quick Dev",
+      "contextMode": "feature-required",
+      "outputMode": "implementation-target",
+      "phaseHints": ["dev"],
+      "entryPath": "skills/bmad-quick-dev/SKILL.md"
+    },
+    "bmad-code-review": {
+      "displayName": "BMAD Code Review",
+      "contextMode": "feature-required",
+      "outputMode": "implementation-target",
+      "phaseHints": ["dev"],
+      "entryPath": "skills/bmad-code-review/SKILL.md"
+    }
+  }
+}

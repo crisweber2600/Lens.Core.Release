@@ -1,0 +1,227 @@
+# Lens Workbench lifecycle contract for the clean-room target module.
+# Schema version 4 keeps shared workflow state in git/governance artifacts and
+# local personal state under .lens, while active generated docs live under docs/.
+
+schema_version: 4
+close_states: [completed, abandoned, superseded]
+initiative_state_schema: initiative-state.yaml
+
+artifact_publication:
+  enabled: true
+  governance_root: artifacts/
+
+supported_languages:
+  - typescript
+  - python
+  - go
+  - java
+  - csharp
+  - rust
+  - php
+  - kotlin
+  - swift
+  - cpp
+
+phase_order: [preplan, businessplan, techplan, finalizeplan, dev, complete]
+
+milestones:
+  planning:
+    phases: [preplan, businessplan, techplan, expressplan]
+  finalizeplan:
+    phases: [finalizeplan]
+  implementation:
+    phases: [dev]
+  closeout:
+    phases: [complete]
+
+phases:
+  preplan:
+    display_name: PrePlan
+    agent: mary
+    description: Early discovery and feature framing.
+    artifacts: [product-brief, research, brainstorm]
+    milestone: planning
+    auto_advance_to: /businessplan
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: preplan-adversarial-review.md
+      ready_when_artifacts: [product-brief, research, brainstorm]
+      reviewed_artifacts: [product-brief, research, brainstorm]
+      outcomes: [pass, pass-with-warnings, fail]
+
+  businessplan:
+    display_name: BusinessPlan
+    agent: john
+    description: Product requirements and UX planning.
+    artifacts: [prd, ux-design]
+    milestone: planning
+    auto_advance_to: /techplan
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: businessplan-adversarial-review.md
+      ready_when_artifacts: [prd, ux-design]
+      reviewed_artifacts: [prd, ux-design]
+      outcomes: [pass, pass-with-warnings, fail]
+
+  techplan:
+    display_name: TechPlan
+    agent: winston
+    description: Architecture and technical implementation planning.
+    artifacts: [architecture]
+    milestone: planning
+    auto_advance_to: /finalizeplan
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: techplan-adversarial-review.md
+      ready_when_artifacts: [architecture]
+      reviewed_artifacts: [architecture]
+      outcomes: [pass, pass-with-warnings, fail]
+
+  expressplan:
+    display_name: ExpressPlan
+    agent: lens
+    description: Accelerated planning bundle before FinalizePlan handoff.
+    artifacts:
+      - business-plan
+      - tech-plan
+      - sprint-plan
+      - expressplan-adversarial-review
+    milestone: planning
+    auto_advance_to: /finalizeplan
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: expressplan-adversarial-review.md
+      legacy_report_aliases: [expressplan-review.md]
+      ready_when_artifacts: [business-plan, tech-plan, sprint-plan]
+      reviewed_artifacts: [business-plan, tech-plan]
+      outcomes: [pass, pass-with-warnings, fail]
+
+  finalizeplan:
+    display_name: FinalizePlan
+    agent: lens
+    description: Consolidate approved planning and prepare execution artifacts.
+    input_contracts_by_track:
+      full: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      express: [business-plan, tech-plan, sprint-plan]
+      quickdev: [business-plan, tech-plan, sprint-plan]
+      hotfix-express: [architecture]
+    artifacts:
+      - review-report
+      - epics
+      - stories
+      - implementation-readiness
+      - sprint-status
+      - story-files
+    milestone: finalizeplan
+    auto_advance_to: /dev
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: finalizeplan-review.md
+      ready_when_artifacts: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      reviewed_artifacts: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      outcomes: [pass, pass-with-warnings, fail]
+
+  dev:
+    display_name: Dev
+    agent: amelia
+    description: Implement approved stories in the target repository.
+    artifacts: [stories]
+    milestone: implementation
+    auto_advance_to: /complete
+    completion_review:
+      gate: code-review
+      mode: focused
+      report: dev-review.md
+      ready_when_artifacts: [stories]
+      reviewed_artifacts: [stories]
+      outcomes: [pass, pass-with-warnings, fail]
+
+  complete:
+    display_name: Complete
+    agent: lens
+    description: Validate closeout, retrospective, and archival readiness.
+    artifacts: [retrospective]
+    milestone: closeout
+    terminal: true
+    completion_review:
+      gate: closeout-review
+      mode: focused
+      report: complete-review.md
+      ready_when_artifacts: [retrospective]
+      reviewed_artifacts: [retrospective]
+      outcomes: [pass, pass-with-warnings, fail]
+
+tracks:
+  full:
+    description: Full retained planning and implementation lifecycle.
+    phases: [preplan, businessplan, techplan, finalizeplan, dev, complete]
+    start_phase: preplan
+    topology: 2-branch
+    feature_yaml: true
+
+  express:
+    description: QuickPlan-style planning followed by FinalizePlan and implementation.
+    phases: [expressplan, finalizeplan, dev, complete]
+    start_phase: expressplan
+    topology: 2-branch
+    feature_yaml: true
+    requires_constitution_permission: true
+
+  quickdev:
+    description: Fast execution path for already-understood work.
+    phases: [finalizeplan, dev, complete]
+    start_phase: finalizeplan
+    topology: 2-branch
+    feature_yaml: true
+    requires_constitution_permission: true
+
+  hotfix-express:
+    description: Urgent fix path with shortened planning and explicit closeout.
+    phases: [techplan, finalizeplan, dev, complete]
+    start_phase: techplan
+    topology: 2-branch
+    feature_yaml: true
+    requires_constitution_permission: true
+
+  spike:
+    description: Research-only path with closeout evidence and no implementation handoff.
+    phases: [preplan, complete]
+    start_phase: preplan
+    topology: 2-branch
+    feature_yaml: true
+
+artifact_aliases:
+  expressplan-adversarial-review:
+    - expressplan-review.md
+
+constitution:
+  inheritance: additive
+  resolution_order: [org, domain, service, repo]
+  capabilities:
+    - permitted_tracks
+    - required_gates
+    - additional_review_participants
+    - required_artifacts
+    - enforce_stories
+    - enforce_review
+
+data_zones:
+  governance:
+    artifacts: [constitutions/, features/, feature-index.yaml]
+  control:
+    artifacts: [docs/]
+  personal:
+    local_path: .lens/personal/
+
+required_frontmatter:
+  enforcement: warn
+  fields:
+    feature: {type: string, required: true}
+    doc_type: {type: enum, required: true}
+    status: {type: enum, required: true, values: [draft, in-review, approved]}
+    updated_at: {type: iso8601, required: true}

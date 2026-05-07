@@ -1,0 +1,75 @@
+installation:
+  version: 6.6.0
+  installDate: 2026-05-07 17:48:48.591000+00:00
+  lastUpdated: 2026-05-07 17:48:48.591000+00:00
+modules:
+- name: core
+  version: 6.6.0
+  installDate: 2026-05-07 17:48:47.409000+00:00
+  lastUpdated: 2026-05-07 17:48:48.546000+00:00
+  source: built-in
+  npmPackage: null
+  repoUrl: null
+- name: bmm
+  version: 6.6.0
+  installDate: 2026-05-07 17:48:47.477000+00:00
+  lastUpdated: 2026-05-07 17:48:48.546000+00:00
+  source: built-in
+  npmPackage: null
+  repoUrl: null
+- name: bmb
+  version: v1.7.0
+  installDate: 2026-05-07 17:48:47.534000+00:00
+  lastUpdated: 2026-05-07 17:48:48.553000+00:00
+  source: external
+  npmPackage: bmad-builder
+  repoUrl: https://github.com/bmad-code-org/bmad-builder
+  channel: stable
+  sha: 86033fc9aeae2ca6d52c7cdb675c1f4bf17fc1c1
+- name: cis
+  version: v0.2.0
+  installDate: 2026-05-07 17:48:47.561000+00:00
+  lastUpdated: 2026-05-07 17:48:48.559000+00:00
+  source: external
+  npmPackage: bmad-creative-intelligence-suite
+  repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
+  channel: stable
+  sha: 14a63b893c07173b7a6cfe0fb6a9a72ba51d3cf1
+- name: gds
+  version: v0.4.0
+  installDate: 2026-05-07 17:48:47.673000+00:00
+  lastUpdated: 2026-05-07 17:48:48.569000+00:00
+  source: external
+  npmPackage: bmad-game-dev-studio
+  repoUrl: https://github.com/bmad-code-org/bmad-module-game-dev-studio
+  channel: stable
+  sha: 07ef779abaafb21fe3a8d80d57cf0b4dc9801d60
+- name: tea
+  version: v1.15.1
+  installDate: 2026-05-07 17:48:47.876000+00:00
+  lastUpdated: 2026-05-07 17:48:48.576000+00:00
+  source: external
+  npmPackage: bmad-method-test-architecture-enterprise
+  repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
+  channel: stable
+  sha: 7c94bdc6e3d2c8c3cad09eb0a32a42fade0e9079
+- name: wds
+  version: v0.1.0
+  installDate: 2026-05-07 17:48:48.037000+00:00
+  lastUpdated: 2026-05-07 17:48:48.591000+00:00
+  source: community
+  npmPackage: bmad-method-wds-expansion
+  repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion
+  channel: stable
+  sha: 50312755ca93d6667f9a9087cfe72cfd378b5329
+  registryApprovedTag: v0.1.0
+- code: lens
+  name: Lens Workbench
+  module_version: 5.4.31
+  type: standalone
+  description: "LENS lifecycle workbench \u2014 feature context switching, initialization,\
+    \ planning, and governance."
+ides:
+- github-copilot
+- cursor
+- claude-code

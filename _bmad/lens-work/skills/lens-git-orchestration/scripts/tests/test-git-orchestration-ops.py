@@ -1,0 +1,1930 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["PyYAML>=6.0", "pytest>=8.0"]
+# ///
+"""Tests for git-orchestration-ops.py — uses real temporary git repos."""
+
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+import yaml
+
+# Ensure the script under test is importable (hyphenated filename requires importlib)
+_script_path = Path(__file__).parent.parent / "git-orchestration-ops.py"
+_spec = importlib.util.spec_from_file_location("git_orchestration_ops", _script_path)
+ops = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(ops)
+
+_sync_helper_path = Path(__file__).parent.parent / "repo_sync.py"
+_sync_spec = importlib.util.spec_from_file_location("lens_repo_sync", _sync_helper_path)
+sync_helpers = importlib.util.module_from_spec(_sync_spec)
+_sync_spec.loader.exec_module(sync_helpers)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def repo(tmp_path):
+    """Minimal git repo with initial commit on main, configured with a fake remote."""
+    subprocess.run(
+        ["git", "-c", "init.defaultBranch=main", "init", str(tmp_path)],
+        check=True, capture_output=True
+    )
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Test User"], check=True, capture_output=True)
+    readme = tmp_path / "README.md"
+    readme.write_text("# Test\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], check=True, capture_output=True)
+    return tmp_path
+
+
+@pytest.fixture()
+def repo_pair(tmp_path):
+    """Two repos: 'remote' (bare) and 'local' (cloned from remote). Simulates push/pull."""
+    return init_repo_pair(tmp_path)
+
+
+def init_repo_pair(tmp_path: Path, default_branch: str = "main"):
+    """Create a local clone paired with a bare remote using the requested default branch."""
+    remote_path = tmp_path / "remote.git"
+    local_path = tmp_path / "local"
+    # Create bare remote
+    subprocess.run(
+        ["git", "-c", f"init.defaultBranch={default_branch}", "init", "--bare", str(remote_path)],
+        check=True, capture_output=True
+    )
+    # Clone from remote
+    subprocess.run(["git", "clone", str(remote_path), str(local_path)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "config", "user.email", "test@example.com"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "config", "user.name", "Test User"], check=True, capture_output=True)
+    # Initial commit
+    readme = local_path / "README.md"
+    readme.write_text("# Test\n")
+    subprocess.run(["git", "-C", str(local_path), "add", "."], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "commit", "-m", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "push", "-u", "origin", default_branch], check=True, capture_output=True)
+    return local_path, remote_path
+
+
+def write_feature_yaml(repo_path: Path, feature_id: str, *, domain: str = "platform",
+                       service: str = "api", phase: str = "preplan", status: str = "active") -> Path:
+    """Write a feature.yaml into features/{domain}/{service}/{feature_id}/feature.yaml."""
+    feat_dir = repo_path / "features" / domain / service / feature_id
+    feat_dir.mkdir(parents=True, exist_ok=True)
+    yaml_path = feat_dir / "feature.yaml"
+    yaml_path.write_text(yaml.dump({
+        "featureId": feature_id,
+        "feature_id": feature_id,
+        "domain": domain,
+        "service": service,
+        "phase": phase,
+        "status": status,
+        "docs": {
+            "path": f"docs/{domain}/{service}/{feature_id}",
+            "governance_docs_path": f"features/{domain}/{service}/{feature_id}/docs",
+        },
+    }))
+    return yaml_path
+
+
+def make_branch(repo_path: Path, branch: str) -> None:
+    """Create a local branch (no remote needed)."""
+    current = subprocess.run(
+        ["git", "-C", str(repo_path), "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True, text=True, check=True
+    ).stdout.strip()
+    subprocess.run(["git", "-C", str(repo_path), "checkout", "-b", branch], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo_path), "checkout", current], check=True, capture_output=True)
+
+
+def write_repo_inventory(project_root: Path, repo_path: Path, *, feature_base_branch: str | None = None) -> Path:
+    """Write a governance repo-inventory.yaml entry for repo_path."""
+    governance_repo = project_root / "TargetProjects" / "lens" / "lens-governance"
+    governance_repo.mkdir(parents=True, exist_ok=True)
+    local_path = repo_path.resolve().relative_to(project_root.resolve()).as_posix()
+    entry = {
+        "name": repo_path.name,
+        "remote_url": "https://example.test/org/repo.git",
+        "local_path": local_path,
+        "dev_branch_mode": "feature-id",
+    }
+    if feature_base_branch is not None:
+        entry["feature_base_branch"] = feature_base_branch
+    (governance_repo / "repo-inventory.yaml").write_text(yaml.safe_dump({"repositories": [entry]}, sort_keys=False))
+    return governance_repo
+
+
+def _no_args(**kwargs):
+    """Build a simple namespace object."""
+    class A:
+        dry_run = False
+        default_branch = None
+    a = A()
+    for k, v in kwargs.items():
+        setattr(a, k, v)
+    return a
+
+
+def init_main_repo_with_remote(base_tmp: Path) -> tuple[Path, Path]:
+    """Create a bare remote and a local main branch clone for sync-helper tests."""
+    remote = base_tmp / "remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
+
+    local = base_tmp / "local"
+    subprocess.run(["git", "clone", str(remote), str(local)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local), "checkout", "-b", "main"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(local), "config", "user.name", "Test User"], check=True)
+    subprocess.run(["git", "-C", str(local), "commit", "--allow-empty", "-m", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local), "push", "-u", "origin", "main"], check=True, capture_output=True)
+    return remote, local
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+class TestValidateSlug:
+    def test_valid_slug(self):
+        assert ops.validate_slug("payments-auth-oauth") is None
+
+    def test_single_char(self):
+        assert ops.validate_slug("a") is None
+
+    def test_leading_hyphen(self):
+        assert ops.validate_slug("-bad") is not None
+
+    def test_trailing_hyphen(self):
+        assert ops.validate_slug("bad-") is not None
+
+    def test_uppercase(self):
+        assert ops.validate_slug("BadSlug") is not None
+
+    def test_slash(self):
+        assert ops.validate_slug("feat/bad") is not None
+
+    def test_empty(self):
+        assert ops.validate_slug("") is not None
+
+
+class TestGitVersion:
+    def test_passes_on_current_git(self):
+        assert ops.check_git_version() is None
+
+
+class TestCurrentBranch:
+    def test_returns_main(self, repo):
+        assert ops.current_branch(str(repo)) == "main"
+
+
+class TestBranchExists:
+    def test_main_exists(self, repo):
+        assert ops.branch_exists(str(repo), "main") is True
+
+    def test_missing_branch(self, repo):
+        assert ops.branch_exists(str(repo), "no-such") is False
+
+    def test_created_branch_exists(self, repo):
+        make_branch(repo, "test-feat")
+        assert ops.branch_exists(str(repo), "test-feat") is True
+
+
+class TestVerifyClean:
+    def test_clean_repo(self, repo):
+        assert ops.verify_clean(str(repo)) is None
+
+    def test_dirty_repo(self, repo):
+        (repo / "dirty.txt").write_text("dirty")
+        assert ops.verify_clean(str(repo)) is not None
+
+
+class TestRepoSyncHelper:
+    def test_detect_interrupted_merge_state(self, repo):
+        git_dir = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--git-dir"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        merge_head = (repo / git_dir / "MERGE_HEAD").resolve()
+        merge_head.write_text("deadbeef\n", encoding="utf-8")
+
+        assert sync_helpers.detect_interrupted_state(repo) == "merge in progress"
+
+    def test_sync_release_repo_resets_hard_and_retries_when_pull_is_blocked(self, tmp_path):
+        remote, release = init_main_repo_with_remote(tmp_path)
+
+        (release / "tracked.txt").write_text("base\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(release), "add", "tracked.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(release), "commit", "-m", "add tracked"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(release), "push", "origin", "main"], check=True, capture_output=True)
+
+        peer = tmp_path / "peer"
+        subprocess.run(["git", "clone", str(remote), str(peer)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "checkout", "-b", "main", "origin/main"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "config", "user.email", "peer@example.com"], check=True)
+        subprocess.run(["git", "-C", str(peer), "config", "user.name", "Peer User"], check=True)
+        (peer / "tracked.txt").write_text("remote\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(peer), "add", "tracked.txt"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "commit", "-m", "remote update"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(peer), "push", "origin", "main"], check=True, capture_output=True)
+
+        (release / "tracked.txt").write_text("local blocker\n", encoding="utf-8")
+
+        ok, detail = sync_helpers.sync_release_repo(release)
+
+        assert ok is True
+        assert detail == "pull blocked; reset --hard; pulled origin"
+        assert (release / "tracked.txt").read_text(encoding="utf-8") == "remote\n"
+
+
+class TestFindFeatureYaml:
+    def test_finds_yaml(self, repo):
+        write_feature_yaml(repo, "find-me")
+        result = ops.find_feature_yaml(str(repo), "find-me")
+        assert result is not None
+        assert result.name == "feature.yaml"
+
+    def test_returns_none_for_unknown(self, repo):
+        result = ops.find_feature_yaml(str(repo), "ghost-feat")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# cmd_create_feature_branches
+# ---------------------------------------------------------------------------
+
+class TestCreateFeatureBranches:
+    def _args(self, repo, feature_id, dry_run=False, default_branch=None):
+        return _no_args(
+            governance_repo=str(repo),
+            feature_id=feature_id,
+            repo=None,
+            default_branch=default_branch,
+            dry_run=dry_run,
+        )
+
+    def test_invalid_feature_id_rejected(self, repo):
+        result, code = ops.cmd_create_feature_branches(self._args(repo, "Bad/Id"))
+        assert code == 1
+        assert result["error"] == "invalid_feature_id"
+
+    def test_missing_feature_yaml_rejected(self, repo):
+        result, code = ops.cmd_create_feature_branches(self._args(repo, "no-yaml-feat"))
+        assert code == 1
+        assert result["error"] == "feature_yaml_not_found"
+
+    def test_branch_already_exists_rejected(self, repo):
+        write_feature_yaml(repo, "existing-feat")
+        make_branch(repo, "existing-feat")
+        result, code = ops.cmd_create_feature_branches(self._args(repo, "existing-feat"))
+        assert code == 1
+        assert result["error"] == "branch_already_exists"
+
+    def test_dry_run_no_branches_created(self, repo):
+        write_feature_yaml(repo, "dry-feat")
+        result, code = ops.cmd_create_feature_branches(self._args(repo, "dry-feat", dry_run=True))
+        assert code == 0
+        assert result["dry_run"] is True
+        # Branches should NOT exist (dry run)
+        assert not ops.branch_exists(str(repo), "dry-feat")
+        assert not ops.branch_exists(str(repo), "dry-feat-plan")
+        assert not ops.branch_exists(str(repo), "dry-feat-dev")
+
+    def test_dry_run_returns_expected_fields(self, repo):
+        write_feature_yaml(repo, "dry-fields")
+        result, code = ops.cmd_create_feature_branches(self._args(repo, "dry-fields", dry_run=True))
+        assert code == 0
+        assert result["base_branch"] == "dry-fields"
+        assert result["plan_branch"] == "dry-fields-plan"
+        assert result["dev_branch"] == "dry-fields-dev"
+        assert result["created_from"] == "main"
+
+    def test_creates_all_control_branches_with_real_remote(self, repo_pair):
+        local, remote = repo_pair
+        yaml_path = write_feature_yaml(local, "new-feat")
+        subprocess.run(["git", "-C", str(local), "add", str(yaml_path)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "add feature.yaml"], check=True, capture_output=True)
+        result, code = ops.cmd_create_feature_branches(_no_args(
+            governance_repo=str(local),
+            feature_id="new-feat",
+            repo=None,
+            default_branch=None,
+            dry_run=False,
+        ))
+        assert code == 0
+        assert ops.branch_exists(str(local), "new-feat")
+        assert ops.branch_exists(str(local), "new-feat-plan")
+        assert ops.branch_exists(str(local), "new-feat-dev")
+
+    def test_detects_remote_default_branch_when_not_overridden(self, tmp_path):
+        local, remote = init_repo_pair(tmp_path, default_branch="develop")
+        yaml_path = write_feature_yaml(local, "develop-feat")
+        subprocess.run(["git", "-C", str(local), "add", str(yaml_path)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "add feature.yaml"], check=True, capture_output=True)
+        result, code = ops.cmd_create_feature_branches(_no_args(
+            governance_repo=str(local),
+            feature_id="develop-feat",
+            repo=None,
+            default_branch=None,
+            dry_run=False,
+        ))
+        assert code == 0
+        assert result["created_from"] == "develop"
+        assert ops.branch_exists(str(local), "develop-feat")
+        assert ops.branch_exists(str(local), "develop-feat-plan")
+        assert ops.branch_exists(str(local), "develop-feat-dev")
+
+
+# ---------------------------------------------------------------------------
+# cmd_commit_artifacts
+# ---------------------------------------------------------------------------
+
+class TestCommitArtifacts:
+    def _args(self, repo, feature_id, files, description, phase=None, push=False, dry_run=False, phase_step=None):
+        return _no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id=feature_id,
+            files=files,
+            description=description,
+            phase=phase,
+            phase_step=phase_step,
+            push=push,
+            no_confirm=True,
+            dry_run=dry_run,
+        )
+
+    def test_no_files_returns_error(self, repo):
+        result, code = ops.cmd_commit_artifacts(self._args(repo, "f", [], "desc"))
+        assert code == 1
+        assert result["error"] == "no_files_specified"
+
+    def test_missing_file_returns_error(self, repo):
+        result, code = ops.cmd_commit_artifacts(self._args(repo, "f", ["no-such.md"], "desc"))
+        assert code == 1
+        assert result["error"] == "file_not_found"
+
+    def test_commits_existing_file(self, repo):
+        make_branch(repo, "commit-feat")
+        make_branch(repo, "commit-feat-plan")
+        make_branch(repo, "commit-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "commit-feat"], check=True, capture_output=True)
+        (repo / "artifact.md").write_text("content")
+        result, code = ops.cmd_commit_artifacts(self._args(repo, "commit-feat", ["artifact.md"], "initial artifact", phase="unknown"))
+        assert code == 0
+        assert result["commit_sha"] != ""
+        assert "commit-feat" in result["commit_message"]
+
+    def test_message_alias_commits_existing_file(self, repo):
+        make_branch(repo, "message-feat")
+        make_branch(repo, "message-feat-plan")
+        make_branch(repo, "message-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "message-feat"], check=True, capture_output=True)
+        (repo / "artifact.md").write_text("content")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="message-feat",
+            files=["artifact.md"],
+            description=None,
+            message="message alias artifact",
+            phase="unknown",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert "message alias artifact" in result["commit_message"]
+
+    def test_conflicting_message_aliases_are_rejected(self, repo):
+        (repo / "artifact.md").write_text("content")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="message-feat",
+            files=["artifact.md"],
+            description="description text",
+            message="message text",
+            phase="unknown",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "conflicting_message_aliases"
+
+    def test_phase_auto_resolved_from_yaml(self, repo):
+        write_feature_yaml(repo, "phase-feat", phase="plan")
+        make_branch(repo, "phase-feat")
+        make_branch(repo, "phase-feat-plan")
+        make_branch(repo, "phase-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "phase-feat"], check=True, capture_output=True)
+        (repo / "doc.md").write_text("doc")
+        result, code = ops.cmd_commit_artifacts(
+            self._args(repo, "phase-feat", ["doc.md"], "test doc", phase=None)
+        )
+        assert code == 0
+        assert "[plan]" in result["commit_message"]
+
+    def test_dry_run_does_not_commit(self, repo):
+        (repo / "artifact-dry.md").write_text("hi")
+        result, code = ops.cmd_commit_artifacts(
+            self._args(repo, "feat", ["artifact-dry.md"], "dry test", phase="dev", dry_run=True)
+        )
+        assert code == 0
+        assert result["dry_run"] is True
+        # File should NOT be committed — git status should still show it
+        status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True)
+        assert "artifact-dry.md" in status.stdout
+
+
+# ---------------------------------------------------------------------------
+# cmd_create_dev_branch
+# ---------------------------------------------------------------------------
+
+class TestCreateDevBranch:
+    def _args(self, repo, feature_id, username, dry_run=False):
+        return _no_args(
+            governance_repo=str(repo),
+            feature_id=feature_id,
+            username=username,
+            repo=None,
+            dry_run=dry_run,
+        )
+
+    def test_invalid_username_rejected(self, repo):
+        make_branch(repo, "dev-feat")
+        result, code = ops.cmd_create_dev_branch(self._args(repo, "dev-feat", "Bad User"))
+        assert code == 1
+        assert result["error"] == "invalid_username"
+
+    def test_missing_base_branch_rejected(self, repo):
+        result, code = ops.cmd_create_dev_branch(self._args(repo, "no-base", "alice"))
+        assert code == 1
+        assert result["error"] == "base_branch_not_found"
+
+    def test_creates_dev_branch(self, repo_pair):
+        local, remote = repo_pair
+        make_branch(local, "devb-feat")
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "devb-feat"], check=True, capture_output=True)
+        result, code = ops.cmd_create_dev_branch(_no_args(
+            governance_repo=str(local),
+            feature_id="devb-feat",
+            username="alice",
+            repo=None,
+            dry_run=False,
+        ))
+        assert code == 0
+        assert ops.branch_exists(str(local), "devb-feat-dev-alice")
+
+    def test_dry_run_no_branch_created(self, repo):
+        make_branch(repo, "dry-devb")
+        result, code = ops.cmd_create_dev_branch(self._args(repo, "dry-devb", "alice", dry_run=True))
+        assert code == 0
+        assert result["dry_run"] is True
+        assert not ops.branch_exists(str(repo), "dry-devb-dev-alice")
+
+    def test_dry_run_returns_expected_fields(self, repo):
+        make_branch(repo, "dry-devb2")
+        result, code = ops.cmd_create_dev_branch(self._args(repo, "dry-devb2", "bob", dry_run=True))
+        assert code == 0
+        assert result["dev_branch"] == "dry-devb2-dev-bob"
+        assert result["parent_branch"] == "dry-devb2"
+
+    def test_duplicate_dev_branch_rejected(self, repo):
+        make_branch(repo, "dup-base")
+        make_branch(repo, "dup-base-dev-alice")
+        result, code = ops.cmd_create_dev_branch(self._args(repo, "dup-base", "alice"))
+        assert code == 1
+        assert result["error"] == "branch_already_exists"
+
+
+class TestBuildDevBranchName:
+    def test_feature_id_mode(self):
+        assert ops.build_dev_branch_name("payments-auth", "feature-id") == "feature/payments-auth"
+
+    def test_feature_id_mode_uses_feature_slug_override(self):
+        assert ops.build_dev_branch_name(
+            "platform-identity-payments-auth",
+            "feature-id",
+            feature_slug="payments-auth",
+        ) == "feature/payments-auth"
+
+    def test_feature_id_username_mode(self):
+        assert ops.build_dev_branch_name("payments-auth", "feature-id-username", "alice") == "feature/payments-auth-alice"
+
+    def test_direct_default_returns_empty_branch_name(self):
+        assert ops.build_dev_branch_name("payments-auth", "direct-default") == ""
+
+
+class TestPrepareDevBranch:
+    def _args(self, repo, feature_id, mode, username=None, feature_slug=None, base_branch=None, governance_repo=None, dry_run=False):
+        return _no_args(
+            repo=str(repo),
+            feature_id=feature_id,
+            mode=mode,
+            username=username,
+            feature_slug=feature_slug,
+            base_branch=base_branch,
+            governance_repo=str(governance_repo) if governance_repo else None,
+            dry_run=dry_run,
+        )
+
+    def test_invalid_mode_rejected(self, repo):
+        result, code = ops.cmd_prepare_dev_branch(self._args(repo, "payments-auth", "weird-mode", dry_run=True))
+        assert code == 1
+        assert result["error"] == "invalid_mode"
+
+    def test_direct_default_checks_out_default_branch(self, repo_pair):
+        local, remote = repo_pair
+        make_branch(local, "scratch")
+        subprocess.run(["git", "-C", str(local), "checkout", "scratch"], check=True, capture_output=True)
+
+        result, code = ops.cmd_prepare_dev_branch(self._args(local, "payments-auth", "direct-default", dry_run=False))
+
+        assert code == 0
+        assert result["working_branch"] == "main"
+        assert result["requires_pr"] is False
+        assert ops.current_branch(str(local)) == "main"
+
+    def test_feature_id_mode_creates_and_pushes_working_branch(self, repo_pair):
+        local, remote = repo_pair
+
+        result, code = ops.cmd_prepare_dev_branch(self._args(local, "payments-auth", "feature-id", dry_run=False))
+
+        assert code == 0
+        assert result["working_branch"] == "feature/payments-auth"
+        assert result["created"] is True
+        assert result["requires_pr"] is True
+        assert ops.branch_exists(str(local), "feature/payments-auth") is True
+        assert ops.current_branch(str(local)) == "feature/payments-auth"
+
+    def test_feature_id_mode_uses_short_feature_slug(self, repo_pair):
+        local, remote = repo_pair
+
+        result, code = ops.cmd_prepare_dev_branch(self._args(
+            local,
+            "platform-identity-payments-auth",
+            "feature-id",
+            feature_slug="payments-auth",
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["feature_slug"] == "payments-auth"
+        assert result["working_branch"] == "feature/payments-auth"
+        assert ops.branch_exists(str(local), "feature/payments-auth") is True
+        assert ops.current_branch(str(local)) == "feature/payments-auth"
+
+    def test_feature_id_username_mode_reuses_remote_branch(self, repo_pair):
+        local, remote = repo_pair
+        branch = "feature/payments-auth-alice"
+        subprocess.run(["git", "-C", str(local), "checkout", "-b", branch], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", branch], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "checkout", "main"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "branch", "-D", branch], check=True, capture_output=True)
+
+        result, code = ops.cmd_prepare_dev_branch(self._args(local, "payments-auth", "feature-id-username", username="alice", dry_run=False))
+
+        assert code == 0
+        assert result["working_branch"] == branch
+        assert result["created"] is False
+        assert result["reused"] is True
+        assert ops.current_branch(str(local)) == branch
+
+    def test_targetprojects_prepare_uses_inventory_feature_base_branch(self, tmp_path):
+        project_root = tmp_path
+        target_root = project_root / "TargetProjects" / "lens-dev"
+        target_root.mkdir(parents=True)
+        local, remote = init_repo_pair(target_root, default_branch="main")
+        subprocess.run(["git", "-C", str(local), "checkout", "-b", "develop"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "develop"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "checkout", "main"], check=True, capture_output=True)
+        governance_repo = write_repo_inventory(project_root, local, feature_base_branch="develop")
+
+        result, code = ops.cmd_prepare_dev_branch(self._args(
+            local,
+            "payments-auth",
+            "feature-id",
+            governance_repo=governance_repo,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["base_branch"] == "develop"
+        assert result["base_branch_source"] == "repo-inventory.feature_base_branch"
+        assert result["working_branch"] == "feature/payments-auth"
+        assert ops.current_branch(str(local)) == "feature/payments-auth"
+
+    def test_targetprojects_prepare_requires_feature_base_branch(self, tmp_path):
+        project_root = tmp_path
+        target_root = project_root / "TargetProjects" / "lens-dev"
+        target_root.mkdir(parents=True)
+        local, remote = init_repo_pair(target_root, default_branch="main")
+        governance_repo = write_repo_inventory(project_root, local, feature_base_branch=None)
+
+        result, code = ops.cmd_prepare_dev_branch(self._args(
+            local,
+            "payments-auth",
+            "feature-id",
+            governance_repo=governance_repo,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "feature_base_branch_missing"
+        assert result["action"] == "ask_user_for_feature_base_branch"
+
+
+# ---------------------------------------------------------------------------
+# cmd_merge_plan (direct strategy — no gh CLI needed)
+# ---------------------------------------------------------------------------
+
+class TestMergePlanDirect:
+    def _args(self, repo, feature_id, strategy="direct", delete_after=False, dry_run=False):
+        return _no_args(
+            governance_repo=str(repo),
+            feature_id=feature_id,
+            repo=None,
+            strategy=strategy,
+            auto_merge=False,
+            delete_after_merge=delete_after,
+            dry_run=dry_run,
+        )
+
+    def test_missing_base_branch_rejected(self, repo):
+        make_branch(repo, "only-plan-merge")
+        result, code = ops.cmd_merge_plan(self._args(repo, "no-base-merge"))
+        assert code == 1
+        assert result["error"] == "base_branch_not_found"
+
+    def test_missing_plan_branch_rejected(self, repo):
+        make_branch(repo, "no-plan-merge")
+        result, code = ops.cmd_merge_plan(self._args(repo, "no-plan-merge"))
+        assert code == 1
+        assert result["error"] == "plan_branch_not_found"
+
+    def test_dry_run_direct(self, repo):
+        make_branch(repo, "drym-feat")
+        make_branch(repo, "drym-feat-plan")
+        make_branch(repo, "drym-feat-dev")
+        result, code = ops.cmd_merge_plan(self._args(repo, "drym-feat", dry_run=True))
+        assert code == 0
+        assert result["dry_run"] is True
+
+    def test_direct_merge_succeeds(self, repo_pair):
+        local, remote = repo_pair
+        make_branch(local, "merge-feat")
+        make_branch(local, "merge-feat-dev")
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "merge-feat"], check=True, capture_output=True)
+        make_branch(local, "merge-feat-plan")
+        subprocess.run(["git", "-C", str(local), "checkout", "merge-feat-plan"], check=True, capture_output=True)
+        (local / "plan.md").write_text("plan content")
+        subprocess.run(["git", "-C", str(local), "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "add plan"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "merge-feat-plan"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "checkout", "main"], check=True, capture_output=True)
+        result, code = ops.cmd_merge_plan(_no_args(
+            governance_repo=str(local),
+            feature_id="merge-feat",
+            repo=None,
+            strategy="direct",
+            delete_after_merge=False,
+            dry_run=False,
+        ))
+        assert code == 0
+        assert result["plan_branch_deleted"] is False
+
+
+# ---------------------------------------------------------------------------
+# cmd_push
+# ---------------------------------------------------------------------------
+
+class TestPush:
+    def _args(self, repo, branch=None, dry_run=False):
+        return _no_args(
+            governance_repo=str(repo),
+            repo=None,
+            branch=branch,
+            dry_run=dry_run,
+        )
+
+    def test_dry_run(self, repo):
+        result, code = ops.cmd_push(self._args(repo, dry_run=True))
+        assert code == 0
+        assert result["dry_run"] is True
+
+    def test_no_remote_returns_error(self, repo):
+        # repo has no origin set up — push should fail
+        result, code = ops.cmd_push(self._args(repo))
+        assert code == 1
+
+    def test_push_succeeds_with_remote(self, repo_pair):
+        local, remote = repo_pair
+        (local / "new.md").write_text("new")
+        subprocess.run(["git", "-C", str(local), "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "new file"], check=True, capture_output=True)
+        result, code = ops.cmd_push(_no_args(
+            governance_repo=str(local),
+            repo=None,
+            branch=None,
+            dry_run=False,
+        ))
+        assert code == 0
+        assert result["branch"] == "main"
+
+
+class TestPublishToGovernance:
+    def test_publish_to_governance_copies_phase_artifacts(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        write_feature_yaml(governance, "publish-feat", domain="platform", service="identity", phase="preplan")
+
+        control_docs = control / "docs" / "platform" / "identity" / "publish-feat"
+        control_docs.mkdir(parents=True, exist_ok=True)
+        (control_docs / "product-brief.md").write_text("# Product Brief\n")
+        (control_docs / "research.md").write_text("# Research\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="publish-feat",
+            phase="preplan",
+            artifact=[],
+            dry_run=False,
+        ))
+        assert code == 0
+        assert (governance / "features" / "platform" / "identity" / "publish-feat" / "docs" / "product-brief.md").exists()
+        assert (governance / "features" / "platform" / "identity" / "publish-feat" / "docs" / "research.md").exists()
+        assert "brainstorm" in result["missing_artifacts"]
+
+    def test_publish_to_governance_copies_research_files_from_research_subdir(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        write_feature_yaml(governance, "publish-research-subdir", domain="platform", service="identity", phase="preplan")
+
+        control_docs = control / "docs" / "platform" / "identity" / "publish-research-subdir"
+        research_dir = control_docs / "research"
+        research_dir.mkdir(parents=True, exist_ok=True)
+        nested_research = research_dir / "technical-auth-research-2026-04-14.md"
+        nested_research.write_text("# Research\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="publish-research-subdir",
+            phase="preplan",
+            artifact=["research"],
+            dry_run=False,
+        ))
+        assert code == 0
+        assert str(nested_research) in result["copied_from"]
+        assert (governance / "features" / "platform" / "identity" / "publish-research-subdir" / "docs" / "technical-auth-research-2026-04-14.md").exists()
+
+    def test_publish_to_governance_dry_run_reports_targets(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        write_feature_yaml(governance, "dry-publish", domain="platform", service="identity", phase="businessplan")
+
+        control_docs = control / "docs" / "platform" / "identity" / "dry-publish"
+        control_docs.mkdir(parents=True, exist_ok=True)
+        (control_docs / "prd.md").write_text("# PRD\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="dry-publish",
+            phase="businessplan",
+            artifact=[],
+            dry_run=True,
+        ))
+        assert code == 0
+        assert result["dry_run"] is True
+        assert any(path.replace("\\", "/").endswith("features/platform/identity/dry-publish/docs/prd.md") for path in result["published_files"])
+        assert not (governance / "features" / "platform" / "identity" / "dry-publish" / "docs" / "prd.md").exists()
+
+    def test_publish_to_governance_copies_story_files_from_supported_shapes(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        write_feature_yaml(governance, "story-publish", domain="platform", service="identity", phase="finalizeplan")
+
+        control_docs = control / "docs" / "platform" / "identity" / "story-publish"
+        control_docs.mkdir(parents=True, exist_ok=True)
+        (control_docs / "1-2-user-auth.md").write_text("# Story 1-2\n")
+        (control_docs / "dev-story-legacy.md").write_text("# Legacy Story\n")
+        stories_dir = control_docs / "stories"
+        stories_dir.mkdir()
+        (stories_dir / "2-1-admin-audit.yaml").write_text("status: ready-for-dev\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="story-publish",
+            phase="finalizeplan",
+            artifact=["story-files"],
+            dry_run=False,
+        ))
+
+        assert code == 0
+        target_root = governance / "features" / "platform" / "identity" / "story-publish" / "docs"
+        assert (target_root / "1-2-user-auth.md").exists()
+        assert (target_root / "dev-story-legacy.md").exists()
+        assert (target_root / "2-1-admin-audit.yaml").exists()
+        assert result["missing_artifacts"] == []
+
+    def test_publish_to_governance_finalizeplan_includes_review_report(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        write_feature_yaml(governance, "review-publish", domain="platform", service="identity", phase="finalizeplan")
+
+        control_docs = control / "docs" / "platform" / "identity" / "review-publish"
+        control_docs.mkdir(parents=True, exist_ok=True)
+        (control_docs / "finalizeplan-review.md").write_text("# Final Review\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="review-publish",
+            phase="finalizeplan",
+            artifact=["review-report"],
+            dry_run=False,
+        ))
+
+        assert code == 0
+        target = governance / "features" / "platform" / "identity" / "review-publish" / "docs" / "finalizeplan-review.md"
+        assert target.exists()
+        assert result["missing_artifacts"] == []
+
+
+class TestMergePlanPRStrategy:
+    def test_pr_strategy_reuses_existing_pr_and_enables_auto_merge(self, repo, monkeypatch):
+        make_branch(repo, "pr-feat")
+        make_branch(repo, "pr-feat-plan")
+        make_branch(repo, "pr-feat-dev")
+
+        real_run = subprocess.run
+        gh_calls: list[list[str]] = []
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:3] == ["gh", "pr", "list"]:
+                gh_calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout='[{"url":"https://example.test/pr/7","autoMergeRequest":null}]', stderr="")
+            if cmd[:3] == ["gh", "pr", "merge"]:
+                gh_calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return real_run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        result, code = ops.cmd_merge_plan(_no_args(
+            governance_repo=str(repo),
+            feature_id="pr-feat",
+            repo=None,
+            strategy="pr",
+            auto_merge=True,
+            delete_after_merge=False,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["created"] is False
+        assert result["pr_url"] == "https://example.test/pr/7"
+        assert result["auto_merge_enabled"] is True
+        assert any(call[:3] == ["gh", "pr", "list"] for call in gh_calls)
+        assert any(call[:3] == ["gh", "pr", "merge"] for call in gh_calls)
+
+
+class TestCreatePr:
+    def test_create_pr_dry_run(self, repo):
+        make_branch(repo, "feature-pr")
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(repo),
+            repo=None,
+            base="main",
+            head="feature-pr",
+            title="Test PR",
+            body="Dry run",
+            auto_merge=True,
+            dry_run=True,
+        ))
+        assert code == 0
+        assert result["pr_url"] == "(dry-run)"
+        assert result["auto_merge_requested"] is True
+
+    def test_create_pr_creates_new_pr(self, repo, monkeypatch):
+        make_branch(repo, "feature-pr2")
+
+        real_run = subprocess.run
+        gh_calls: list[list[str]] = []
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:3] == ["gh", "pr", "list"]:
+                gh_calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
+            if cmd[:3] == ["gh", "pr", "create"]:
+                gh_calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout="https://example.test/pr/8\n", stderr="")
+            return real_run(cmd, *args, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(repo),
+            repo=None,
+            base="main",
+            head="feature-pr2",
+            title="Feature PR",
+            body="Create PR",
+            auto_merge=False,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["created"] is True
+        assert result["pr_url"] == "https://example.test/pr/8"
+        assert any(call[:3] == ["gh", "pr", "create"] for call in gh_calls)
+
+    def test_create_pr_accepts_branch_aliases_and_forwards_body(self, tmp_path, monkeypatch):
+        captured: dict[str, str] = {}
+
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: True)
+        monkeypatch.setattr(ops, "resolve_git_ref", lambda repo, branch: branch)
+        monkeypatch.setattr(ops, "merge_base_sha", lambda repo, head_ref, base_ref: "abc123")
+
+        def fake_ensure_pull_request(repo, *, base_branch, head_branch, title, body, auto_merge, dry_run):
+            captured.update({"base": base_branch, "head": head_branch, "body": body})
+            return {"pr_url": "https://example.test/pr/10", "created": True, "auto_merge_enabled": False}, 0
+
+        monkeypatch.setattr(ops, "_ensure_pull_request", fake_ensure_pull_request)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(tmp_path),
+            repo=str(tmp_path),
+            base=None,
+            target_branch="develop",
+            head=None,
+            source_branch="feature/body-alias",
+            title="Alias PR",
+            body="Direct body text",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["pr_url"] == "https://example.test/pr/10"
+        assert captured == {"base": "develop", "head": "feature/body-alias", "body": "Direct body text"}
+
+    def test_create_pr_rejects_conflicting_head_aliases(self):
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base="main",
+            target_branch=None,
+            head="feature/one",
+            source_branch="feature/two",
+            title="Alias PR",
+            body="Body",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "conflicting_branch_aliases"
+
+    def test_create_pr_rejects_conflicting_base_aliases(self):
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=".",
+            repo=".",
+            base="main",
+            target_branch="develop",
+            head="feature/one",
+            source_branch=None,
+            title="Alias PR",
+            body="Body",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "conflicting_branch_aliases"
+
+    def test_create_pr_auto_detects_base_when_base_omitted(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            ops,
+            "branch_exists",
+            lambda repo, branch, include_remote=True: branch == "feature-auto",
+        )
+        monkeypatch.setattr(ops, "resolve_default_branch", lambda repo: "main")
+        monkeypatch.setattr(ops, "pick_base_branch", lambda repo, head_branch, candidates=None: "develop")
+        monkeypatch.setattr(
+            ops,
+            "_ensure_pull_request",
+            lambda *a, **k: ({"pr_url": "https://example.test/pr/9", "created": True, "auto_merge_enabled": False}, 0),
+        )
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(tmp_path),
+            repo=str(tmp_path),
+            base=None,
+            head="feature-auto",
+            title="Auto Base",
+            body="Auto Base",
+            auto_merge=False,
+            auto_detect_base=True,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["base_branch"] == "develop"
+
+    def test_targetprojects_create_pr_uses_inventory_feature_base_branch(self, tmp_path, monkeypatch):
+        project_root = tmp_path
+        repo = project_root / "TargetProjects" / "lens-dev" / "source"
+        repo.mkdir(parents=True)
+        governance_repo = write_repo_inventory(project_root, repo, feature_base_branch="develop")
+        captured: dict[str, str] = {}
+
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: True)
+        monkeypatch.setattr(ops, "resolve_git_ref", lambda repo, branch: branch)
+        monkeypatch.setattr(ops, "merge_base_sha", lambda repo, head_ref, base_ref: "abc123")
+        monkeypatch.setattr(ops, "pick_base_branch", lambda repo, head_branch, candidates=None: "main")
+
+        def fake_ensure_pull_request(repo, *, base_branch, head_branch, title, body, auto_merge, dry_run):
+            captured.update({"base": base_branch, "head": head_branch})
+            return {"pr_url": "https://example.test/pr/11", "created": True, "auto_merge_enabled": False}, 0
+
+        monkeypatch.setattr(ops, "_ensure_pull_request", fake_ensure_pull_request)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(repo),
+            base=None,
+            target_branch=None,
+            head="feature/inventory-base",
+            source_branch=None,
+            title="Inventory Base",
+            body="Inventory Base",
+            auto_merge=False,
+            auto_detect_base=True,
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["base_branch"] == "develop"
+        assert result["base_branch_source"] == "repo-inventory.feature_base_branch"
+        assert captured == {"base": "develop", "head": "feature/inventory-base"}
+
+    def test_targetprojects_create_pr_requires_feature_base_branch(self, tmp_path, monkeypatch):
+        project_root = tmp_path
+        repo = project_root / "TargetProjects" / "lens-dev" / "source"
+        repo.mkdir(parents=True)
+        governance_repo = write_repo_inventory(project_root, repo, feature_base_branch=None)
+
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: True)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(repo),
+            base=None,
+            target_branch=None,
+            head="feature/missing-base",
+            source_branch=None,
+            title="Missing Base",
+            body="Missing Base",
+            auto_merge=False,
+            auto_detect_base=True,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "feature_base_branch_missing"
+        assert result["action"] == "ask_user_for_feature_base_branch"
+
+    def test_targetprojects_create_pr_rejects_base_mismatch(self, tmp_path, monkeypatch):
+        project_root = tmp_path
+        repo = project_root / "TargetProjects" / "lens-dev" / "source"
+        repo.mkdir(parents=True)
+        governance_repo = write_repo_inventory(project_root, repo, feature_base_branch="develop")
+
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: True)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(repo),
+            base="main",
+            target_branch=None,
+            head="feature/wrong-base",
+            source_branch=None,
+            title="Wrong Base",
+            body="Wrong Base",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "feature_base_branch_mismatch"
+        assert result["feature_base_branch"] == "develop"
+
+    def test_create_pr_auto_detect_failure_includes_candidates(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: branch == "feature-orphan")
+        monkeypatch.setattr(ops, "resolve_default_branch", lambda repo: "main")
+        monkeypatch.setattr(ops, "pick_base_branch", lambda repo, head_branch, candidates=None: None)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(tmp_path),
+            repo=str(tmp_path),
+            base=None,
+            head="feature-orphan",
+            title="Orphan PR",
+            body="No history",
+            auto_merge=False,
+            auto_detect_base=True,
+            dry_run=False,
+        ))
+
+        assert code == 1
+        assert result["status"] == "error"
+        assert result["error"] == "no_common_ancestor"
+        assert result["head_branch"] == "feature-orphan"
+        assert "candidates_checked" in result
+        assert "main" in result["candidates_checked"]
+
+    def test_create_pr_explicit_base_requires_shared_history(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ops, "branch_exists", lambda repo, branch, include_remote=True: True)
+        monkeypatch.setattr(ops, "resolve_git_ref", lambda repo, branch: branch)
+        monkeypatch.setattr(ops, "merge_base_sha", lambda repo, head_ref, base_ref: None)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(tmp_path),
+            repo=str(tmp_path),
+            base="main",
+            head="feature-explicit",
+            title="Explicit Base",
+            body="Explicit Base",
+            auto_merge=False,
+            auto_detect_base=False,
+            dry_run=False,
+        ))
+
+        assert code == 1
+        assert result["status"] == "error"
+        assert result["error"] == "no_common_ancestor"
+
+
+
+# ---------------------------------------------------------------------------
+# CLI integration (subprocess)
+# ---------------------------------------------------------------------------
+
+class TestCLIIntegration:
+    def _script(self):
+        return str(_script_path)
+
+    def test_create_feature_branches_dry_run(self, repo):
+        write_feature_yaml(repo, "cli-test-feat")
+        proc = subprocess.run(
+            ["uv", "run", "--script", self._script(),
+             "create-feature-branches",
+             "--governance-repo", str(repo),
+             "--feature-id", "cli-test-feat",
+             "--dry-run"],
+            capture_output=True, text=True
+        )
+        assert proc.returncode == 0
+        data = json.loads(proc.stdout)
+        assert data["dry_run"] is True
+        assert data["base_branch"] == "cli-test-feat"
+
+    def test_invalid_feature_id_exit_1(self, repo):
+        proc = subprocess.run(
+            ["uv", "run", "--script", self._script(),
+             "create-feature-branches",
+             "--governance-repo", str(repo),
+             "--feature-id", "Bad/Id"],
+            capture_output=True, text=True
+        )
+        assert proc.returncode == 1
+        data = json.loads(proc.stdout)
+        assert data["error"] == "invalid_feature_id"
+
+    def test_create_dev_branch_dry_run(self, repo):
+        make_branch(repo, "cli-dev-feat")
+        proc = subprocess.run(
+            ["uv", "run", "--script", self._script(),
+             "create-dev-branch",
+             "--governance-repo", str(repo),
+             "--feature-id", "cli-dev-feat",
+             "--username", "alice",
+             "--dry-run"],
+            capture_output=True, text=True
+        )
+        assert proc.returncode == 0
+        data = json.loads(proc.stdout)
+        assert data["dev_branch"] == "cli-dev-feat-dev-alice"
+
+    def test_prepare_dev_branch_dry_run(self, repo):
+        proc = subprocess.run(
+            ["uv", "run", "--script", self._script(),
+             "prepare-dev-branch",
+             "--repo", str(repo),
+             "--feature-id", "cli-feature",
+             "--mode", "feature-id",
+             "--dry-run"],
+            capture_output=True, text=True
+        )
+        assert proc.returncode == 0
+        data = json.loads(proc.stdout)
+        assert data["working_branch"] == "feature/cli-feature"
+
+    def test_prepare_dev_branch_dry_run_with_feature_slug(self, repo):
+        proc = subprocess.run(
+            ["uv", "run", "--script", self._script(),
+             "prepare-dev-branch",
+             "--repo", str(repo),
+             "--feature-id", "platform-identity-cli-feature",
+             "--feature-slug", "cli-feature",
+             "--mode", "feature-id",
+             "--dry-run"],
+            capture_output=True, text=True
+        )
+        assert proc.returncode == 0
+        data = json.loads(proc.stdout)
+        assert data["feature_slug"] == "cli-feature"
+        assert data["working_branch"] == "feature/cli-feature"
+
+
+# ---------------------------------------------------------------------------
+# Quality-fix coverage tests
+# ---------------------------------------------------------------------------
+
+class TestCommitArtifactsBranchGuard:
+    """B-2: commit-artifacts must enforce branch membership."""
+    def _args(self, repo, feature_id, files, description, phase="dev", push=False, dry_run=False):
+        return _no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id=feature_id,
+            files=files,
+            description=description,
+            phase=phase,
+            phase_step=None,
+            push=push,
+            no_confirm=True,
+            dry_run=dry_run,
+        )
+
+    def test_wrong_branch_returns_error(self, repo):
+        make_branch(repo, "other-feat")
+        make_branch(repo, "other-feat-plan")
+        make_branch(repo, "other-feat-dev")
+        # On main, committing for a different feature_id
+        (repo / "file.md").write_text("content")
+        result, code = self._args_and_run(repo, "other-feat", ["file.md"])
+        assert code == 1
+        assert result["error"] == "wrong_branch"
+        assert result["current"] == "main"
+
+    def _args_and_run(self, repo, feature_id, files):
+        a = self._args(repo, feature_id, files, "test desc")
+        return ops.cmd_commit_artifacts(a)
+
+    def test_correct_base_branch_allowed(self, repo):
+        make_branch(repo, "allowed-feat")
+        make_branch(repo, "allowed-feat-plan")
+        make_branch(repo, "allowed-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "allowed-feat"], check=True, capture_output=True)
+        (repo / "art.md").write_text("content")
+        result, code = ops.cmd_commit_artifacts(self._args(repo, "allowed-feat", ["art.md"], "desc", phase="unknown"))
+        assert code == 0
+
+    def test_plan_branch_allowed(self, repo):
+        make_branch(repo, "planb-feat")
+        make_branch(repo, "planb-feat-plan")
+        make_branch(repo, "planb-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "planb-feat-plan"], check=True, capture_output=True)
+        (repo / "plan.md").write_text("plan")
+        result, code = ops.cmd_commit_artifacts(self._args(repo, "planb-feat", ["plan.md"], "plan desc", phase="plan"))
+        assert code == 0
+
+    def test_dev_branch_allowed(self, repo):
+        make_branch(repo, "devb-feat")
+        make_branch(repo, "devb-feat-plan")
+        make_branch(repo, "devb-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "devb-feat-dev"], check=True, capture_output=True)
+        (repo / "impl.md").write_text("impl")
+        result, code = ops.cmd_commit_artifacts(self._args(repo, "devb-feat", ["impl.md"], "impl desc", phase="dev"))
+        assert code == 1
+        assert result["error"] == "target_repo_only_phase"
+
+
+class TestCommitArtifactsPushFlag:
+    """TC-2: --push flag path coverage."""
+    def test_push_flag_commits_and_pushes(self, repo_pair):
+        local, remote = repo_pair
+        make_branch(local, "push-feat")
+        make_branch(local, "push-feat-plan")
+        make_branch(local, "push-feat-dev")
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "push-feat"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "checkout", "push-feat"], check=True, capture_output=True)
+        (local / "pushed.md").write_text("pushed content")
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(local),
+            governance_repo=str(local),
+            feature_id="push-feat",
+            files=["pushed.md"],
+            description="pushed artifact",
+            phase="unknown",
+            phase_step=None,
+            push=True,
+            no_confirm=True,
+            dry_run=False,
+        ))
+        assert code == 0
+        assert result["pushed"] is True
+
+
+class TestCommitArtifactsNothingToCommit:
+    """TC-3: nothing_to_commit error path."""
+    def test_nothing_to_commit_returns_error(self, repo):
+        make_branch(repo, "ntc-feat")
+        make_branch(repo, "ntc-feat-plan")
+        make_branch(repo, "ntc-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "ntc-feat"], check=True, capture_output=True)
+        # Create and commit a file
+        (repo / "already.md").write_text("committed")
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-m", "pre-commit"], check=True, capture_output=True)
+        # Attempt to commit the same file again (no changes)
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="ntc-feat",
+            files=["already.md"],
+            description="re-commit",
+            phase="unknown",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+        ))
+        assert code == 1
+        assert result["error"] == "nothing_to_commit"
+
+
+class TestTopologyAndRouting:
+    def test_branch_for_phase_write_step3_routes_to_feature_branch(self):
+        branch, rule = ops.branch_for_phase_write("route-feat", "finalizeplan", "step3")
+        assert branch == "route-feat"
+        assert rule == "finalizeplan_step_3_to_feature"
+
+    def test_commit_requires_three_branch_topology(self, repo):
+        make_branch(repo, "route-feat")
+        make_branch(repo, "route-feat-plan")
+        subprocess.run(["git", "-C", str(repo), "checkout", "route-feat-plan"], check=True, capture_output=True)
+        (repo / "plan.md").write_text("plan")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="route-feat",
+            files=["plan.md"],
+            description="route test",
+            phase="preplan",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+        ))
+
+        assert code == 1
+        assert result["error"] == "missing_required_branch"
+        assert "route-feat-dev" in result["missing_branches"]
+        assert result["action"] == "init-feature"
+
+    def test_finalizeplan_step3_requires_feature_branch(self, repo):
+        make_branch(repo, "fin-feat")
+        make_branch(repo, "fin-feat-plan")
+        make_branch(repo, "fin-feat-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "fin-feat-plan"], check=True, capture_output=True)
+        (repo / "bundle.md").write_text("bundle")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="fin-feat",
+            files=["bundle.md"],
+            description="finalize step 3 bundle",
+            phase="finalizeplan",
+            phase_step="step3",
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+        ))
+
+        assert code == 1
+        assert result["error"] == "branch_mismatch"
+        assert result["expected_branch"] == "fin-feat"
+        assert result["current_branch"] == "fin-feat-plan"
+        assert result["routing"]["routing_enforced"] is True
+
+    def test_dev_phase_rejected_in_control_repo(self, repo):
+        make_branch(repo, "dev-route")
+        make_branch(repo, "dev-route-plan")
+        make_branch(repo, "dev-route-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "dev-route-dev"], check=True, capture_output=True)
+        (repo / "impl.md").write_text("impl")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="dev-route",
+            files=["impl.md"],
+            description="impl",
+            phase="dev",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+        ))
+
+        assert code == 1
+        assert result["error"] == "target_repo_only_phase"
+
+
+class TestPhaseStartValidation:
+    def test_phase_start_rejects_missing_branch(self, repo):
+        make_branch(repo, "phase-start")
+        make_branch(repo, "phase-start-plan")
+        write_feature_yaml(repo, "phase-start", phase="preplan")
+        subprocess.run(["git", "-C", str(repo), "checkout", "phase-start"], check=True, capture_output=True)
+
+        result, code = ops.cmd_validate_phase_start(_no_args(
+            governance_repo=str(repo),
+            repo=str(repo),
+            feature_id="phase-start",
+            expected_base_branch="phase-start",
+        ))
+
+        assert code == 1
+        assert result["error"] == "missing_required_branch"
+
+    def test_phase_start_rejects_wrong_base_branch(self, repo):
+        write_feature_yaml(repo, "phase-base", phase="preplan")
+        make_branch(repo, "phase-base")
+        make_branch(repo, "phase-base-plan")
+        make_branch(repo, "phase-base-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "main"], check=True, capture_output=True)
+
+        result, code = ops.cmd_validate_phase_start(_no_args(
+            governance_repo=str(repo),
+            repo=str(repo),
+            feature_id="phase-base",
+            expected_base_branch="phase-base",
+        ))
+
+        assert code == 1
+        assert result["error"] == "base_branch_mismatch"
+
+    def test_phase_start_accepts_express_track(self, repo):
+        write_feature_yaml(repo, "phase-express", phase="preplan", status="active")
+        feature_yaml = repo / "features" / "platform" / "api" / "phase-express" / "feature.yaml"
+        payload = yaml.safe_load(feature_yaml.read_text(encoding="utf-8"))
+        payload["track"] = "express"
+        feature_yaml.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+        make_branch(repo, "phase-express")
+        make_branch(repo, "phase-express-plan")
+        make_branch(repo, "phase-express-dev")
+        subprocess.run(["git", "-C", str(repo), "checkout", "phase-express"], check=True, capture_output=True)
+
+        result, code = ops.cmd_validate_phase_start(_no_args(
+            governance_repo=str(repo),
+            repo=str(repo),
+            feature_id="phase-express",
+            expected_base_branch="phase-express",
+        ))
+
+        assert code == 0
+        assert result["status"] == "pass"
+        assert result["track"] == "express"
+        assert result["track_canonical"] == "express"
+        assert result["constitution_gate"] == "pass"
+
+
+class TestCleanupBranch:
+    def test_cleanup_deletes_branch_switches_and_pulls(self, repo_pair):
+        local, remote = repo_pair
+        subprocess.run(["git", "-C", str(local), "checkout", "-b", "cleanup-step"], check=True, capture_output=True)
+        (local / "step.md").write_text("step")
+        subprocess.run(["git", "-C", str(local), "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "step"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "cleanup-step"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "checkout", "main"], check=True, capture_output=True)
+
+        result, code = ops.cmd_cleanup_branch(_no_args(
+            repo=str(local),
+            branch="cleanup-step",
+            next_branch="main",
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["status"] == "pass"
+        assert result["local_deleted"] is True
+        assert result["remote_deleted"] is True
+        assert result["switched_and_pulled"] is True
+        assert ops.current_branch(str(local)) == "main"
+
+    def test_cleanup_is_idempotent(self, repo_pair):
+        local, remote = repo_pair
+        result, code = ops.cmd_cleanup_branch(_no_args(
+            repo=str(local),
+            branch="missing-step",
+            next_branch="main",
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["local_deleted"] is False
+        assert result["remote_deleted"] is False
+        assert result["working_tree_clean_verified"] is True
+        assert result["idempotent"] is True
+
+
+class TestExpressPublishMapping:
+    def test_express_publish_copies_full_bundle_and_reports_review_filename(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        write_feature_yaml(governance, "express-feat", domain="platform", service="identity", phase="expressplan")
+
+        control_docs = control / "docs" / "platform" / "identity" / "express-feat"
+        control_docs.mkdir(parents=True, exist_ok=True)
+        (control_docs / "business-plan.md").write_text("# Business Plan\n")
+        (control_docs / "tech-plan.md").write_text("# Tech Plan\n")
+        (control_docs / "sprint-plan.md").write_text("# Sprint Plan\n")
+        (control_docs / "expressplan-review.md").write_text("# Legacy Review\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="express-feat",
+            phase="expressplan",
+            artifact=[],
+            dry_run=False,
+        ))
+
+        assert code == 0
+        target_root = governance / "features" / "platform" / "identity" / "express-feat" / "docs"
+        assert (target_root / "business-plan.md").exists()
+        assert (target_root / "tech-plan.md").exists()
+        assert (target_root / "sprint-plan.md").exists()
+        assert (target_root / "expressplan-review.md").exists()
+        assert result["matched_review_filename"] == "expressplan-review.md"
+        assert result["express_review_resolution_order"] == [
+            "expressplan-adversarial-review.md",
+            "expressplan-review.md",
+        ]
+
+    def test_express_publish_prefers_current_review_filename_when_both_exist(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        write_feature_yaml(governance, "express-pref", domain="platform", service="identity", phase="expressplan")
+
+        control_docs = control / "docs" / "platform" / "identity" / "express-pref"
+        control_docs.mkdir(parents=True, exist_ok=True)
+        (control_docs / "business-plan.md").write_text("# Business Plan\n")
+        (control_docs / "tech-plan.md").write_text("# Tech Plan\n")
+        (control_docs / "sprint-plan.md").write_text("# Sprint Plan\n")
+        (control_docs / "expressplan-adversarial-review.md").write_text("# Current\n")
+        (control_docs / "expressplan-review.md").write_text("# Legacy\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="express-pref",
+            phase="expressplan",
+            artifact=[],
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["matched_review_filename"] == "expressplan-adversarial-review.md"
+        assert result["express_review_resolution_order"][0] == "expressplan-adversarial-review.md"
+
+
+
+class TestMergePlanDeleteAfterMerge:
+    """TC-1: --delete-after-merge logic coverage."""
+    def test_delete_after_merge_removes_plan_branch(self, repo_pair):
+        local, remote = repo_pair
+        make_branch(local, "del-feat")
+        make_branch(local, "del-feat-dev")
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "del-feat"], check=True, capture_output=True)
+        make_branch(local, "del-feat-plan")
+        subprocess.run(["git", "-C", str(local), "checkout", "del-feat-plan"], check=True, capture_output=True)
+        (local / "plan.md").write_text("plan")
+        subprocess.run(["git", "-C", str(local), "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "plan"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "del-feat-plan"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "checkout", "main"], check=True, capture_output=True)
+        result, code = ops.cmd_merge_plan(_no_args(
+            governance_repo=str(local),
+            feature_id="del-feat",
+            repo=None,
+            strategy="direct",
+            delete_after_merge=True,
+            dry_run=False,
+        ))
+        assert code == 0
+        assert result["plan_branch_deleted"] is True
+        assert not ops.branch_exists(str(local), "del-feat-plan")
+
+
+class TestMergePlanDirtyTree:
+    """SQ-3/ES-6: verify_clean() guard before merge-plan checkout."""
+    def test_dirty_tree_rejected(self, repo):
+        make_branch(repo, "dirty-merge")
+        make_branch(repo, "dirty-merge-plan")
+        make_branch(repo, "dirty-merge-dev")
+        # Make working tree dirty
+        (repo / "dirty.txt").write_text("uncommitted")
+        result, code = ops.cmd_merge_plan(_no_args(
+            governance_repo=str(repo),
+            feature_id="dirty-merge",
+            repo=None,
+            strategy="direct",
+            delete_after_merge=False,
+            dry_run=False,
+        ))
+        assert code == 1
+        assert result["error"] == "dirty_working_tree"
+
+
+class TestMergePlanPRDryRun:
+    """TC-4: merge-plan PR strategy dry-run path."""
+    def test_pr_dry_run_returns_placeholder_url(self, repo):
+        make_branch(repo, "pr-dry-feat")
+        make_branch(repo, "pr-dry-feat-plan")
+        make_branch(repo, "pr-dry-feat-dev")
+        result, code = ops.cmd_merge_plan(_no_args(
+            governance_repo=str(repo),
+            feature_id="pr-dry-feat",
+            repo=None,
+            strategy="pr",
+            delete_after_merge=False,
+            dry_run=True,
+        ))
+        assert code == 0
+        assert result["pr_url"] == "(dry-run)"
+        assert result["dry_run"] is True
+
+
+class TestCreateFeatureBranchesPlanAlreadyExists:
+    """TC-5: plan branch already exists (not base) should be rejected."""
+    def test_plan_branch_already_exists_rejected(self, repo):
+        write_feature_yaml(repo, "plan-exists-feat")
+        make_branch(repo, "plan-exists-feat-plan")
+        result, code = ops.cmd_create_feature_branches(_no_args(
+            governance_repo=str(repo),
+            feature_id="plan-exists-feat",
+            repo=None,
+            default_branch="main",
+            dry_run=False,
+        ))
+        assert code == 1
+        assert result["error"] == "branch_already_exists"
+        assert result["branch"] == "plan-exists-feat-plan"
+
+
+# ---------------------------------------------------------------------------
+# cmd_set_feature_base_branch
+# ---------------------------------------------------------------------------
+
+def _init_governance_repo_pair(tmp_path: Path, default_branch: str = "main"):
+    """Create a bare remote + local clone for use as a governance repo."""
+    remote_path = tmp_path / "governance.git"
+    local_path = tmp_path / "governance"
+    subprocess.run(
+        ["git", "-c", f"init.defaultBranch={default_branch}", "init", "--bare", str(remote_path)],
+        check=True, capture_output=True,
+    )
+    subprocess.run(["git", "clone", str(remote_path), str(local_path)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "config", "user.email", "test@example.com"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "config", "user.name", "Test User"], check=True, capture_output=True)
+    readme = local_path / "README.md"
+    readme.write_text("# Governance\n")
+    subprocess.run(["git", "-C", str(local_path), "add", "."], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "commit", "-m", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(local_path), "push", "-u", "origin", default_branch], check=True, capture_output=True)
+    return local_path, remote_path
+
+
+class TestSetFeatureBaseBranch:
+    def test_dry_run_reports_what_would_be_set(self, tmp_path):
+        project_root = tmp_path
+        repo = project_root / "TargetProjects" / "lens-dev" / "source"
+        repo.mkdir(parents=True)
+        governance_repo = write_repo_inventory(project_root, repo, feature_base_branch=None)
+
+        result, code = ops.cmd_set_feature_base_branch(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(repo),
+            branch="develop",
+            dry_run=True,
+        ))
+
+        assert code == 0
+        assert result["status"] == "pass"
+        assert result["feature_base_branch"] == "develop"
+        assert result["dry_run"] is True
+
+    def test_writes_branch_to_inventory_and_commits_and_pushes(self, tmp_path):
+        project_root = tmp_path / "workspace"
+        project_root.mkdir()
+        target_root = project_root / "TargetProjects" / "lens-dev"
+        target_root.mkdir(parents=True)
+        target_local, _target_remote = init_repo_pair(target_root, default_branch="main")
+
+        # Governance repo with a push-capable remote
+        gov_local, _gov_remote = _init_governance_repo_pair(project_root / "gov_pair")
+        gov_target = project_root / "TargetProjects" / "lens" / "lens-governance"
+        gov_target.mkdir(parents=True, exist_ok=True)
+        # Copy the governance local to the expected path
+        import shutil
+        if gov_target.exists():
+            shutil.rmtree(gov_target)
+        subprocess.run(["git", "clone", str(_gov_remote), str(gov_target)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(gov_target), "config", "user.email", "test@example.com"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(gov_target), "config", "user.name", "Test User"], check=True, capture_output=True)
+
+        # Write inventory (no feature_base_branch)
+        entry = {
+            "name": target_local.name,
+            "remote_url": "https://example.test/org/repo.git",
+            "local_path": str(target_local.resolve().relative_to(project_root.resolve()).as_posix()),
+            "dev_branch_mode": "feature-id",
+        }
+        (gov_target / "repo-inventory.yaml").write_text(yaml.safe_dump({"repositories": [entry]}, sort_keys=False))
+        subprocess.run(["git", "-C", str(gov_target), "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(gov_target), "commit", "-m", "add inventory"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(gov_target), "push"], check=True, capture_output=True)
+
+        result, code = ops.cmd_set_feature_base_branch(_no_args(
+            governance_repo=str(gov_target),
+            repo=str(target_local),
+            branch="develop",
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["status"] == "pass"
+        assert result["feature_base_branch"] == "develop"
+        assert result["committed"] is True
+        assert result["pushed"] is True
+
+        # Verify the YAML was updated
+        updated = yaml.safe_load((gov_target / "repo-inventory.yaml").read_text())
+        assert updated["repositories"][0]["feature_base_branch"] == "develop"
+
+    def test_non_target_projects_repo_rejected(self, tmp_path):
+        project_root = tmp_path
+        regular_repo = project_root / "regular-repo"
+        regular_repo.mkdir(parents=True)
+        governance_repo = project_root / "governance"
+        governance_repo.mkdir(parents=True)
+
+        result, code = ops.cmd_set_feature_base_branch(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(regular_repo),
+            branch="develop",
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["status"] == "error"
+        assert result["error"] in ("not_a_target_projects_repo", "project_root_not_found")
+
+    def test_empty_branch_rejected(self, tmp_path):
+        result, code = ops.cmd_set_feature_base_branch(_no_args(
+            governance_repo=str(tmp_path),
+            repo=str(tmp_path),
+            branch="",
+            dry_run=True,
+        ))
+        assert code == 1
+        assert result["error"] == "branch_required"
+
+    def test_missing_inventory_entry_rejected(self, tmp_path):
+        project_root = tmp_path
+        repo = project_root / "TargetProjects" / "lens-dev" / "other-repo"
+        repo.mkdir(parents=True)
+        # Write inventory for a DIFFERENT repo — not the one we request
+        other_repo = project_root / "TargetProjects" / "lens-dev" / "source"
+        other_repo.mkdir(parents=True)
+        governance_repo = write_repo_inventory(project_root, other_repo, feature_base_branch=None)
+
+        result, code = ops.cmd_set_feature_base_branch(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(repo),
+            branch="develop",
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "repo_inventory_entry_not_found"
+
+    def test_idempotent_when_already_set(self, tmp_path):
+        project_root = tmp_path
+        repo = project_root / "TargetProjects" / "lens-dev" / "source"
+        repo.mkdir(parents=True)
+        # Write inventory with feature_base_branch already set to "develop"
+        governance_repo = write_repo_inventory(project_root, repo, feature_base_branch="develop")
+        # Write & commit so the tree is clean
+        subprocess.run(["git", "-c", "init.defaultBranch=main", "init", str(governance_repo)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(governance_repo), "config", "user.email", "test@example.com"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(governance_repo), "config", "user.name", "Test User"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(governance_repo), "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(governance_repo), "commit", "-m", "init inventory"], check=True, capture_output=True)
+
+        result, code = ops.cmd_set_feature_base_branch(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(repo),
+            branch="develop",
+            dry_run=False,
+        ))
+
+        # Already set — nothing to commit; should return pass with note
+        assert code == 0
+        assert result["status"] == "pass"
+        assert result.get("committed") is False
+        assert "note" in result
+
+    def test_feature_base_branch_missing_payload_includes_next_step(self, tmp_path):
+        project_root = tmp_path
+        repo = project_root / "TargetProjects" / "lens-dev" / "source"
+        repo.mkdir(parents=True)
+        governance_repo = write_repo_inventory(project_root, repo, feature_base_branch=None)
+
+        result, code = ops.cmd_create_pr(_no_args(
+            governance_repo=str(governance_repo),
+            repo=str(repo),
+            base=None,
+            target_branch=None,
+            head="feature/missing-base",
+            source_branch=None,
+            title="Missing Base",
+            body="Missing Base",
+            auto_merge=False,
+            auto_detect_base=True,
+            dry_run=True,
+        ))
+
+        assert code == 1
+        assert result["error"] == "feature_base_branch_missing"
+        assert "next_step" in result
+        assert "set-feature-base-branch" in result["next_step"]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v"]))
