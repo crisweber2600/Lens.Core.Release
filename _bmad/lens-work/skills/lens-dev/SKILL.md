@@ -20,7 +20,12 @@ Required inputs:
 
 Optional inputs:
 - target_repo_path: Explicit target repo path override.
-- epic: Epic selector (number or id) when the user narrows execution; `all` or `all stories` when the user requests full dev-cycle execution.
+- epic: Epic selector (number or id) to narrow execution to stories belonging to that epic.
+  Omit this input to run without epic filtering.
+  The values `all` and `all stories` are sentinels meaning "no epic filter" — they behave
+  the same as omitting `epic` and do not filter the story queue to a literal `all` prefix.
+  To run all sprints with auto-continue, omit `epic` (or use the sentinel) and set
+  `continue_across_sprints: true`.
 - continue_across_sprints: Boolean session flag set when the user explicitly requests `all stories`, `all sprints`, `run all the way through`, or automatic post-dev completion.
 - base_branch: Branch to fork from when branch prep is needed.
 - working_branch: Existing branch to resume if already prepared.
@@ -116,7 +121,7 @@ After phase entry passes:
 
 1. Parse `sprint-status.yaml`. Stories are iterable items; each has at minimum `story_id`, `status`, and optionally `blocked_by`.
 2. Build the **ready queue**: stories where `status == 'ready'` and all `blocked_by` entries are in the `completed` list of `dev-session.yaml`.
-3. If the `epic` input is set, filter the ready queue to stories matching that epic prefix.
+3. If the `epic` input is set to a specific epic number or id, filter the ready queue to stories matching that epic prefix. The sentinel values `all` and `all stories` are treated the same as omitting `epic` — no epic filtering is applied; they do not filter the queue to a literal `all` prefix.
 4. If the ready queue is empty and there are stories in `status == 'in-progress'` from a prior session: re-enqueue those stories as `ready` (crash recovery).
 5. If the ready queue is empty and no stories remain in `ready` or `in-progress`: the sprint is **complete**. Emit `sprint_complete` signal and update `feature.yaml` phase to `dev-complete`, then run the complete cycle automatically when the invocation requested post-dev completion.
 
