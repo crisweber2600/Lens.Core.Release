@@ -18,8 +18,8 @@ MODULE_PROMPT_MD = MODULE_ROOT / "prompts" / "lens-quickdev.prompt.md"
 SKILL_MD = MODULE_ROOT / "skills" / "lens-quickdev" / "SKILL.md"
 MODULE_YAML = MODULE_ROOT / "module.yaml"
 MODULE_HELP_CSV = MODULE_ROOT / "module-help.csv"
-BUG_QUICKDEV_PROMPT_MD = MODULE_ROOT / "prompts" / "lens-bug-quickdev.prompt.md"
-BUG_QUICKDEV_SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-bug-quickdev" / "SKILL.md"
+CORE_BUGFIX_PROMPT_MD = MODULE_ROOT / "prompts" / "lens-core-bugfix.prompt.md"
+CORE_BUGFIX_SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-core-bugfix" / "SKILL.md"
 
 
 def _public_prompt_text() -> str:
@@ -42,12 +42,12 @@ def _module_help_text() -> str:
     return MODULE_HELP_CSV.read_text(encoding="utf-8")
 
 
-def _bug_quickdev_prompt_text() -> str:
-    return BUG_QUICKDEV_PROMPT_MD.read_text(encoding="utf-8")
+def _core_bugfix_prompt_text() -> str:
+    return CORE_BUGFIX_PROMPT_MD.read_text(encoding="utf-8")
 
 
-def _bug_quickdev_skill_text() -> str:
-    return BUG_QUICKDEV_SKILL_MD.read_text(encoding="utf-8")
+def _core_bugfix_skill_text() -> str:
+    return CORE_BUGFIX_SKILL_MD.read_text(encoding="utf-8")
 
 
 def test_public_prompt_runs_preflight_before_module_prompt_loading():
@@ -216,14 +216,15 @@ def test_skill_defines_three_validation_failure_paths():
     assert "blocked PR recovery" in text
 
 
-def test_bug_quickdev_route_remains_separate_and_mandatory_commit_flow():
-    """The bug-specific quickdev route must keep its existing mandatory flow."""
-    prompt_text = _bug_quickdev_prompt_text()
-    skill_text = _bug_quickdev_skill_text()
+def test_core_bugfix_route_remains_separate_and_mandatory_commit_flow():
+    """The core bugfix route must keep its mandatory fresh branch and PR flow."""
+    prompt_text = _core_bugfix_prompt_text()
+    skill_text = _core_bugfix_skill_text()
 
-    assert "bmad-lens-bug-quickdev/SKILL.md" in prompt_text
+    assert "bmad-lens-core-bugfix/SKILL.md" in prompt_text
     assert "lens-quickdev/SKILL.md" not in prompt_text
     assert "commit and push" in skill_text.lower()
+    assert "feature/lens-core-bugfix-" in skill_text
     assert "git-orchestration-ops.py push" in skill_text
     assert "git-orchestration-ops.py create-pr" in skill_text
     assert "record-quickdev-pr" in skill_text
@@ -294,7 +295,7 @@ def test_skill_records_scope_override_and_final_audit_readiness():
     assert "approved paths" in text
     assert "approving instruction" in text
     assert "final audit readiness check" in text
-    assert "`/lens-bug-quickdev` compatibility" in text
+    assert "`/lens-core-bugfix` compatibility" in text
     assert "`audit_ready: true`" in text
 
 

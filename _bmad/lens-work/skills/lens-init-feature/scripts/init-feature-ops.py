@@ -1258,10 +1258,11 @@ def cmd_create(args: argparse.Namespace) -> dict:
                 ),
             }
 
-    is_express = track == "express"
     gh_commands: list[str] = []
-    if not is_express and control_repo:
-        gh_commands = [
+    planning_pr_followup_commands: list[str] = []
+    planning_pr_deferred_reason: str | None = None
+    if control_repo:
+        planning_pr_followup_commands = [
             (
                 f"gh pr create --repo {shlex.quote(control_repo)} "
                 f"--head {shlex.quote(f'{feature_id}-plan')} --base {shlex.quote(feature_id)} "
@@ -1269,6 +1270,9 @@ def cmd_create(args: argparse.Namespace) -> dict:
                 f"--body {shlex.quote('Auto-created by lens-init-feature')}"
             )
         ]
+        planning_pr_deferred_reason = (
+            "Planning PR creation is deferred until the plan branch contains planning commits."
+        )
 
     return {
         "status": "pass",
@@ -1282,8 +1286,10 @@ def cmd_create(args: argparse.Namespace) -> dict:
         "starting_phase": starting_phase,
         "recommended_command": "/next",
         "router_command": "/next",
-        "planning_pr_created": bool(gh_commands),
+        "planning_pr_created": False,
         "gh_commands": gh_commands,
+        "planning_pr_followup_commands": planning_pr_followup_commands,
+        "planning_pr_deferred_reason": planning_pr_deferred_reason,
         "path": str(feature_yaml_path),
         "summary_path": str(summary_md_path),
         "index_path": str(index_path),

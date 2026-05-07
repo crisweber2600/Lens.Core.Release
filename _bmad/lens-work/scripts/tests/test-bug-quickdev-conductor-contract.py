@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["pytest>=8.0"]
 # ///
-"""Conductor contract tests for bmad-lens-bug-quickdev SKILL.md.
+"""Conductor contract tests for bmad-lens-core-bugfix SKILL.md.
 
 Verifies that the SKILL.md enforces PR creation as a terminal command
 rather than narrating it to the user.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
-SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-bug-quickdev" / "SKILL.md"
+SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-core-bugfix" / "SKILL.md"
 
 
 def _skill_text() -> str:
@@ -25,10 +25,10 @@ def _skill_text() -> str:
 
 
 def _create_pr_command_block(text: str) -> str:
-    """Extract the fenced bash block containing the create-pr invocation from Step 9."""
+    """Extract the fenced bash block containing the create-pr invocation."""
     match = re.search(r"(```bash\s*\n[\s\S]*?create-pr[\s\S]*?```)", text, re.DOTALL)
     assert match is not None, (
-        "SKILL.md must contain a fenced bash block with the create-pr command in Step 9"
+        "SKILL.md must contain a fenced bash block with the create-pr command"
     )
     return match.group(1)
 
@@ -39,10 +39,10 @@ def _create_pr_command_block(text: str) -> str:
 
 
 def test_pr_step_uses_git_orchestration_create_pr():
-    """Step 9 must invoke git-orchestration-ops.py create-pr as a terminal command."""
+    """PR creation must invoke git-orchestration-ops.py create-pr as a terminal command."""
     block = _create_pr_command_block(_skill_text())
     assert "git-orchestration-ops.py create-pr" in block, (
-        "Step 9 fenced bash block must call git-orchestration-ops.py create-pr, "
+        "The fenced bash block must call git-orchestration-ops.py create-pr, "
         "not use narrative 'Open a PR' language"
     )
 
@@ -53,14 +53,29 @@ def test_workflow_uses_git_orchestration_prepare_dev_branch():
     assert "git-orchestration-ops.py prepare-dev-branch" in text, (
         "SKILL.md must prepare the target repo branch via git-orchestration-ops.py prepare-dev-branch"
     )
-    assert "--feature-slug bugfix-{bug-title-slug}" in text
+    assert "feature_id = lens-core-bugfix-{bug_slug}" in text
+    assert "--feature-id {feature_id}" in text
+    assert "--feature-slug {feature_slug}" in text
     assert "--mode feature-id" in text
     assert "working_branch" in text, (
         "SKILL.md must capture working_branch from prepare-dev-branch output"
     )
     assert "checks out the base branch" in text
     assert "pulls the base branch" in text
-    assert "creates or reuses the QuickDev working branch" in text
+    assert "creates the fresh Core Bugfix working branch" in text
+
+
+def test_workflow_forbids_implicit_branch_continuation():
+    """Each distinct bug must get its own base-derived core bugfix branch."""
+    text = _skill_text()
+
+    assert "no implicit continuation mode" in text
+    assert "Do not infer continuation" in text
+    assert "Do not reuse the previous `working_branch`" in text
+    assert "feature/lens-core-bugfix-" in text
+    assert "branch_reuse_blocked" in text
+    assert "recent conversation history" in text
+    assert "continue on the existing branch from the most recent" not in text
 
 
 def test_workflow_uses_git_orchestration_push():
@@ -73,66 +88,66 @@ def test_workflow_uses_git_orchestration_push():
 
 
 def test_pr_step_specifies_base_develop():
-    """Step 9 must pass --base develop to the create-pr command."""
+    """PR creation must pass --base develop to the create-pr command."""
     block = _create_pr_command_block(_skill_text())
     assert "--base develop" in block, (
-        "Step 9 create-pr invocation must specify --base develop"
+        "create-pr invocation must specify --base develop"
     )
 
 
 def test_pr_step_specifies_target_repo():
-    """Step 9 create-pr command must pass --repo pointing at the target project."""
+    """PR creation command must pass --repo pointing at the target project."""
     block = _create_pr_command_block(_skill_text())
     assert "--repo" in block, (
-        "Step 9 create-pr command must pass --repo to target the correct repository, "
+        "create-pr command must pass --repo to target the correct repository, "
         "not the governance repo"
     )
     assert "{target_project}" in block, (
-        "Step 9 create-pr --repo must use {target_project} placeholder, "
+        "create-pr --repo must use {target_project} placeholder, "
         "not a hardcoded path"
     )
     assert "--head {working_branch}" in block, (
-        "Step 9 create-pr must use the working_branch returned by prepare-dev-branch"
+        "create-pr must use the working_branch returned by prepare-dev-branch"
     )
 
 
 def test_pr_step_captures_pr_url():
-    """Step 9 must instruct the agent to capture pr_url from the command output."""
+    """PR creation must instruct the agent to capture pr_url from the command output."""
     text = _skill_text()
     assert "pr_url" in text, (
-        "SKILL.md step 9 must require capturing pr_url from the create-pr JSON output"
+        "SKILL.md must require capturing pr_url from the create-pr JSON output"
     )
 
 
 def test_pr_step_records_pr_url_to_bug_artifact():
-    """Step 9 must record the captured PR URL back into the QuickDev bug artifact."""
+    """PR creation must record the captured PR URL back into the bug artifact."""
     text = _skill_text()
     assert "record-quickdev-pr" in text, (
-        "SKILL.md step 9 must call bug-reporter-ops.py record-quickdev-pr after PR creation"
+        "SKILL.md must call bug-reporter-ops.py record-quickdev-pr after PR creation"
     )
     assert "--pr-url" in text, "record-quickdev-pr command must pass the captured PR URL"
     assert "{bug_slug}" in text, "record-quickdev-pr command must target the captured bug slug"
 
 
 def test_pr_step_documents_changes_and_closes_bug_artifact():
-    """After PR recording, the flow must document changes and move the QuickDev bug to Fixed."""
+    """After PR recording, the flow must document changes and move the bug to Fixed."""
     text = _skill_text()
 
     assert "close-quickdev-bug" in text
     assert "--summary" in text
     assert "--validation-summary" in text
     assert "bugs/Fixed/" in text
-    assert "QuickDev closeout section" in text
+    assert "Core Bugfix closeout section" in text
 
 
 def test_pr_step_has_failure_fallback():
-    """Step 9 must define a failure fallback that does not delegate to the user."""
+    """PR creation must define a failure fallback that does not delegate to the user."""
     text = _skill_text()
     assert re.search(r"exits non-zero|non-zero exit|command fails", text, re.IGNORECASE), (
-        "SKILL.md step 9 must handle non-zero exit code from create-pr"
+        "SKILL.md must handle non-zero exit code from create-pr"
     )
     assert re.search(r"do NOT ask the user|do not ask the user", text, re.IGNORECASE), (
-        "SKILL.md step 9 must explicitly forbid asking the user to create the PR"
+        "SKILL.md must explicitly forbid asking the user to create the PR"
     )
 
 
@@ -224,7 +239,7 @@ def test_quick_dev_skill_path_is_project_root_relative():
 
 
 def test_pr_step_does_not_use_open_a_pr_language():
-    """Step 9 must not use ambiguous 'Open a PR' narrative without a command."""
+    """PR creation must not use ambiguous 'Open a PR' narrative without a command."""
     text = _skill_text()
     # It's fine if 'Open a PR' appears only in context of the fallback/error message,
     # but the imperative workflow step must use git-orchestration-ops.py.
@@ -284,3 +299,4 @@ def test_bug_intake_uses_quickdev_queue():
         "SKILL.md create-bug invocation must pass --queue QuickDev for quickdev bugs"
     )
     assert "bug_slug" in text, "SKILL.md must capture the create-bug slug for later PR recording"
+

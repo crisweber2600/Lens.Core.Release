@@ -604,11 +604,13 @@ class TestCreate:
         assert entry["status"] == "preplan"  # full track starts at preplan
         assert entry["plan_branch"] == "lens-dev-new-codebase-index-test-plan"
 
-        # non-express track creates an immediate planning PR
-        assert payload["planning_pr_created"] is True
-        assert len(payload["gh_commands"]) == 1
-        assert "gh pr create" in payload["gh_commands"][0]
-        assert "lens-dev-new-codebase-index-test-plan" in payload["gh_commands"][0]
+        # planning PR is deferred until planning commits exist on the plan branch
+        assert payload["planning_pr_created"] is False
+        assert payload["gh_commands"] == []
+        assert len(payload["planning_pr_followup_commands"]) == 1
+        assert "gh pr create" in payload["planning_pr_followup_commands"][0]
+        assert "lens-dev-new-codebase-index-test-plan" in payload["planning_pr_followup_commands"][0]
+        assert payload["planning_pr_deferred_reason"]
 
     def test_create_feature_dry_run_no_files_written(self, tmp_path: Path):
         gov = tmp_path / "gov"
@@ -744,7 +746,7 @@ class TestCreate:
         assert payload["planning_pr_created"] is False
         assert payload["gh_commands"] == []
 
-    def test_create_feature_non_express_emits_planning_pr_command(self, tmp_path: Path):
+    def test_create_feature_non_express_defers_planning_pr_command(self, tmp_path: Path):
         gov = tmp_path / "gov"
         control = tmp_path / "control"
         gov.mkdir()
@@ -767,11 +769,13 @@ class TestCreate:
             ])
 
             assert completed.returncode == 0, f"track={non_express_track}: {payload.get('error')}"
-            assert payload["planning_pr_created"] is True, f"track={non_express_track}"
-            assert len(payload["gh_commands"]) == 1, f"track={non_express_track}"
-            cmd = payload["gh_commands"][0]
+            assert payload["planning_pr_created"] is False, f"track={non_express_track}"
+            assert payload["gh_commands"] == [], f"track={non_express_track}"
+            assert len(payload["planning_pr_followup_commands"]) == 1, f"track={non_express_track}"
+            cmd = payload["planning_pr_followup_commands"][0]
             assert "gh pr create" in cmd, f"track={non_express_track}"
             assert f"{fid}-plan" in cmd, f"track={non_express_track}"
+            assert payload["planning_pr_deferred_reason"], f"track={non_express_track}"
 
     def test_create_feature_index_failure_rolls_back_files(self, tmp_path: Path):
         """If feature-index.yaml write fails, written feature.yaml/summary.md are removed."""

@@ -9,6 +9,7 @@ prompts:
   - lens-constitution.prompt.md
   - lens-dev.prompt.md
   - lens-quickdev.prompt.md
+  - lens-core-bugfix.prompt.md
   - lens-discover.prompt.md
   - lens-expressplan.prompt.md
   - lens-new-domain.prompt.md
