@@ -12,7 +12,9 @@ from pathlib import Path
 
 TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
-PROMPT_MD = MODULE_ROOT / "prompts" / "lens-quickdev.prompt.md"
+REPO_ROOT = MODULE_ROOT.parents[1]
+PUBLIC_PROMPT_MD = REPO_ROOT / ".github" / "prompts" / "lens-quickdev.prompt.md"
+MODULE_PROMPT_MD = MODULE_ROOT / "prompts" / "lens-quickdev.prompt.md"
 SKILL_MD = MODULE_ROOT / "skills" / "lens-quickdev" / "SKILL.md"
 MODULE_YAML = MODULE_ROOT / "module.yaml"
 MODULE_HELP_CSV = MODULE_ROOT / "module-help.csv"
@@ -20,8 +22,12 @@ BUG_QUICKDEV_PROMPT_MD = MODULE_ROOT / "prompts" / "lens-bug-quickdev.prompt.md"
 BUG_QUICKDEV_SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-bug-quickdev" / "SKILL.md"
 
 
-def _prompt_text() -> str:
-    return PROMPT_MD.read_text(encoding="utf-8")
+def _public_prompt_text() -> str:
+    return PUBLIC_PROMPT_MD.read_text(encoding="utf-8")
+
+
+def _module_prompt_text() -> str:
+    return MODULE_PROMPT_MD.read_text(encoding="utf-8")
 
 
 def _skill_text() -> str:
@@ -44,26 +50,37 @@ def _bug_quickdev_skill_text() -> str:
     return BUG_QUICKDEV_SKILL_MD.read_text(encoding="utf-8")
 
 
-def test_public_prompt_runs_preflight_before_skill_loading():
-    """The public prompt must run prompt-start preflight before loading the skill."""
-    text = _prompt_text()
+def test_public_prompt_runs_preflight_before_module_prompt_loading():
+    """The public prompt must run prompt-start preflight before loading the module prompt."""
+    text = _public_prompt_text()
 
     preflight_index = text.index("light-preflight.py --caller lens-quickdev")
-    skill_index = text.index("lens-quickdev/SKILL.md")
+    module_prompt_index = text.index("lens.core/_bmad/lens-work/prompts/lens-quickdev.prompt.md")
 
-    assert preflight_index < skill_index
+    assert preflight_index < module_prompt_index
     assert "If that command exits non-zero, stop" in text
+    assert "vscode_askQuestions" in text
 
 
 def test_public_prompt_remains_redirect_only():
     """The prompt surface must not own wrapper business logic."""
-    text = _prompt_text()
+    text = _public_prompt_text()
 
-    assert "This prompt is only a redirect" in text
-    assert "Do not add prompt-local business logic" in text
     assert "bmad-quick-dev" not in text
     assert "target_repos" not in text
     assert "quickdev-[summaryofrequeststub]" not in text
+
+
+def test_module_prompt_is_redirect_only_and_loads_skill():
+    """The module prompt should delegate directly to the quickdev skill."""
+    text = _module_prompt_text()
+
+    assert "lens-quickdev/SKILL.md" in text
+    assert "This prompt is a routing stub only." in text
+    assert "prompt-local implementation logic" in text
+    assert "light-preflight.py" not in text
+    assert "bmad-quick-dev" not in text
+    assert "target_repos" not in text
 
 
 def test_skill_is_conductor_only_and_delegates_to_bmad_quick_dev():
@@ -296,9 +313,14 @@ def test_skill_defines_versioned_evidence_artifact():
     """Quickdev evidence must use the versioned artifact path from the plan."""
     text = _skill_text()
 
+    assert "Canonical naming: within `evidence_dir` use filename `quickdev-[summaryofrequeststub]-vNNN.md`" in text
+    assert "relative to `{docs.path}` the artifact path is `quickdev/quickdev-[summaryofrequeststub]-vNNN.md`" in text
     assert "quickdev/quickdev-[summaryofrequeststub]-vNNN.md" in text
     assert "Versioned quickdev evidence paths" in text
     assert "evidence_dir = {docs.path}/quickdev" in text
+    assert "quickdev-[summaryofrequeststub]-vNNN.md" in text
+    assert "matching `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` in `evidence_dir`" not in text
+    assert "Create `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` and never overwrite an existing evidence file." not in text
     assert "starting at `v001`" in text
 
 
