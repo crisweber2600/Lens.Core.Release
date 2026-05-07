@@ -13,6 +13,8 @@ Before calling finalize, confirm all of the following:
 - [ ] `check-preconditions` returned status `pass` or `warn` (not `fail`)
 - [ ] `retrospective.md` exists in the feature directory (or user confirmed skip)
 - [ ] Project documentation captured via `bmad-lens-document-project`
+- [ ] Target repo feature branches are merged to their default base branch
+- [ ] Control repo feature branches (`{featureId}` and `{featureId}-plan`) have all commits that should land in `develop`
 - [ ] User has explicitly confirmed finalize (this is irreversible)
 
 ## Confirmation Gate
@@ -65,10 +67,12 @@ python3 ./scripts/complete-ops.py finalize \
 ## What the Script Does
 
 1. Reads current feature.yaml
-2. Updates `phase` to `complete` and sets `completed_at` to current UTC ISO timestamp
-3. Reads `{governance-repo}/feature-index.yaml` and updates the matching entry's `status` to `archived` and `updated_at` to current UTC ISO timestamp
-4. Writes `{feature-dir}/summary.md` with the archive summary
-5. All writes are atomic (temp file + rename)
+2. Validates target repo feature branches are fully merged into each repo default branch
+3. Deletes merged feature branches (local + origin) in target repos during finalize (no deletion if dry-run)
+4. Updates `phase` to `complete` and sets `completed_at` to current UTC ISO timestamp
+5. Reads `{governance-repo}/feature-index.yaml` and updates the matching entry's `status` to `archived` and `updated_at` to current UTC ISO timestamp
+6. Writes `{feature-dir}/summary.md` with the archive summary
+7. All writes are atomic (temp file + rename)
 
 ## Post-Script Git Sync
 
@@ -82,6 +86,27 @@ git -C {governance_repo} push origin main
 ```
 
 If `git push` fails (e.g., concurrent write conflict), report the error and instruct the user to resolve the conflict manually before retrying the push. Do NOT re-run the finalize script.
+
+## Post-Script Control Repo Branch Merge and Cleanup
+
+After governance is committed, merge and delete the control repo feature branches:
+
+```bash
+# Merge feature branch into develop
+git -C {control_repo} checkout develop
+git -C {control_repo} pull origin develop
+git -C {control_repo} merge --no-ff {featureId} -m "merge({featureId}): complete — {summary_line}"
+git -C {control_repo} push origin develop
+
+# Delete local and remote feature branches
+git -C {control_repo} branch -D {featureId}
+git -C {control_repo} push origin --delete {featureId}
+git -C {control_repo} branch -d {featureId}-plan 2>/dev/null || true
+git -C {control_repo} push origin --delete {featureId}-plan 2>/dev/null || true
+git -C {control_repo} fetch --prune
+```
+
+> **Note:** After this step, `develop` is the working branch. The `{featureId}` and `{featureId}-plan` branches no longer exist. If merge conflicts arise on `docs/lens-work/event-log.jsonl` or `.lens/personal/.light-preflight-timestamp`, accept the feature branch version (`--theirs`) — those files are append-only or timestamp-only.
 
 ## Output
 

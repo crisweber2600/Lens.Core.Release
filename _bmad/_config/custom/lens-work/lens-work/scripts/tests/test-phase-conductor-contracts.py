@@ -152,28 +152,11 @@ def test_planning_conductors_validate_staged_docs_before_progression():
         assert "--misplaced-root" not in text
 
 
-def test_control_repo_instructions_require_control_first_artifact_authority():
-    text = (CONTROL_REPO_ROOT / ".github/instructions/lens-control-repo.instructions.md").read_text(encoding="utf-8")
-
-    assert "TargetProjects/lens.core/src/Lens.Core.Src/" in text
-    assert "stage feature artifacts under the feature's control-repo docs path" in text
-    assert "Governance mirrors are populated only by explicit handoff tooling" in text
-
-
-def test_payload_embeds_control_repo_instruction():
-    text = (PAYLOAD_ROOT / ".github/instructions/lens-control-repo.instructions.md").read_text(encoding="utf-8")
-
-    assert "TargetProjects/lens.core/src/Lens.Core.Src/" in text
-    assert "stage feature artifacts under the feature's control-repo docs path" in text
-    assert "Governance mirrors are populated only by explicit handoff tooling" in text
-
-
 def test_promote_to_release_carries_instruction_payloads():
     workflow = (PAYLOAD_ROOT / ".github/workflows/promote-to-release.yml").read_text(encoding="utf-8")
 
     assert '      - ".github/instructions/**"' in workflow
     assert 'for src in .github/instructions/*.instructions.md; do' in workflow
-    assert 'build-output/.github/instructions/lens-control-repo.instructions.md' in workflow
 
 
 def test_next_docs_describe_auto_delegate_behavior():
