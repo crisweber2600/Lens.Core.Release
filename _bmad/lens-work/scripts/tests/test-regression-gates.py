@@ -147,6 +147,18 @@ def test_preflight_caller_classification_covers_prompt_surface():
     assert preflight.request_requires_repo("governance-write", "control") is False
 
 
+def test_postflight_skill_explicitly_requires_closeout_commit_push_and_clean_state():
+    postflight = _read(MODULE_ROOT / "skills" / "bmad-lens-postflight" / "SKILL.md")
+    for phrase in [
+        "commit and push",
+        "target, control, and governance repos are clean",
+        "Never leave target, control, or governance repo changes uncommitted or unpushed",
+        "If any repo remains dirty after commit and push",
+        "Do not sweep unrelated user edits into the closeout commit",
+    ]:
+        assert phrase in postflight
+
+
 def test_lifecycle_contract_prevents_track_and_finalizeplan_input_drift():
     """Lock current lifecycle tracks and express FinalizePlan handoff inputs."""
     data = yaml.safe_load(_read(LIFECYCLE))

@@ -295,6 +295,7 @@ def test_main_forces_release_refresh_on_develop_even_when_timestamp_is_fresh(tmp
     monkeypatch.setattr(sys, "argv", ["preflight.py", "--caller", "lens-dev"])
     monkeypatch.setattr(ops, "sync_release_repo", fake_sync_release)
     monkeypatch.setattr(ops, "pre_request_sync", fake_pre_request_sync)
+    monkeypatch.setattr(ops, "publish_touched_repo", lambda repo, repo_label: (True, "policy ok"))
     monkeypatch.setattr(ops, "release_branch_name", lambda _: "develop")
 
     assert ops.main() == 0
@@ -348,3 +349,45 @@ def test_main_skips_release_refresh_when_timestamp_is_fresh_off_develop(tmp_path
     assert ops.main() == 0
     assert release_syncs == []
     assert request_syncs == ["control", "governance"]
+
+
+def test_main_syncs_agents_file_and_records_hash(tmp_path: Path, monkeypatch):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    release = project_root / "lens.core"
+    lifecycle = release / "_bmad" / "lens-work" / "lifecycle.yaml"
+    release_github = release / ".github"
+    personal = project_root / ".lens" / "personal"
+    governance = project_root / "TargetProjects" / "lens" / "lens-governance"
+
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+    release_github.mkdir(parents=True)
+    personal.mkdir(parents=True)
+    governance.mkdir(parents=True)
+    (release / "AGENTS.md").write_text("release agents\n", encoding="utf-8")
+    (project_root / ".lens" / "LENS_VERSION").write_text("4.0.0", encoding="utf-8")
+    (project_root / ".lens" / "governance-setup.yaml").write_text(
+        f"governance_repo_path: {governance.as_posix()}\n",
+        encoding="utf-8",
+    )
+
+    def fake_sync_release(repo: Path):
+        return True, "pulled origin"
+
+    def fake_pre_request_sync(repo: Path, repo_label: str, request_class: str, preferred_branch=None):
+        return ops.RepoSyncDecision(repo_label, "pull-only", "policy ok", True)
+
+    monkeypatch.chdir(project_root)
+    monkeypatch.setattr(sys, "argv", ["preflight.py", "--caller", "lens-dev"])
+    monkeypatch.setattr(ops, "sync_release_repo", fake_sync_release)
+    monkeypatch.setattr(ops, "pre_request_sync", fake_pre_request_sync)
+    monkeypatch.setattr(ops, "publish_touched_repo", lambda repo, repo_label: (True, "policy ok"))
+    monkeypatch.setattr(ops, "release_branch_name", lambda _: "develop")
+
+    assert ops.main() == 0
+    assert (project_root / "AGENTS.md").read_text(encoding="utf-8") == "release agents\n"
+
+    expected_hash = ops.sha256_file(release / "AGENTS.md")
+    hash_manifest = (personal / ".github-hashes").read_text(encoding="utf-8")
+    assert f"{expected_hash}  AGENTS.md" in hash_manifest

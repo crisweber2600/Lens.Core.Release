@@ -23,6 +23,7 @@ on:
       - ".github/prompts/**"
       - ".github/skills/**"
       - ".github/workflows/promote-to-release.yml"
+      - "AGENTS.md"
   workflow_dispatch: # Allow manual trigger
 
 jobs:
@@ -444,6 +445,31 @@ jobs:
           done
 
           echo "✅ Overlaid $SRC_COUNT source instruction file(s) into release payload"
+
+      # ── 10.8 Overlay source AGENTS.md into release payload ─────────
+      - name: Overlay source AGENTS.md
+        run: |
+          if [ ! -f "AGENTS.md" ]; then
+            echo "::error::Missing source AGENTS.md"
+            exit 1
+          fi
+
+          cp "AGENTS.md" "build-output/AGENTS.md"
+          echo "✅ Overlaid AGENTS.md into release payload"
+
+      - name: Validate AGENTS.md payload parity
+        run: |
+          if [ ! -f "build-output/AGENTS.md" ]; then
+            echo "::error::Missing published AGENTS.md: build-output/AGENTS.md"
+            exit 1
+          fi
+
+          if ! cmp -s "AGENTS.md" "build-output/AGENTS.md"; then
+            echo "::error::Published AGENTS.md differs from source"
+            exit 1
+          fi
+
+          echo "✅ build-output/AGENTS.md matches source"
 
       # ── 11. Post-process: .xml→.yaml + config.yaml→bmadconfig.yaml ──
       - name: Post-process XML and config file names
