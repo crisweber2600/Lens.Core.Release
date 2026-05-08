@@ -22,6 +22,8 @@ This skill is a thin conductor. It orchestrates inputs and delegation only.
 - A successful `/lens-core-bugfix` run requires all of the following to be non-empty and verified: `working_branch`, `commit hash`, `PR URL`, and `bug_artifact_path` (under `bugs/Fixed/`).
 - No-op completion is not allowed for this flow. If implementation produces no staged code changes, stop with a structured blocker (`bugfix_no_changes`) and do not report success.
 - Every distinct bug must use its own branch created from the base branch. Do not infer continuation from recent conversation history, the current git branch, a previous Output Contract, or an open PR from another bug.
+- Never create, add, remove, or use a sibling git worktree for this flow. Do not run `git worktree add`. Do not run `git worktree remove`. Do not switch implementation to another local clone or worktree as recovery. If `{target_project}` is dirty or `prepare-dev-branch` exits non-zero, stop and surface the exact error. Only continue in the canonical `{target_project}` path after explicit user approval to preserve unrelated edits and after `prepare-dev-branch` succeeds there.
+- Prompt-start preflight and cloud-agent cleanup steps do not auto-clean `{target_project}`. Dirty target repos can still happen (for example from interrupted or user-local edits) and must be treated as hard blockers until explicitly approved by the user.
 
 ## Required Inputs
 
@@ -91,6 +93,7 @@ Required workflow in target project:
     ```
     Capture `working_branch`, `created`, and `reused` from the JSON output and use `working_branch` for all subsequent target-repo validation, push, and PR steps. If this command exits non-zero, stop and surface the exact error.
    The command is mandatory because it checks out the base branch, pulls the base branch, and creates the fresh Core Bugfix working branch from `develop` for this bug. Do not replace it with narrative instructions or skip it when the target repo already appears to be on a usable branch.
+   Do not create or switch to any git worktree as a workaround for `dirty_working_tree`, `pull_failed`, missing branch state, or any other `prepare-dev-branch` failure. The only valid implementation path is `{target_project}`.
    If `working_branch` does not start with `feature/lens-core-bugfix-`, stop with `branch_scope_mismatch`.
    If `reused` is true for a newly created bug artifact, stop with `branch_reuse_blocked` unless the reused branch exactly matches `feature/{feature_id}` and is known to belong to the same `bug_slug`.
 2) Before implementing, identify the primary affected Lens command (`lens-core-bugfix`) and inspect the same command in `TargetProjects/lens-dev/old-codebase/lens.core.src` to understand legacy behavior and identify gaps. Use the same command name and closest matching prompt/skill/script entrypoint when available. If no legacy match exists, record that as a gap.
@@ -144,6 +147,7 @@ Required workflow in target project:
 
 8) After quick-dev delegation returns, run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
    - Verify `working_branch` is non-empty and the target project is currently on `{working_branch}`.
+   - Verify implementation evidence comes from `{target_project}` itself. Do not satisfy branch, commit, validation, push, or PR evidence from a sibling worktree or alternate clone.
    - Verify `working_branch` starts with `feature/lens-core-bugfix-`; otherwise stop with `branch_scope_mismatch`.
    - Run `git status --short`. If implementation changes remain unstaged or uncommitted, commit them with a conventional commit message before continuing. Do not include unrelated user changes; stop and surface the blocker if unrelated changes are mixed into the same worktree.
    - Verify a non-empty implementation commit exists for this run. If no implementation commit can be established, stop with `bugfix_no_changes`.
