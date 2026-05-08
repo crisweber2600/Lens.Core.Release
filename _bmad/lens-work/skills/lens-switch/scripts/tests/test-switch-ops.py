@@ -195,6 +195,20 @@ def test_stub_preflight_then_release_prompt():
 def test_list_features_mode_numbering_and_target_repo(tmp_path: Path):
     write_index(tmp_path, INDEX_ENTRIES)
     write_feature(tmp_path, "platform", "identity", "auth-login", FEATURE)
+    write_feature(
+        tmp_path,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "businessplan", "target_repos": []},
+    )
+    write_feature(
+        tmp_path,
+        "platform",
+        "auth",
+        "oauth-provider",
+        {"featureId": "oauth-provider", "phase": "preplan", "target_repos": []},
+    )
 
     payload, code = run_switch(["list", "--governance-repo", str(tmp_path)])
 
@@ -206,9 +220,45 @@ def test_list_features_mode_numbering_and_target_repo(tmp_path: Path):
     assert "legacy-sso" not in {feature["id"] for feature in payload["features"]}
     first = payload["features"][0]
     assert {"num", "id", "domain", "service", "status", "owner", "summary", "target_repo"} <= first.keys()
-    assert first["status"] == "active"
+    assert first["status"] == "dev"
     assert first["target_repo"]["repo"] == "lens.core.src"
     assert first["target_repo"]["working_branch"] == "feature/auth-login"
+
+
+def test_list_hides_complete_and_missing_feature_yaml_by_default(tmp_path: Path):
+    write_index(tmp_path, INDEX_ENTRIES)
+    write_feature(tmp_path, "platform", "identity", "auth-login", FEATURE)
+    write_feature(
+        tmp_path,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "complete", "target_repos": []},
+    )
+
+    payload, code = run_switch(["list", "--governance-repo", str(tmp_path)])
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert [feature["id"] for feature in payload["features"]] == ["auth-login"]
+
+
+def test_list_archived_filter_includes_complete_feature_phase(tmp_path: Path):
+    write_index(tmp_path, INDEX_ENTRIES)
+    write_feature(
+        tmp_path,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "complete", "target_repos": []},
+    )
+
+    payload, code = run_switch(["list", "--governance-repo", str(tmp_path), "--status-filter", "archived"])
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert [feature["id"] for feature in payload["features"]] == ["user-profile", "legacy-sso"]
+    assert payload["features"][0]["status"] == "complete"
 
 
 def test_list_domains_mode_when_index_missing(tmp_path: Path):
@@ -239,6 +289,14 @@ def test_config_resolution_precedence_and_missing(tmp_path: Path):
     config_gov.mkdir()
     write_index(override_gov, [INDEX_ENTRIES[0]])
     write_index(config_gov, [INDEX_ENTRIES[1]])
+    write_feature(override_gov, "platform", "identity", "auth-login", FEATURE)
+    write_feature(
+        config_gov,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "businessplan", "target_repos": []},
+    )
 
     (workspace / ".lens").mkdir()
     (workspace / ".lens" / "governance-setup.yaml").write_text(
