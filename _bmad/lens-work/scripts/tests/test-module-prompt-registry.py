@@ -44,7 +44,7 @@ def test_registered_release_prompts_exist():
 
 def test_defect_7_expected_prompt_stubs_now_exist():
     """Ensure previously missing prompt stubs are present in release and public surfaces."""
-    expected = [
+    expected_release = [
         "lens-preflight.prompt.md",
         "lens-dev.prompt.md",
         "lens-constitution.prompt.md",
@@ -52,8 +52,10 @@ def test_defect_7_expected_prompt_stubs_now_exist():
         "lens-complete.prompt.md",
         "lens-new-feature.prompt.md",
         "lens-core-bugfix.prompt.md",
+        "lens-postflight.prompt.md",
     ]
-    missing_release = [name for name in expected if not (PROMPTS_DIR / name).exists()]
-    missing_public = [name for name in expected if not (PUBLIC_PROMPTS_DIR / name).exists()]
+    expected_public = [name for name in expected_release if name != "lens-postflight.prompt.md"]
+    missing_release = [name for name in expected_release if not (PROMPTS_DIR / name).exists()]
+    missing_public = [name for name in expected_public if not (PUBLIC_PROMPTS_DIR / name).exists()]
     assert not missing_release, f"Missing expected release prompts: {missing_release}"
     assert not missing_public, f"Missing expected public prompts: {missing_public}"

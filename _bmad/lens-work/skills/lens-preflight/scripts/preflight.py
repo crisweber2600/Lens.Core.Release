@@ -80,6 +80,7 @@ def legacy_personal_dir(project_root: Path) -> Path:
 
 
 PERSONAL_ARTIFACT_NAMES = (".github-hashes", ".preflight-timestamp", "context.yaml", "profile.yaml")
+TRACKED_SYNC_ROOT_FILES = ("AGENTS.md",)
 
 
 def relocate_root_personal_files(project_root: Path, active_dir: Path) -> None:
@@ -329,25 +330,30 @@ def resolve_project_root(script_dir: Path) -> Path:
     )
 
 
-def prune_stale_synced_github_files(
+def prune_stale_synced_managed_files(
     project_root: Path,
     stored_hashes: dict[str, str],
     new_hashes: dict[str, str],
 ) -> int:
     github_root = project_root / ".github"
+    tracked_root_files = set(TRACKED_SYNC_ROOT_FILES)
     removed = 0
 
     for rel_path in sorted(set(stored_hashes) - set(new_hashes)):
-        if not rel_path.startswith(".github/"):
-            continue
-
         local_file = project_root / rel_path
         if not local_file.is_file():
             continue
 
-        local_file.unlink()
-        removed += 1
-        remove_empty_parent_dirs(local_file.parent, github_root)
+        if rel_path.startswith(".github/"):
+            local_file.unlink()
+            removed += 1
+            remove_empty_parent_dirs(local_file.parent, github_root)
+            continue
+
+        if rel_path in tracked_root_files:
+            local_file.unlink()
+            removed += 1
+            continue
 
     return removed
 
@@ -1151,11 +1157,16 @@ def main() -> int:
                     f"(experience={experience}, role={role})"
                 )
 
-        for entry in ["CLAUDE.md"]:
+        for entry in ["CLAUDE.md", *TRACKED_SYNC_ROOT_FILES]:
             src = release_dir / entry
             if src.is_file():
+                r_hash = sha256_file(src)
+                new_hashes[entry] = r_hash
+                s_hash = stored_hashes.get(entry, "")
                 local = project_root / entry
-                if not local.is_file():
+                l_hash = sha256_file(local) if local.is_file() else ""
+
+                if r_hash != s_hash or l_hash != r_hash:
                     import shutil
                     shutil.copy2(src, local)
                     synced_entry_points += 1
@@ -1178,9 +1189,9 @@ def main() -> int:
     # prevents deleted release files from accumulating in the local .github/
     # directory between weekly runs.
     if release_refresh_required:
-        stale_removed = prune_stale_synced_github_files(project_root, stored_hashes, new_hashes)
+        stale_removed = prune_stale_synced_managed_files(project_root, stored_hashes, new_hashes)
         if stale_removed:
-            echo(f"  ✓ Removed {stale_removed} stale synced .github file(s)")
+            echo(f"  ✓ Removed {stale_removed} stale synced managed file(s)")
         hash_file.parent.mkdir(parents=True, exist_ok=True)
         hash_file.write_text(
             "\n".join(f"{v}  {k}" for k, v in sorted(new_hashes.items())) + "\n",

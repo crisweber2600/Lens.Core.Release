@@ -62,3 +62,7 @@ internal_skills:
     classification: internal
     invoked_by: lens-bmad-skill
     description: "Internal express planning pipeline for ExpressPlan. Has no public prompt stub."
+  - name: bmad-lens-postflight
+    classification: internal
+    invoked_by: lens command wrappers
+    description: "Internal closeout flow that runs after each Lens command."
