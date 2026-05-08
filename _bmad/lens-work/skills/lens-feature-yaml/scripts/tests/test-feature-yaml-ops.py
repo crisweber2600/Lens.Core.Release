@@ -204,7 +204,7 @@ def test_update_sets_links_pull_request(tmp_path: Path):
 
 
 def test_sync_feature_index_updates_stale_entry(tmp_path: Path):
-    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="expressplan-complete", status="active"))
+    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="expressplan-complete"))
     write_feature_index(
         tmp_path,
         [
@@ -236,10 +236,11 @@ def test_sync_feature_index_updates_stale_entry(tmp_path: Path):
     index_data = yaml.safe_load((tmp_path / "feature-index.yaml").read_text(encoding="utf-8"))
     entry = index_data["features"][0]
     assert entry["phase"] == "expressplan-complete"
+    assert entry["status"] == "expressplan-complete"
 
 
 def test_update_phase_auto_syncs_feature_index(tmp_path: Path):
-    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="finalizeplan-complete", status="active"))
+    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="finalizeplan-complete"))
     write_feature_index(
         tmp_path,
         [
@@ -273,6 +274,46 @@ def test_update_phase_auto_syncs_feature_index(tmp_path: Path):
     index_data = yaml.safe_load((tmp_path / "feature-index.yaml").read_text(encoding="utf-8"))
     entry = index_data["features"][0]
     assert entry["phase"] == "dev-ready"
+    assert entry["status"] == "dev-ready"
+
+
+def test_sync_feature_index_preserves_explicit_feature_status(tmp_path: Path):
+    feature_path = write_feature(
+        tmp_path,
+        "auth-login",
+        base_feature(phase="dev-complete", status="archived"),
+    )
+    write_feature_index(
+        tmp_path,
+        [
+            {
+                "id": "auth-login",
+                "domain": "platform",
+                "service": "identity",
+                "phase": "dev",
+                "status": "dev",
+                "track": "express",
+            }
+        ],
+    )
+
+    payload, code = run_feature_yaml(
+        [
+            "sync-feature-index",
+            "--feature-path",
+            str(feature_path),
+            "--governance-repo",
+            str(tmp_path),
+        ]
+    )
+
+    assert code == 0
+    assert payload["status"] == "pass"
+
+    index_data = yaml.safe_load((tmp_path / "feature-index.yaml").read_text(encoding="utf-8"))
+    entry = index_data["features"][0]
+    assert entry["phase"] == "dev-complete"
+    assert entry["status"] == "archived"
 
 
 def test_set_phase_alias_uses_phase_transition_validator(tmp_path: Path):

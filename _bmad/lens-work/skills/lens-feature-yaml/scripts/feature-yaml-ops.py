@@ -319,13 +319,17 @@ def sync_feature_index(governance_repo: Path, feature_data: dict[str, Any]) -> d
     if not isinstance(features, list):
         raise FeatureYamlError("index_malformed", "feature-index.yaml must contain a features list")
 
+    phase = str(feature_data.get("phase") or "").strip() or None
+    explicit_status = str(feature_data.get("status") or "").strip() or None
+    effective_status = explicit_status or phase
+
     entry = {
         "id": feature_id,
         "domain": feature_data.get("domain"),
         "service": feature_data.get("service"),
-        "phase": feature_data.get("phase"),
+        "phase": phase,
         "track": feature_data.get("track"),
-        "status": feature_data.get("status"),
+        "status": effective_status,
     }
 
     updated = False
