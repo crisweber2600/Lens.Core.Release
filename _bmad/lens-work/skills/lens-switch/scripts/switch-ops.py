@@ -27,6 +27,8 @@ SAFE_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 MAX_INDEX_BYTES = 1_000_000  # 1 MB sanity cap on feature-index.yaml
 STALE_DAYS = 30
 NEW_FEATURE_COMMAND = "/new-feature"
+LIST_HIDDEN_PHASES = {"complete", "archived"}
+LIST_HIDDEN_STATUSES = {"complete", "archived"}
 
 
 def fail(error: str, message: str) -> dict:
@@ -155,6 +157,25 @@ def load_feature_yaml_for_index_entry(governance_repo: str, entry: dict) -> dict
     except (yaml.YAMLError, OSError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def summarize_list_entry_state(index_entry: dict, feature_data: dict | None) -> dict:
+    """Summarize authoritative lifecycle state for feature-list filtering."""
+    phase = str((feature_data or {}).get("phase") or "").strip().lower()
+    status = str((feature_data or {}).get("status") or "").strip().lower()
+    index_status = str(index_entry.get("status") or "").strip().lower()
+    is_index_archived = index_status == "archived"
+
+    return {
+        "effective_status": phase or status or index_status or "active",
+        "is_missing": feature_data is None,
+        "is_index_archived": is_index_archived,
+        "is_hidden_by_state": (
+            phase in LIST_HIDDEN_PHASES
+            or status in LIST_HIDDEN_STATUSES
+            or is_index_archived
+        ),
+    }
 
 
 def feature_yaml_path_for_index_entry(governance_repo: str, entry: dict) -> Path | None:
@@ -435,24 +456,28 @@ def cmd_list(args: argparse.Namespace) -> dict:
             return scan_domain_inventory(governance_repo)
         return err
 
-    raw_features: list[dict] = index_data.get("features") or []
-
-    status_filter: str = args.status_filter
-    if status_filter == "archived":
-        raw_features = [f for f in raw_features if f.get("status") == "archived"]
-    elif status_filter != "all":
-        raw_features = [f for f in raw_features if f.get("status") != "archived"]
-
     features = []
-    for i, f in enumerate(raw_features):
+    for f in index_data.get("features") or []:
         feature_data = load_feature_yaml_for_index_entry(governance_repo, f)
+        entry_state = summarize_list_entry_state(f, feature_data)
+
+        status_filter: str = args.status_filter
+        if status_filter == "archived":
+            if not entry_state["is_hidden_by_state"]:
+                continue
+            if entry_state["is_missing"] and not entry_state["is_index_archived"]:
+                continue
+        elif status_filter != "all":
+            if entry_state["is_missing"] or entry_state["is_hidden_by_state"]:
+                continue
+
         features.append(
             {
-                "num": i + 1,
+                "num": len(features) + 1,
                 "id": f.get("id", ""),
                 "domain": f.get("domain", ""),
                 "service": f.get("service", ""),
-                "status": f.get("status", "active"),
+                "status": entry_state["effective_status"],
                 "owner": f.get("owner", ""),
                 "summary": f.get("summary", ""),
                 "target_repo": normalize_target_repo_state(feature_data or {}),
