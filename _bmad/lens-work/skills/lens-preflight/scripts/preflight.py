@@ -629,6 +629,7 @@ MIXED_CALLERS = {
     "lens-dev",
     "lens-finalizeplan",
     "lens-new-feature",
+    "lens-quickdev",
     "lens-split-feature",
     "lens-techplan",
     "lens-upgrade",
