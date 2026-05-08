@@ -42,7 +42,7 @@ def expand_config_value(value: str, workspace_root: Path) -> str:
 def read_yaml_mapping(path: Path) -> tuple[dict | None, str | None]:
     """Read a YAML mapping from path, returning a message on failure."""
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as exc:
         return None, str(exc)
@@ -150,7 +150,7 @@ def load_feature_yaml_for_index_entry(governance_repo: str, entry: dict) -> dict
         return None
 
     try:
-        with open(feature_path) as f:
+        with open(feature_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError):
         return None
@@ -192,7 +192,7 @@ def load_feature_index(governance_repo: str) -> tuple[dict | None, dict | None]:
         return None, fail("index_malformed", f"feature-index.yaml exceeds size limit ({MAX_INDEX_BYTES} bytes)")
 
     try:
-        with open(index_path) as f:
+        with open(index_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         return None, fail("index_malformed", f"Failed to parse feature-index.yaml: {e}")
@@ -226,7 +226,7 @@ def find_feature_yaml(governance_repo: str, feature_id: str) -> Path | None:
         return None
     for yaml_file in sorted(features_dir.rglob("feature.yaml")):
         try:
-            with open(yaml_file) as f:
+            with open(yaml_file, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if data and data.get("featureId") == feature_id:
                 return yaml_file
@@ -256,7 +256,7 @@ def write_context_yaml(
 
     fd, tmp_path = tempfile.mkstemp(dir=str(context_path.parent), suffix=".yaml.tmp")
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             yaml.safe_dump(context_data, f, default_flow_style=False, sort_keys=False)
         os.replace(tmp_path, str(context_path))
     except Exception:
@@ -364,7 +364,7 @@ def scan_domain_inventory(governance_repo: str) -> dict:
             if not domain_yaml.exists():
                 continue
             try:
-                with open(domain_yaml) as f:
+                with open(domain_yaml, encoding="utf-8") as f:
                     domain_data = yaml.safe_load(f)
             except (yaml.YAMLError, OSError):
                 continue
@@ -377,7 +377,7 @@ def scan_domain_inventory(governance_repo: str) -> dict:
                 if not service_yaml.exists():
                     continue
                 try:
-                    with open(service_yaml) as f:
+                    with open(service_yaml, encoding="utf-8") as f:
                         service_data = yaml.safe_load(f)
                 except (yaml.YAMLError, OSError):
                     continue
@@ -511,7 +511,7 @@ def cmd_switch(args: argparse.Namespace) -> dict:
         return fail("feature_yaml_not_found", f"feature.yaml not found for '{args.feature_id}'")
 
     try:
-        with open(feature_path) as f:
+        with open(feature_path, encoding="utf-8") as f:
             feature_data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as e:
         return fail("feature_yaml_malformed", f"Failed to read feature.yaml: {e}")
@@ -630,7 +630,7 @@ def cmd_context_paths(args: argparse.Namespace) -> dict:
         return fail("feature_not_found", f"Feature '{args.feature_id}' not found")
 
     try:
-        with open(feature_path) as f:
+        with open(feature_path, encoding="utf-8") as f:
             feature_data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as e:
         return fail("feature_yaml_malformed", f"Failed to read feature.yaml: {e}")
