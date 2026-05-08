@@ -17,6 +17,8 @@ Scope covered by this policy:
 - Governance repo is the metadata and published-artifact authority on main only.
 - Target repos are implementation-only surfaces for code and tests.
 - Release clone surfaces are read-only in local control workspaces.
+- All code changes must be made in `TargetProjects/`; do not place implementation edits in the control repo root or release clone surfaces.
+- All output documents and planning artifacts must be written under `docs/`.
 
 Canonical authorities:
 - Feature lifecycle state: feature.yaml in governance repo.
