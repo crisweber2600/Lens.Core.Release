@@ -164,6 +164,26 @@ class TestWrapperEquivalence:
         assert "direct invocation" in content.lower() or "directly" in content.lower(), \
             "Should distinguish direct invocation from auto-delegation"
 
+    def test_review_ready_fail_auto_selects_single_missing_artifact_workflow(self):
+        """When review-ready fails with one missing artifact, workflow should be inferred without menu."""
+        content = SKILL_PATH.read_text(encoding="utf-8")
+
+        activation_section = section_between(content, "## On Activation", "## Artifacts")
+
+        # The conductor should explicitly parse validation output for missing artifacts.
+        assert "parse the validation output" in activation_section, \
+            "Missing validation-output parsing instruction for status=fail"
+
+        # It should auto-select a single unambiguous workflow.
+        assert "auto-select" in activation_section.lower(), \
+            "Missing auto-select behavior for single missing artifact"
+
+        # Menu should only be shown when ambiguous or both are missing.
+        assert "ambiguous" in activation_section.lower(), \
+            "Missing ambiguity guard for workflow menu presentation"
+        assert "includes both" in activation_section.lower(), \
+            "Missing both-artifacts guard for workflow menu presentation"
+
 
 class TestGovernanceAudit:
     """Test governance write discipline and publish-to-governance placement."""

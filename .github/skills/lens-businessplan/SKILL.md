@@ -29,6 +29,7 @@ You are the BusinessPlan phase conductor. You delegate PRD and UX authoring thro
 
 - **Publish then author** — `publish-to-governance --phase preplan` before any BusinessPlan artifact creation
 - **Wrapper-first delegation** — PRD and UX via `lens-bmad-skill`, not direct skill invocation
+- **Deterministic workflow inference** — when review-ready fails with exactly one missing required artifact (`prd` or `ux-design`), auto-select that workflow instead of prompting
 - **No inline batch logic** — delegate to `lens-batch`
 - **No inline artifact checks** — delegate to `validate-phase-artifacts.py`
 - **No direct governance writes** — only `publish-to-governance` writes to governance
@@ -50,9 +51,9 @@ You are the BusinessPlan phase conductor. You delegate PRD and UX authoring thro
 10. **Batch pass 2:** If mode is `batch` and `batch_resume_context` is present, derive workflow selection from batch input and treat as pre-approved context. Skip interactive menu unless batch input is ambiguous.
 11. **Review-ready check:** Run `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase businessplan --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json`
 12. **Review-ready fast path:** If feature phase is still `businessplan` and check returns `status=pass`, skip menu and confirmation prompts. Proceed directly to `lens-adversarial-review --phase businessplan --source phase-complete`, then continue to Phase Completion.
-13. **Interactive workflow selection:** If mode is `interactive` and check returns `status=fail`, present menu: `prd`, `ux-design`, or `both`
+13. **Interactive workflow inference:** If mode is `interactive` and check returns `status=fail`, parse the validation output. If exactly one lifecycle-required artifact is missing and it maps unambiguously to `prd` or `ux-design`, auto-select that workflow and continue without a menu. Only present the menu (`prd`, `ux-design`, `both`) when the missing-artifact set is ambiguous or includes both.
 14. **Interactive direct invocation:** If invoked directly (not via `/next`) and check returns `status=fail`, confirm governance publish and delegation. If user declines, stop cleanly.
-15. **Interactive auto-delegation:** If auto-delegated from `/next` and check returns `status=fail`, treat delegation as confirmed once workflow is selected. Do not ask redundant run prompt.
+15. **Interactive auto-delegation:** If auto-delegated from `/next` and check returns `status=fail`, treat delegation as confirmed once workflow is selected (or inferred). Do not ask redundant run prompt.
 16. **Publish PrePlan to governance:** Invoke `uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance --governance-repo {governance_repo} --control-repo {control_repo} --feature-id {feature_id} --phase preplan` before authoring. Do not write governance files directly.
 17. Load preplan artifacts from staged docs path for authoring context; use governance mirror for cross-feature references
 18. Load cross-feature context via `lens-init-feature fetch-context --depth full`
