@@ -247,6 +247,18 @@ def test_skill_md_no_write_tool_calls():
     )
 
 
+def test_skill_md_delegates_directly_to_phase_conductor():
+    """lens-next must delegate to phase conductors, not the BMAD wrapper registry."""
+    assert SKILL_MD.exists(), f"SKILL.md not found at {SKILL_MD}"
+    text = SKILL_MD.read_text(encoding="utf-8")
+
+    assert "{module_path}/skills/lens-{phase}/SKILL.md" in text
+    assert "Delegated phase conductor skill" in text
+    assert "lens-bmad-skill --skill lens-{phase}" not in text
+    assert "via `lens-bmad-skill`" not in text
+    assert "do not implement the delegated phase inline" in text
+
+
 # ---------------------------------------------------------------------------
 # Routing outcome fixtures and tests
 # ---------------------------------------------------------------------------

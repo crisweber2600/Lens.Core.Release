@@ -11,7 +11,7 @@ description: Lens lifecycle router. Invokes next-ops.py to determine the correct
 
 - `status=fail` — surface the error and stop.
 - `status=blocked` — list the blocking conditions and stop. No downstream delegation.
-- `status=unblocked` — delegate to the recommended phase skill through `lens-bmad-skill` without a second confirmation prompt.
+- `status=unblocked` — delegate directly to the recommended Lens phase conductor skill without a second confirmation prompt.
 
 This skill is conductor-only. It contains no routing logic — all routing decisions live in `next-ops.py`. It performs no governance writes, no control-doc writes, and no direct file creation.
 
@@ -27,8 +27,8 @@ You are the Next conductor. Your only job is to ask `next-ops.py` what to do and
 - Resolve the feature id from explicit input or `.lens/personal/context.yaml` before asking the user. Do not scan governance for "active" features, inspect `lifecycle.yaml`, or run ad hoc shell/Python probes to infer the target.
 - `status=blocked` → list blockers, stop. No downstream delegation under any circumstances.
 - `status=fail` → surface the error, stop. No delegation.
-- `status=unblocked` → delegate immediately via `lens-bmad-skill` with no second confirmation prompt.
-- The delegation call uses exactly: `lens-bmad-skill --skill lens-{phase} --feature-id {feature_id}` where `{phase}` is the `recommendation` field from the JSON response with any leading `/` stripped.
+- `status=unblocked` → delegate immediately to the phase conductor at `{module_path}/skills/lens-{phase}/SKILL.md` with no second confirmation prompt.
+- The delegation target is a Lens phase conductor skill, not the Lens BMAD skill wrapper. The `lens-bmad-skill` wrapper is only for registered downstream BMAD skills and must not be used for `/next` phase delegation.
 - No governance writes are allowed from this skill.
 - No control-doc writes are allowed from this skill.
 - No `create_file`, `replace_string_in_file`, `git commit`, or equivalent write tool calls are permitted.
@@ -131,11 +131,11 @@ If `result.status == "unblocked"`:
    Proceeding with delegation.
    ```
 3. Emit `[next:delegate] skill=lens-{phase} feature={feature_id}`.
-4. Delegate immediately — **no second confirmation prompt**:
+4. Load and follow the delegated phase conductor immediately — **no second confirmation prompt**:
 
-```bash
-lens-bmad-skill --skill lens-{phase} --feature-id {feature_id}
-```
+  - Delegated skill path: `{module_path}/skills/lens-{phase}/SKILL.md`
+  - Delegated feature id: `{feature_id}`
+  - If the delegated phase conductor skill file is missing, surface `[next:fail] feature={feature_id}` with the missing path and stop. Do not route through `lens-bmad-skill` as a fallback, and do not implement the delegated phase inline.
 
 5. After the handoff, stop conductor-side execution. The delegated skill owns all further workflow steps.
 
@@ -147,14 +147,14 @@ This skill produces no output artifacts. All artifact authorship belongs to the 
 
 | Artifact | Producer | Location |
 |---|---|---|
-| Phase artifacts | Delegated phase skill (via `lens-bmad-skill`) | `feature.yaml.docs.path` |
+| Phase artifacts | Delegated phase conductor skill | `feature.yaml.docs.path` |
 
 ## Integration Points
 
 | Integration | Role |
 |---|---|
 | `next-ops.py` | Sole source of routing decisions (status, recommendation, blockers). |
-| `lens-bmad-skill` | Receives the delegation call on `status=unblocked`. |
+| `lens-{phase}` phase conductor skill | Receives the delegation call on `status=unblocked`. |
 | `lens-feature-yaml` | Not called directly; relied upon by the delegated skill. |
 | `lens-git-state` | Not called directly; relied upon by the conductor shell (clean git state check in On Activation step). |
 
@@ -177,7 +177,7 @@ Verification: `grep -i "create_file\|write\|git commit\|replace_string" SKILL.md
 - `next-ops.py suggest --feature-id {feature_id}` invoked; JSON result read.
 - On `status=fail`: error surfaced, execution stopped.
 - On `status=blocked`: blockers listed, execution stopped, no delegation.
-- On `status=unblocked`: delegated to `lens-bmad-skill --skill lens-{phase} --feature-id {feature_id}` without a second confirmation prompt.
+- On `status=unblocked`: delegated to `{module_path}/skills/lens-{phase}/SKILL.md` with `{feature_id}` without a second confirmation prompt.
 - No artifacts written by this skill.
 - No governance writes performed.
 - No control-doc writes performed.
