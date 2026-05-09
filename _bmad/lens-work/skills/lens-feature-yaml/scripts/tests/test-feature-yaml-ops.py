@@ -430,6 +430,88 @@ def test_update_field_phase_rejects_invalid_phase(tmp_path: Path):
     assert payload["error"] == "invalid_target_phase"
 
 
+def test_update_set_target_repos_compatibility(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature())
+    target_repos = [
+        {
+            "name": "compat.repo",
+            "local_path": "TargetProjects/example/compat.repo",
+            "default_branch": "main",
+        }
+    ]
+
+    payload, code = run_feature_yaml(
+        [
+            "update",
+            "--feature-path",
+            str(feature_path),
+            "--set",
+            f"target_repos={json.dumps(target_repos)}",
+        ]
+    )
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert payload["changed_fields"] == ["target_repos"]
+
+    updated = yaml.safe_load(feature_path.read_text(encoding="utf-8"))
+    assert updated["target_repos"] == target_repos
+
+
+def test_update_set_phase_uses_transition_validator(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="finalizeplan-complete", status="active"))
+    write_feature_index(
+        tmp_path,
+        [
+            {
+                "id": "auth-login",
+                "domain": "platform",
+                "service": "identity",
+                "phase": "finalizeplan-complete",
+                "status": "active",
+                "track": "express",
+            }
+        ],
+    )
+
+    payload, code = run_feature_yaml(
+        [
+            "update",
+            "--feature-path",
+            str(feature_path),
+            "--governance-repo",
+            str(tmp_path),
+            "--set",
+            "phase=dev-ready",
+        ]
+    )
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert payload["changed_fields"] == ["phase"]
+
+    updated = yaml.safe_load(feature_path.read_text(encoding="utf-8"))
+    assert updated["phase"] == "dev-ready"
+
+
+def test_update_set_rejects_unsupported_field(tmp_path: Path):
+    feature_path = write_feature(tmp_path, "auth-login", base_feature())
+
+    payload, code = run_feature_yaml(
+        [
+            "update",
+            "--feature-path",
+            str(feature_path),
+            "--set",
+            "priority=high",
+        ]
+    )
+
+    assert code == 1
+    assert payload["status"] == "fail"
+    assert payload["error"] == "unsupported_set_field"
+
+
 def test_dirty_state_handler_pulls_stages_commits_pushes_and_reports_sha(tmp_path: Path):
     ops = load_ops_module()
     commands: list[list[str]] = []

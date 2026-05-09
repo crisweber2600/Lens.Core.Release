@@ -501,6 +501,10 @@ def cmd_validate(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_update(args: argparse.Namespace) -> dict[str, Any]:
+    set_error = normalize_set_updates(args)
+    if set_error:
+        return set_error
+
     field_error = normalize_field_update(args)
     if field_error:
         return field_error
@@ -564,6 +568,65 @@ def normalize_field_update(args: argparse.Namespace) -> dict[str, Any] | None:
     return None
 
 
+def normalize_set_updates(args: argparse.Namespace) -> dict[str, Any] | None:
+    raw_updates = getattr(args, "set_updates", None) or []
+    if not raw_updates:
+        return None
+
+    key_to_attr = {
+        "phase": "phase",
+        "docs.path": "docs_path",
+        "docs.governance_docs_path": "governance_docs_path",
+        "target_repos": "target_repos",
+        "milestones": "milestones",
+        "pull_request": "pull_request",
+        "links.pull_request": "pull_request",
+    }
+    supported_fields = sorted(key_to_attr.keys())
+
+    for raw_update in raw_updates:
+        text = str(raw_update or "").strip()
+        if "=" not in text:
+            return fail(
+                "invalid_set_format",
+                "--set entries must use key=value format.",
+                received=text,
+                supported_fields=supported_fields,
+            )
+
+        key, value = text.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key not in key_to_attr:
+            return fail(
+                "unsupported_set_field",
+                f"Unsupported --set field '{key}'. Supported fields: {', '.join(supported_fields)}",
+                field=key,
+                supported_fields=supported_fields,
+            )
+        if value == "":
+            return fail(
+                "missing_set_value",
+                f"--set {key}= requires a non-empty value.",
+                field=key,
+                supported_fields=supported_fields,
+            )
+
+        attr_name = key_to_attr[key]
+        existing_value = getattr(args, attr_name, None)
+        if existing_value is not None and existing_value != value:
+            return fail(
+                "conflicting_set_values",
+                f"Conflicting values for '{key}'.",
+                field=key,
+                existing=existing_value,
+                incoming=value,
+            )
+        setattr(args, attr_name, value)
+
+    return None
+
+
 def cmd_sync_feature_index(args: argparse.Namespace) -> dict[str, Any]:
     feature_path = resolve_feature_path(args)
     governance_repo = resolve_governance_repo(args)
@@ -615,6 +678,13 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--pull-request", required=False, help="PR URL to set in feature.yaml links.pull_request")
     update_parser.add_argument("--field", required=False, help="Compatibility field updater. Supported: phase")
     update_parser.add_argument("--value", required=False, help="Compatibility value paired with --field")
+    update_parser.add_argument(
+        "--set",
+        action="append",
+        dest="set_updates",
+        default=[],
+        help="Compatibility update in key=value form. Repeatable.",
+    )
 
     set_phase_parser = subparsers.add_parser("set-phase", help="Compatibility alias for update --phase <phase>")
     add_feature_args(set_phase_parser)
