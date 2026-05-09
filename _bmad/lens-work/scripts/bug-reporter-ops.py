@@ -47,7 +47,6 @@ QUICKDEV_SOURCE = "lens-core-bugfix"
 LEGACY_QUICKDEV_SOURCE = "lens-bug-quickdev"
 QUICKDEV_MARKER = "Bug report submitted via /lens-core-bugfix"
 LEGACY_QUICKDEV_MARKER = "Bug report submitted via /lens-bug-quickdev"
-QUICKDEV_MARKERS = (QUICKDEV_MARKER, LEGACY_QUICKDEV_MARKER)
 QUICKDEV_SOURCE_PATTERNS = (
     (QUICKDEV_SOURCE, re.compile(r"bug report submitted via /lens-core-bugfix\b\.?", re.IGNORECASE)),
     (LEGACY_QUICKDEV_SOURCE, re.compile(r"bug report submitted via /lens-bug-quickdev\b\.?", re.IGNORECASE)),
