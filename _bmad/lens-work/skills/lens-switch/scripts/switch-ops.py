@@ -27,8 +27,8 @@ SAFE_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 MAX_INDEX_BYTES = 1_000_000  # 1 MB sanity cap on feature-index.yaml
 STALE_DAYS = 30
 NEW_FEATURE_COMMAND = "/new-feature"
-LIST_HIDDEN_PHASES = {"complete", "archived"}
-LIST_HIDDEN_STATUSES = {"complete", "archived"}
+LIST_HIDDEN_PHASES = {"complete", "dev-complete", "archived", "abandoned"}
+LIST_HIDDEN_STATUSES = {"complete", "completed", "archived", "abandoned", "superseded"}
 
 
 def fail(error: str, message: str) -> dict:
@@ -161,20 +161,18 @@ def load_feature_yaml_for_index_entry(governance_repo: str, entry: dict) -> dict
 
 def summarize_list_entry_state(index_entry: dict, feature_data: dict | None) -> dict:
     """Summarize authoritative lifecycle state for feature-list filtering."""
+    has_feature_yaml = feature_data is not None
     phase = str((feature_data or {}).get("phase") or "").strip().lower()
     status = str((feature_data or {}).get("status") or "").strip().lower()
     index_status = str(index_entry.get("status") or "").strip().lower()
     is_index_archived = index_status == "archived"
+    is_hidden_by_authoritative_state = phase in LIST_HIDDEN_PHASES or status in LIST_HIDDEN_STATUSES
 
     return {
         "effective_status": phase or status or index_status or "active",
-        "is_missing": feature_data is None,
+        "is_missing": not has_feature_yaml,
         "is_index_archived": is_index_archived,
-        "is_hidden_by_state": (
-            phase in LIST_HIDDEN_PHASES
-            or status in LIST_HIDDEN_STATUSES
-            or is_index_archived
-        ),
+        "is_hidden_by_state": is_hidden_by_authoritative_state or (not has_feature_yaml and is_index_archived),
     }
 
 
