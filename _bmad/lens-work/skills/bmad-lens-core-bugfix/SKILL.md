@@ -19,6 +19,9 @@ This skill is a thin conductor. It orchestrates inputs and delegation only.
 - Never leave implementation, governance, or control-repo changes uncommitted as a manual handoff.
 - Never tell the user to commit, push, or open the PR themselves when the required automation commands are available.
 - The complete target-project workflow is mandatory: checkout/pull base, create the fresh Core Bugfix branch from the base branch for this bug, implement, validate, commit, push, create or reuse the PR for this bug branch, document the changes, and close the Core Bugfix bug artifact.
+- The conductor completion gate (step 8) must be run by the conductor immediately after `bmad-quick-dev` presents its summary — do not wait for user input. `bmad-quick-dev` step-05 always ends by offering to push/create a PR; that offer is superseded by this conductor's mandatory git workflow. Proceed directly to step 8 when the delegate returns.
+- Never delegate push, PR creation, `record-quickdev-pr`, or `close-quickdev-bug` to `bmad-quick-dev`. The conductor always runs these steps directly from the workspace root after the delegate returns.
+- The PR MUST be created automatically without any user confirmation, permission request, or pause. Never ask the user "would you like me to open the PR?" or equivalent. Executing step 8 (including push and PR creation) is unconditional and requires no user input.
 - A successful `/lens-core-bugfix` run requires all of the following to be non-empty and verified: `working_branch`, `commit hash`, `PR URL`, and `bug_artifact_path` (under `bugs/Fixed/`).
 - No-op completion is not allowed for this flow. If implementation produces no staged code changes, stop with a structured blocker (`bugfix_no_changes`) and do not report success.
 - Every distinct bug must use its own branch created from the base branch. Do not infer continuation from recent conversation history, the current git branch, a previous Output Contract, or an open PR from another bug.
@@ -101,52 +104,16 @@ Required workflow in target project:
 3) If the legacy comparison reveals large gaps that materially change expected behavior, workflow, or outputs, stop and use `vscode_askQuestions` to confirm user intent before implementing.
 4) Implement the fix and run relevant validation.
 5) Stage and commit the implementation changes in `{target_project}` with a conventional commit message. Commit is mandatory for this flow; do not leave the bugfix branch with uncommitted implementation changes.
-6) Push the working branch by executing this standard Lens git operation from the workspace root:
-    ```bash
-    uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py push \
-       --repo {target_project} \
-       --governance-repo {governance_repo} \
-       --branch {working_branch}
-    ```
-    If this command exits non-zero, stop and surface the exact error.
-7) Create the PR by executing this standard Lens git operation from the workspace root — you MUST execute this command, not narrate it:
-   ```bash
-   uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py create-pr \
-     --repo {target_project} \
-     --governance-repo {governance_repo} \
-     --head {working_branch} \
-     --base develop \
-     --title "fix(lens-core): {title}" \
-     --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
-   ```
-    Capture `pr_url` from the JSON output field. Immediately record it back to the bug artifact by executing this terminal command from the workspace root:
-    ```bash
-      uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py record-quickdev-pr \
-       --governance-repo {governance_repo} \
-       --slug {bug_slug} \
-       --pr-url "{pr_url}"
-    ```
-    Capture the returned `path` as `bug_artifact_path`. If this command exits non-zero, stop and surface the exact error.
-    Then document the changes and close out the Core Bugfix bug by executing this terminal command from the workspace root:
-    ```bash
-      uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py close-quickdev-bug \
-       --governance-repo {governance_repo} \
-       --slug {bug_slug} \
-       --summary "{concise_change_summary}" \
-       --validation-summary "{validation_summary}"
-    ```
-    Capture the returned `path` as the final `bug_artifact_path`; it must point under `bugs/Fixed/`. If this command exits non-zero, stop and surface the exact error.
-    If the create-pr command exits non-zero, surface the exact error and run this fallback from the `{target_project}` directory:
-   ```bash
-   gh pr create \
-     --base develop \
-     --head {working_branch} \
-     --title "fix(lens-core): {title}" \
-     --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
-   ```
-    Capture the PR URL from the `gh pr create` output, then execute the same `record-quickdev-pr` and `close-quickdev-bug` commands above with the captured PR URL. Do NOT ask the user to create the PR themselves."
 
-8) After quick-dev delegation returns, run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
+STOP HERE. Do not push. Do not create a PR. Do not offer to push or create a PR. Return a brief implementation summary to the conductor and halt. Push, PR creation, and all closeout steps are performed exclusively by the conductor in step 8."
+
+7. AUTO-TRIGGER: As soon as `bmad-quick-dev` returns its implementation summary (after hitting STOP), the conductor must immediately and automatically begin executing step 8. Do NOT surface the delegate's output to the user first. Do NOT ask whether to proceed. Do NOT pause for any confirmation. The push and PR creation in step 8 are unconditional — execute them immediately without any user interaction.
+
+8) CONDUCTOR COMPLETION GATE — Do not delegate this step. Run every bullet immediately after `bmad-quick-dev` returns its summary. Do not wait for user input. Do not answer the user until this entire gate has been executed.
+
+   Note: `bmad-quick-dev` step-05 always ends by "offering" to push/create a PR. That offer is superseded by this mandatory gate. Ignore the offer and proceed directly.
+
+   Run this conductor completion gate before responding to the user. This gate is mandatory even if the delegate claims the work is complete:
    - Verify `working_branch` is non-empty and the target project is currently on `{working_branch}`.
    - Verify implementation evidence comes from `{target_project}` itself. Do not satisfy branch, commit, validation, push, or PR evidence from a sibling worktree or alternate clone.
    - Verify `working_branch` starts with `feature/lens-core-bugfix-`; otherwise stop with `branch_scope_mismatch`.
@@ -155,13 +122,51 @@ Required workflow in target project:
    - Run `git -C {governance_repo} status --short`. If this flow produced governance changes (for example bug artifact updates), stage, commit, and push those changes before continuing. Do not include unrelated user changes; stop and surface the blocker if unrelated changes are mixed.
    - Run `git -C {project-root} status --short`. If this flow produced control-repo changes that belong to the bugfix execution, stage, commit, and push those changes on the active branch before continuing. Do not include unrelated user changes; stop and surface the blocker if unrelated changes are mixed.
    - Run `git rev-parse --short HEAD` and capture the result as `commit hash`.
-   - Re-run the standard Lens push command from step 6 with `--branch {working_branch}` to verify the branch is pushed. If it exits non-zero, stop and surface the exact error.
-   - Verify `origin/{working_branch}` exists after push verification. If not, stop and surface the blocking command/error.
+   - Re-run the standard Lens push command from the workspace root and verify the branch is pushed:
+     ```bash
+     uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py push \
+        --repo {target_project} \
+        --governance-repo {governance_repo} \
+        --branch {working_branch}
+     ```
+     If this exits non-zero, stop and surface the exact error.
+   - Verify `origin/{working_branch}` exists after push. If not, stop and surface the blocking error.
    - Verify governance and control repos are clean for changes introduced by this flow after required pushes complete.
-   - Re-run the idempotent PR creation command from step 7, capture `pr_url`, and include it as `PR URL`. The command must reuse an existing open PR when present.
-   - If `pr_url` is empty after PR creation/reuse, stop and surface `pr_creation_failed`.
-   - Re-run `record-quickdev-pr` with `bug_slug` and the final `pr_url`, capture the returned `path`, and use it as `bug_artifact_path` until closeout completes.
-   - Re-run `close-quickdev-bug` with `bug_slug`, a concise change summary, and validation summary. Capture the returned `path` as the final `bug_artifact_path`, and verify it points under `bugs/Fixed/`.
+   - Run the idempotent PR creation command from the workspace root, capture `pr_url`, and include it as `PR URL`. The command reuses an existing open PR when present:
+     ```bash
+     uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py create-pr \
+       --repo {target_project} \
+       --governance-repo {governance_repo} \
+       --head {working_branch} \
+       --base develop \
+       --title "fix(lens-core): {title}" \
+       --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
+     ```
+     If this command exits non-zero, run this fallback from the `{target_project}` directory:
+     ```bash
+     gh pr create \
+       --base develop \
+       --head {working_branch} \
+       --title "fix(lens-core): {title}" \
+       --body "{bug_context_with_legacy_gap_notes_and_validation_summary}"
+     ```
+     Capture the PR URL from whichever command succeeds. Do NOT ask the user to create the PR themselves.
+   - If `pr_url` is empty after both attempts, stop and surface `pr_creation_failed`.
+   - Run `record-quickdev-pr` with `bug_slug` and the final `pr_url`, capture the returned `path`, and use it as `bug_artifact_path`:
+     ```bash
+     uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py record-quickdev-pr \
+       --governance-repo {governance_repo} \
+       --slug {bug_slug} \
+       --pr-url "{pr_url}"
+     ```
+   - Run `close-quickdev-bug` with `bug_slug`, a concise change summary, and validation summary. Capture the returned `path` as the final `bug_artifact_path`, and verify it points under `bugs/Fixed/`:
+     ```bash
+     uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py close-quickdev-bug \
+       --governance-repo {governance_repo} \
+       --slug {bug_slug} \
+       --summary "{concise_change_summary}" \
+       --validation-summary "{validation_summary}"
+     ```
    - If the user requested automatic completion after the dev cycle, invoke `lens-complete` after the target PR is recorded. The conductor must run `complete-ops.py finalize --control-repo {project-root} --confirm` for the active feature, commit and push governance archival changes, and include the completion result or structured blocker in the final response.
    - For automatic completion requests, switch the control repo to `{feature_id}-dev` before the completion handoff and rely on `complete-ops.py` to validate related branches, create and merge the `{feature_id}-dev` → `main` PR, and delete related control branches after merge.
    - Do not answer with the Output Contract until `working_branch`, `commit hash`, `PR URL`, and `bug_artifact_path` are all non-empty, the PR URL has been recorded in the bug artifact, the Core Bugfix closeout section documents the changes and validation, the bug artifact is under `bugs/Fixed/`, and the target repo has no uncommitted implementation changes.
