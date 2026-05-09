@@ -153,14 +153,23 @@ def _resolve_governance_repo(args: argparse.Namespace) -> Path:
     raise _ConfigMissingError("governance_repo_path not found in any config. Run /lens-onboard first.")
 
 
+def _path_key(path: Path) -> str:
+    """Return a normalized key for robust cross-platform path equality checks."""
+    return os.path.normcase(os.path.normpath(str(path.expanduser().resolve())))
+
+
 def _resolve_control_repo_for_finalize(args: argparse.Namespace, governance_repo: Path) -> Path | None:
     """Resolve the control repo for finalize, defaulting to the control workspace root."""
+    governance_key = _path_key(governance_repo)
     explicit = getattr(args, "control_repo", None)
     if explicit:
-        return Path(explicit).resolve()
+        explicit_path = Path(explicit).expanduser().resolve()
+        if _path_key(explicit_path) == governance_key:
+            return None
+        return explicit_path
 
-    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd()).resolve()
-    if workspace_root == governance_repo:
+    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd()).expanduser().resolve()
+    if _path_key(workspace_root) == governance_key:
         return None
 
     has_target_projects = (workspace_root / "TargetProjects").is_dir()
