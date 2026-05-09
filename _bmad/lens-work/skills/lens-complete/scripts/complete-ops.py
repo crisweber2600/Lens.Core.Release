@@ -153,6 +153,24 @@ def _resolve_governance_repo(args: argparse.Namespace) -> Path:
     raise _ConfigMissingError("governance_repo_path not found in any config. Run /lens-onboard first.")
 
 
+def _resolve_control_repo_for_finalize(args: argparse.Namespace, governance_repo: Path) -> Path | None:
+    """Resolve the control repo for finalize, defaulting to the control workspace root."""
+    explicit = getattr(args, "control_repo", None)
+    if explicit:
+        return Path(explicit).resolve()
+
+    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd()).resolve()
+    if workspace_root == governance_repo:
+        return None
+
+    has_target_projects = (workspace_root / "TargetProjects").is_dir()
+    has_control_markers = (workspace_root / ".lens").exists() or (workspace_root / "lens.core").is_dir()
+    if has_target_projects and has_control_markers:
+        return workspace_root
+
+    return None
+
+
 def _discover_feature_dir(governance_repo: Path, feature_id: str) -> Path | None:
     """Find the feature directory by scanning features/{domain}/{service}/{featureId}/.
 
@@ -636,8 +654,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     feature_id = str(getattr(args, "feature_id", "") or "").strip()
     dry_run: bool = bool(getattr(args, "dry_run", False))
     confirm: bool = bool(getattr(args, "confirm", False))
-    control_repo_str: str | None = getattr(args, "control_repo", None) or None
-    control_repo: Path | None = Path(control_repo_str).resolve() if control_repo_str else None
+    control_repo: Path | None = None
 
     if not feature_id:
         _out(_fail("feature_id_missing", "Provide --feature-id."))
@@ -660,6 +677,8 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     except ValueError as exc:
         _out(_fail("config_missing", str(exc)))
         return 1
+
+    control_repo = _resolve_control_repo_for_finalize(args, governance_repo)
 
     feature_yaml_path, lookup_error = _find_feature_yaml(governance_repo, feature_id)
     if feature_yaml_path is None:

@@ -320,4 +320,7 @@ def test_bug_intake_uses_quickdev_queue():
     assert "--queue QuickDev" in text, (
         "SKILL.md create-bug invocation must pass --queue QuickDev for quickdev bugs"
     )
+    assert "--source \"lens-core-bugfix\"" in text, (
+        "SKILL.md create-bug invocation must pass structured quickdev source provenance"
+    )
     assert "bug_slug" in text, "SKILL.md must capture the create-bug slug for later PR recording"

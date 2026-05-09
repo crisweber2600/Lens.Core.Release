@@ -300,6 +300,53 @@ def test_finalize_archives_feature(capsys: pytest.CaptureFixture, gov_pass: Path
     assert "archived" in summary_path.read_text(encoding="utf-8").lower()
 
 
+def test_finalize_auto_resolves_control_repo_from_workspace_root(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """finalize infers the control repo from a control workspace root when the flag is omitted."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    (control_repo / ".lens").mkdir(parents=True)
+    (control_repo / "TargetProjects").mkdir()
+    seen: dict[str, Any] = {}
+
+    def fake_merge(path: Path, feature_id: str, dry_run: bool) -> tuple[str, None]:
+        seen["path"] = str(path)
+        seen["feature_id"] = feature_id
+        seen["dry_run"] = dry_run
+        return "https://github.com/example/control/pull/9", None
+
+    monkeypatch.setattr(mod, "_gh_merge_to_main", fake_merge)
+
+    exit_code = mod.main(
+        [
+            "finalize",
+            "--governance-repo",
+            str(gov_pass),
+            "--feature-id",
+            "lens-dev-test-feature",
+            "--workspace-root",
+            str(control_repo),
+            "--confirm",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert seen == {
+        "path": str(control_repo.resolve()),
+        "feature_id": "lens-dev-test-feature",
+        "dry_run": False,
+    }
+    assert any(
+        change.get("pr_url") == "https://github.com/example/control/pull/9"
+        for change in result["changes_applied"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # CP-2: archive boundary — finalize writes ONLY the three allowed files
 # ---------------------------------------------------------------------------
