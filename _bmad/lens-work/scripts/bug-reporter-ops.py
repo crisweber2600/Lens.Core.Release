@@ -42,9 +42,16 @@ from bugbash_schema import SchemaValidationError, validate_intake_fields
 
 BUG_STATUS_FOLDERS = ("New", "QuickDev", "Inprogress", "Fixed")
 INTAKE_QUEUES = ("New", "QuickDev")
+QUICKDEV_SOURCE_KEY = "quickdev_source"
+QUICKDEV_SOURCE = "lens-core-bugfix"
+LEGACY_QUICKDEV_SOURCE = "lens-bug-quickdev"
 QUICKDEV_MARKER = "Bug report submitted via /lens-core-bugfix"
 LEGACY_QUICKDEV_MARKER = "Bug report submitted via /lens-bug-quickdev"
 QUICKDEV_MARKERS = (QUICKDEV_MARKER, LEGACY_QUICKDEV_MARKER)
+QUICKDEV_SOURCE_PATTERNS = (
+    (QUICKDEV_SOURCE, re.compile(r"bug report submitted via /lens-core-bugfix\b\.?", re.IGNORECASE)),
+    (LEGACY_QUICKDEV_SOURCE, re.compile(r"bug report submitted via /lens-bug-quickdev\b\.?", re.IGNORECASE)),
+)
 SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*-[0-9a-f]{8}$")
 
 
@@ -86,8 +93,9 @@ def _frontmatter_block(
     slug: str,
     created_at: str,
     status: str = "New",
+    quickdev_source: str | None = None,
 ) -> str:
-    return (
+    block = (
         "---\n"
         f"title: {json.dumps(title)}\n"
         f"description: {json.dumps(description)}\n"
@@ -96,8 +104,10 @@ def _frontmatter_block(
         f"slug: {json.dumps(slug)}\n"
         f"created_at: {created_at}\n"
         f"updated_at: {created_at}\n"
-        "---\n"
     )
+    if quickdev_source is not None:
+        block += f"{QUICKDEV_SOURCE_KEY}: {json.dumps(quickdev_source)}\n"
+    return block + "---\n"
 
 
 def _validate_slug(slug: str) -> str | None:
@@ -118,6 +128,59 @@ def _format_frontmatter_value(key: str, value: str) -> str:
     if key in {"created_at", "updated_at", "pr_recorded_at", "status"}:
         return value
     return json.dumps(value)
+
+
+def _normalize_quickdev_source(source: str | None) -> str | None:
+    if source is None:
+        return None
+    normalized = source.strip().lower().lstrip("/")
+    if normalized in {QUICKDEV_SOURCE, LEGACY_QUICKDEV_SOURCE}:
+        return normalized
+    return None
+
+
+def _frontmatter_values(content: str) -> dict[str, str]:
+    if not content.startswith("---"):
+        return {}
+    end = content.find("\n---", 3)
+    if end == -1:
+        return {}
+
+    values: dict[str, str] = {}
+    frontmatter = content[3:end].lstrip("\n")
+    for line in frontmatter.splitlines():
+        if ":" not in line:
+            continue
+        key, raw_value = line.split(":", 1)
+        key = key.strip()
+        raw_value = raw_value.strip()
+        if not key:
+            continue
+        if raw_value.startswith(('"', "'")):
+            try:
+                parsed = json.loads(raw_value)
+            except json.JSONDecodeError:
+                parsed = raw_value.strip('"\'')
+            values[key] = str(parsed)
+            continue
+        values[key] = raw_value
+    return values
+
+
+def _detect_quickdev_source(content: str) -> str | None:
+    source = _normalize_quickdev_source(_frontmatter_values(content).get(QUICKDEV_SOURCE_KEY))
+    if source is not None:
+        return source
+
+    if QUICKDEV_MARKER in content:
+        return QUICKDEV_SOURCE
+    if LEGACY_QUICKDEV_MARKER in content:
+        return LEGACY_QUICKDEV_SOURCE
+
+    for candidate, pattern in QUICKDEV_SOURCE_PATTERNS:
+        if pattern.search(content):
+            return candidate
+    return None
 
 
 def _update_frontmatter(content: str, updates: dict[str, str]) -> str:
@@ -187,8 +250,8 @@ def _replace_quickdev_closeout_section(content: str, summary: str, validation_su
     return prefix + "\n" + section + suffix
 
 
-def _require_quickdev_marker(content: str, path: Path) -> str | None:
-    if any(marker in content for marker in QUICKDEV_MARKERS):
+def _require_quickdev_source(content: str, path: Path) -> str | None:
+    if _detect_quickdev_source(content) is not None:
         return None
     return f"Bug artifact {path.name} was not created by /lens-core-bugfix or legacy /lens-bug-quickdev"
 
@@ -231,6 +294,15 @@ def cmd_create_bug(args: argparse.Namespace) -> int:
     slug = _make_slug(args.title, args.description)
 
     queue = args.queue
+    quickdev_source = _normalize_quickdev_source(getattr(args, "source", None))
+    if getattr(args, "source", None) and quickdev_source is None:
+        print(
+            "ERROR: --source must be one of: lens-core-bugfix, lens-bug-quickdev",
+            file=sys.stderr,
+        )
+        return 1
+    if quickdev_source is None:
+        quickdev_source = _detect_quickdev_source(args.chat_log)
 
     # Idempotency: check all status folders
     for status_folder in BUG_STATUS_FOLDERS:
@@ -256,7 +328,18 @@ def cmd_create_bug(args: argparse.Namespace) -> int:
         return 3
 
     now = _now_iso()
-    content = _frontmatter_block(args.title, args.description, slug, now, queue) + "\n" + args.chat_log
+    content = (
+        _frontmatter_block(
+            args.title,
+            args.description,
+            slug,
+            now,
+            queue,
+            quickdev_source=quickdev_source,
+        )
+        + "\n"
+        + args.chat_log
+    )
 
     try:
         dest_path.write_text(content, encoding="utf-8")
@@ -298,12 +381,12 @@ def cmd_record_quickdev_pr(args: argparse.Namespace) -> int:
         print(f"ERROR: Could not read artifact {source_path}: {exc}", file=sys.stderr)
         return 1
 
-    # Guard: artifacts outside the QuickDev queue must carry the QuickDev marker
+    # Guard: artifacts outside the QuickDev queue must carry structured QuickDev provenance
     # to avoid accidentally corrupting normal bug records.
     if source_path.parent.name in {"New", "Fixed"}:
-        marker_error = _require_quickdev_marker(existing_content, source_path)
-        if marker_error:
-            print(f"ERROR: {marker_error}; cannot record a QuickDev PR for it.", file=sys.stderr)
+        source_error = _require_quickdev_source(existing_content, source_path)
+        if source_error:
+            print(f"ERROR: {source_error}; cannot record a QuickDev PR for it.", file=sys.stderr)
             return 1
 
     recorded_at = _now_iso()
@@ -379,9 +462,9 @@ def cmd_close_quickdev_bug(args: argparse.Namespace) -> int:
 
     try:
         content = source_path.read_text(encoding="utf-8")
-        marker_error = _require_quickdev_marker(content, source_path)
-        if marker_error:
-            print(f"ERROR: {marker_error}; cannot close it as a QuickDev bug.", file=sys.stderr)
+        source_error = _require_quickdev_source(content, source_path)
+        if source_error:
+            print(f"ERROR: {source_error}; cannot close it as a QuickDev bug.", file=sys.stderr)
             return 1
         if "pr_url:" not in content:
             print(
@@ -428,13 +511,21 @@ def cmd_migrate_quickdev_bugs(args: argparse.Namespace) -> int:
         except OSError as exc:
             failed.append({"path": str(source_path), "error": str(exc)})
             continue
-        if QUICKDEV_MARKER not in content:
+        detected_source = _detect_quickdev_source(content)
+        if detected_source is None:
             continue
 
         updated_at = _now_iso()
         dest_path = governance_repo / "bugs" / "QuickDev" / source_path.name
         try:
-            updated = _update_frontmatter(content, {"status": "QuickDev", "updated_at": updated_at})
+            updated = _update_frontmatter(
+                content,
+                {
+                    "status": "QuickDev",
+                    "updated_at": updated_at,
+                    QUICKDEV_SOURCE_KEY: detected_source,
+                },
+            )
             _write_quickdev_artifact(source_path, dest_path, governance_repo, updated)
             moved.append(source_path.stem)
         except (OSError, ValueError, ScopeViolationError) as exc:
@@ -465,6 +556,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=INTAKE_QUEUES,
         default="New",
         help="Bug intake queue/folder to write to. Defaults to New.",
+    )
+    create.add_argument(
+        "--source",
+        required=False,
+        help="Structured quickdev source for provenance: lens-core-bugfix or lens-bug-quickdev",
     )
 
     record_pr = sub.add_parser("record-quickdev-pr", help="Record a QuickDev PR URL on a bug artifact.")

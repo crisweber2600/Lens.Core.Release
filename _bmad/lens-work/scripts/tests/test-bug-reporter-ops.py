@@ -26,6 +26,7 @@ def run_create_bug(
     description: str = "A test description",
     chat_log: str = "User: something broke\nAssistant: noted",
     queue: str | None = None,
+    source: str | None = None,
 ) -> subprocess.CompletedProcess:
     args = [
         sys.executable,
@@ -38,6 +39,8 @@ def run_create_bug(
     ]
     if queue:
         args.extend(["--queue", queue])
+    if source:
+        args.extend(["--source", source])
     return subprocess.run(
         args,
         capture_output=True,
@@ -132,6 +135,20 @@ class TestCreateBugEndToEnd(unittest.TestCase):
         self.assertIn("bugs/QuickDev", str(path).replace("\\", "/"))
         content = path.read_text(encoding="utf-8")
         self.assertIn("status: QuickDev", content)
+
+    def test_create_bug_persists_structured_quickdev_source(self) -> None:
+        """QuickDev source can be recorded structurally without relying on the chat-log body marker."""
+        result = run_create_bug(
+            self.governance_repo,
+            chat_log="User: freeform bug transcript\nAssistant: investigating",
+            queue="QuickDev",
+            source="lens-core-bugfix",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        content = Path(data["path"]).read_text(encoding="utf-8")
+        self.assertIn('quickdev_source: "lens-core-bugfix"', content)
 
     def test_quickdev_queue_duplicate_rerun_returns_existing_path(self) -> None:
         """QuickDev intake remains idempotent inside the QuickDev folder."""
@@ -233,6 +250,25 @@ class TestCreateBugEndToEnd(unittest.TestCase):
         self.assertTrue(new_path.exists())
         self.assertIn("bugs/QuickDev", str(new_path).replace("\\", "/"))
         self.assertIn("status: QuickDev", new_path.read_text(encoding="utf-8"))
+
+    def test_record_quickdev_pr_accepts_structured_source_without_marker(self) -> None:
+        """Structured quickdev provenance lets PR recording work even when chat logs are freeform."""
+        result = run_create_bug(
+            self.governance_repo,
+            title="Structured bug",
+            description="Structured source only",
+            chat_log="User: freeform transcript\nAssistant: noted",
+            source="lens-core-bugfix",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+
+        record = run_record_quickdev_pr(self.governance_repo, data["slug"], "https://github.com/org/repo/pull/16")
+
+        self.assertEqual(record.returncode, 0, record.stderr)
+        new_path = Path(json.loads(record.stdout)["path"])
+        content = new_path.read_text(encoding="utf-8")
+        self.assertIn('quickdev_source: "lens-core-bugfix"', content)
 
     def test_migrate_quickdev_bugs_moves_only_quickdev_marked_files(self) -> None:
         """Migration moves existing quickdev intake files and leaves normal New bugs alone."""
@@ -337,6 +373,26 @@ class TestCreateBugEndToEnd(unittest.TestCase):
         self.assertIn("## QuickDev Closeout", content)
         self.assertIn("Summary: Added mandatory branch PR closeout workflow", content)
         self.assertIn("Validation: Contract tests passed", content)
+
+    def test_close_quickdev_bug_accepts_structured_source_without_marker(self) -> None:
+        """Structured quickdev provenance lets closeout succeed even if the chat-log text changes."""
+        result = run_create_bug(
+            self.governance_repo,
+            chat_log="User: freeform transcript\nAssistant: noted",
+            queue="QuickDev",
+            source="lens-core-bugfix",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        record = run_record_quickdev_pr(self.governance_repo, data["slug"], "https://github.com/org/repo/pull/117")
+        self.assertEqual(record.returncode, 0, record.stderr)
+
+        close = run_close_quickdev_bug(self.governance_repo, data["slug"])
+
+        self.assertEqual(close.returncode, 0, close.stderr)
+        fixed_path = Path(json.loads(close.stdout)["path"])
+        self.assertTrue(fixed_path.exists())
+        self.assertIn('quickdev_source: "lens-core-bugfix"', fixed_path.read_text(encoding="utf-8"))
 
     def test_close_quickdev_bug_requires_recorded_pr(self) -> None:
         """QuickDev closeout blocks until a PR URL has been recorded."""

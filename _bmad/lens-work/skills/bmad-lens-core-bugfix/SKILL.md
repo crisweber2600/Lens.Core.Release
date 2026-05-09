@@ -60,6 +60,7 @@ If any field is missing, ask only for missing fields and stop until complete.
 uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py create-bug \
   --title "{title}" \
   --description "{description}\n\nRepro Steps:\n{repro_steps}\n\nExpected:\n{expected}\n\nActual:\n{actual}" \
+   --source "lens-core-bugfix" \
   --chat-log "Bug report submitted via /lens-core-bugfix." \
   --governance-repo {governance_repo} \
   --queue QuickDev
