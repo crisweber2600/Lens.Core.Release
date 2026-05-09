@@ -261,6 +261,27 @@ def test_list_archived_filter_includes_complete_feature_phase(tmp_path: Path):
     assert payload["features"][0]["status"] == "complete"
 
 
+def test_list_prefers_feature_yaml_over_index_archived_status(tmp_path: Path):
+    archived_index = [{**INDEX_ENTRIES[0], "status": "archived"}]
+    write_index(tmp_path, archived_index)
+    write_feature(tmp_path, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(["list", "--governance-repo", str(tmp_path)])
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert [feature["id"] for feature in payload["features"]] == ["auth-login"]
+    assert payload["features"][0]["status"] == "dev"
+
+    archived_payload, archived_code = run_switch(
+        ["list", "--governance-repo", str(tmp_path), "--status-filter", "archived"]
+    )
+
+    assert archived_code == 0
+    assert archived_payload["status"] == "pass"
+    assert archived_payload["features"] == []
+
+
 def test_list_domains_mode_when_index_missing(tmp_path: Path):
     write_domain(tmp_path, "platform", {"id": "platform", "name": "Platform", "domain": "platform"})
     write_service(
