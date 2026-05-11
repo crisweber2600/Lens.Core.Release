@@ -161,14 +161,31 @@ def migrate_legacy_personal_dir(project_root: Path) -> Path:
 def ensure_lens_version_file(project_root: Path) -> str:
     active_file = lens_version_file(project_root)
     legacy_file = legacy_lens_version_file(project_root)
+    lifecycle_file = project_root / "lens.core" / "_bmad" / "lens-work" / "lifecycle.yaml"
 
     if active_file.is_file():
         return active_file.read_text(encoding="utf-8").strip()
 
-    if not legacy_file.is_file():
-        return ""
-
     lens_dir(project_root).mkdir(parents=True, exist_ok=True)
+
+    if not legacy_file.is_file():
+        if not lifecycle_file.is_file():
+            return ""
+
+        module_schema = ""
+        for line in lifecycle_file.read_text(encoding="utf-8").splitlines():
+            if line.startswith("schema_version:"):
+                module_schema = line.split(":", 1)[1].strip()
+                break
+
+        if not module_schema:
+            return ""
+
+        version = f"{module_schema}.0.0"
+        active_file.write_text(version, encoding="utf-8")
+        echo("[preflight] Seeded .lens/LENS_VERSION from lifecycle.yaml")
+        return version
+
     version = legacy_file.read_text(encoding="utf-8").strip()
     active_file.write_text(version, encoding="utf-8")
     echo("[preflight] Seeded .lens/LENS_VERSION from the legacy root LENS_VERSION file")

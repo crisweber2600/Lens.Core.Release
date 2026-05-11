@@ -256,6 +256,18 @@ def test_post_request_sync_decision_defaults_only_for_touched_repos():
     assert ops.post_request_sync_decision("governance", touched=True, request_class="mixed").outcome == "publish"
 
 
+def test_ensure_lens_version_file_seeds_from_lifecycle_when_missing(tmp_path: Path):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    lifecycle = project_root / "lens.core" / "_bmad" / "lens-work" / "lifecycle.yaml"
+
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+
+    assert ops.ensure_lens_version_file(project_root) == "4.0.0"
+    assert (project_root / ".lens" / "LENS_VERSION").read_text(encoding="utf-8") == "4.0.0"
+
+
 def test_main_forces_release_refresh_on_develop_even_when_timestamp_is_fresh(tmp_path: Path, monkeypatch):
     ops = load_preflight_module()
     project_root = tmp_path / "workspace"
