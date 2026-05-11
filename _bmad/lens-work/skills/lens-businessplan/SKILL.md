@@ -57,7 +57,18 @@ You are the BusinessPlan phase conductor. You delegate PRD and UX authoring thro
 16. **Publish PrePlan to governance:** Invoke `uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance --governance-repo {governance_repo} --control-repo {control_repo} --feature-id {feature_id} --phase preplan` before authoring. Do not write governance files directly.
 17. Load preplan artifacts from staged docs path for authoring context; use governance mirror for cross-feature references
 18. Load cross-feature context via `lens-init-feature fetch-context --depth full`
-19. Load domain constitution via `lens-constitution`
+19. Load and enforce domain constitution before authoring delegation:
+
+   Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-constitution/SKILL.md` and invoke:
+   `lens-constitution resolve --governance-dir {governance_repo}`
+
+   If the constitution fails to resolve, stop and report the failure. Do not delegate authoring until the constitution is resolved.
+
+   **Constitution Hard Gate Enforcement:** Extract all hard-gate requirements from the full resolved constitution — both structured fields and all prose articles. These requirements are **mandatory pre-authoring constraints**:
+   - Display the applicable hard-gate requirements to the operator.
+   - Pass the full resolved constitution prose as required context to the authoring delegate.
+   - If the planned artifacts would violate any hard-gate requirement, stop and report the violation list before delegating.
+
 20. **Delegate authoring:** Route through `lens-bmad-skill`:
     - `prd` → `lens-bmad-skill --skill bmad-create-prd`
     - `ux-design` → `lens-bmad-skill --skill bmad-create-ux-design`

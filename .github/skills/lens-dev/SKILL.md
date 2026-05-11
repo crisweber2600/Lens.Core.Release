@@ -103,7 +103,21 @@ After Control Dev Branch Activation succeeds, the conductor MUST validate all of
 
 5. **dev-session.yaml not corrupted**: If `dev-session.yaml` exists in the feature docs path, parse it as YAML. Parse failure → `dev_session_corrupted` hard-stop.
 
-## Story File Validation
+## Constitution Hard Gate Enforcement
+
+After Phase Entry Validation succeeds and before the Story Execution Loop begins, the conductor MUST load and enforce the domain constitution.
+
+Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-constitution/SKILL.md` and invoke:
+`lens-constitution resolve --governance-dir {governance_repo}`
+
+If the constitution fails to resolve (missing required org level or parse error), stop immediately and report: "Constitution resolution failed for domain={domain} service={service}. Hard gate enforcement requires a valid constitution — run /new-domain or /new-service to scaffold missing levels." Do not proceed to the story execution loop.
+
+**Constitution Hard Gate Enforcement:** After resolving the constitution, extract all hard-gate requirements from the full resolved output — both structured fields (`gate_mode: hard`, `required_artifacts`, `enforce_stories`, `enforce_review`) and all prose articles. These requirements are **mandatory implementation constraints** for all stories in this dev session. Before the Story Execution Loop:
+- Display the applicable hard-gate requirements to the operator.
+- Pass the full resolved constitution prose as required context to every implementation delegate (e.g., Article 7 TDD red-green, Article 8 BDD GWT scenarios per AC, Article 9 security credential docs).
+- If a story's implementation plan or acceptance criteria would violate any hard-gate requirement, stop and report the violation list. Do not delegate and do not begin story implementation until all violations are resolved.
+
+
 
 Before delegating a story for execution, validate the story file has all required sections:
 - `Context` section: Non-empty description.
@@ -183,11 +197,12 @@ All timestamps are ISO 8601. All writes emit this schema exactly. Read-time comp
 
 1. **Control dev branch activation**: Resolve the active feature and switch the control repo to `{feature_id}-dev` before reading `sprint-status.yaml` or story files.
 2. **Phase entry validation**: Validate feature.yaml phase, sprint-status.yaml, story files, target repo state, and dev-session.yaml integrity on `{feature_id}-dev`.
-3. **Story queue resolution**: Build ready queue from sprint-status.yaml and dev-session.yaml completed list.
-4. **Branch context**: Confirm or prepare target repo branch via `lens-git-orchestration`.
-5. **Story loop**: For each ready story, validate, delegate, test, commit, record, and advance.
-6. **Sprint boundary**: Record a boundary checkpoint after each sprint. Pause for user confirmation by default; continue automatically when `continue_across_sprints: true` was set by an explicit all-stories/all-sprints/auto-complete invocation.
-7. **Completion**: When all stories are done, emit `sprint_complete` and update `feature.yaml` to `dev-complete`. If the invocation requested automatic post-dev completion, immediately run `lens-complete` preconditions and then `complete-ops.py finalize --control-repo {control_repo} --confirm`; treat the user's auto-complete request as the explicit confirmation for that finalize call. If completion preconditions fail, surface the structured blocker and do not simulate completion.
+3. **Constitution hard gate enforcement**: Load and enforce domain constitution; extract hard gates; stop if any violation would be introduced. Pass constitution constraints to all implementation delegates.
+4. **Story queue resolution**: Build ready queue from sprint-status.yaml and dev-session.yaml completed list.
+5. **Branch context**: Confirm or prepare target repo branch via `lens-git-orchestration`.
+6. **Story loop**: For each ready story, validate, delegate, test, commit, record, and advance.
+7. **Sprint boundary**: Record a boundary checkpoint after each sprint. Pause for user confirmation by default; continue automatically when `continue_across_sprints: true` was set by an explicit all-stories/all-sprints/auto-complete invocation.
+8. **Completion**: When all stories are done, emit `sprint_complete` and update `feature.yaml` to `dev-complete`. If the invocation requested automatic post-dev completion, immediately run `lens-complete` preconditions and then `complete-ops.py finalize --control-repo {control_repo} --confirm`; treat the user's auto-complete request as the explicit confirmation for that finalize call. If completion preconditions fail, surface the structured blocker and do not simulate completion.
 
 ## Automatic Complete Handoff
 
@@ -213,5 +228,6 @@ uv run --script lens.core/_bmad/lens-work/skills/lens-complete/scripts/complete-
 - lens-feature-yaml: read feature state and docs metadata.
 - lens-git-state: verify repo/branch status before each story.
 - lens-git-orchestration: branch prep and git safety operations.
+- lens-constitution: load and enforce domain constitution hard gates before story execution.
 - lens-bmad-skill: delegated implementation and review actions.
 - scripts/dev-session-compat.py: read-time compatibility for old dev-session.yaml formats.

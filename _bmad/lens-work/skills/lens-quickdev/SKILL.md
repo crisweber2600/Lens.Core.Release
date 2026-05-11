@@ -82,15 +82,27 @@ Every run creates exactly one quickdev evidence artifact before implementation d
 1. Confirm prompt-start preflight succeeded.
 2. Resolve feature context through the Feature Resolution Gate, honoring explicit `--feature-id` before active context.
 3. Block before target-repo assessment when the feature phase is not a dev-ready phase value or the target repo cannot be resolved.
-4. Assess the target codebase and feature-associated control docs for the request.
-5. Produce an implementation plan, assumptions, and validation plan for the ask.
-6. Create a new versioned evidence artifact at `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` under the feature docs path. Never update or replace a previous run's evidence artifact.
-7. Resolve Branch and PR Policy, recording `branch_context` or stopping on unsafe branch state before implementation.
-8. Build the Delegation Packet. Delegate implementation through the registered `bmad-quick-dev` skill with Lens context. Do not introduce alternate implementation behavior here.
-9. Capture the delegate outcome, including changed files, validation result, commit hash, branch, PR URL, and no-op state when present.
-10. Update the existing versioned quickdev artifact in place through Run Result Recording.
-11. Apply Validation Failure Handling when validation fails at any stage.
-12. Publish the versioned evidence artifact through Governance Publication when governance publication is required.
+4. **Constitution Hard Gate Enforcement:** Load and enforce the domain constitution before target-repo assessment or implementation delegation:
+
+   Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-constitution/SKILL.md` and invoke:
+   `lens-constitution resolve --governance-dir {governance_repo}`
+
+   If the constitution fails to resolve (missing required org level or parse error), stop immediately and report the failure. Do not proceed to target-repo assessment or implementation.
+
+   After resolving, extract all hard-gate requirements from the full resolved constitution — both structured fields (`gate_mode: hard`, `required_artifacts`, `enforce_stories`, `enforce_review`) and all prose articles. These requirements are **mandatory implementation constraints** for this quickdev run. Before delegating to `bmad-quick-dev`:
+   - Display the applicable hard-gate requirements to the operator.
+   - Pass the full resolved constitution prose as required context to the `bmad-quick-dev` delegate.
+   - If the ask or planned implementation would violate any hard-gate requirement, stop and report the violation list. Do not delegate until all violations are resolved.
+
+5. Assess the target codebase and feature-associated control docs for the request.
+6. Produce an implementation plan, assumptions, and validation plan for the ask.
+7. Create a new versioned evidence artifact at `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` under the feature docs path. Never update or replace a previous run's evidence artifact.
+8. Resolve Branch and PR Policy, recording `branch_context` or stopping on unsafe branch state before implementation.
+9. Build the Delegation Packet. Delegate implementation through the registered `bmad-quick-dev` skill with Lens context. Do not introduce alternate implementation behavior here.
+10. Capture the delegate outcome, including changed files, validation result, commit hash, branch, PR URL, and no-op state when present.
+11. Update the existing versioned quickdev artifact in place through Run Result Recording.
+12. Apply Validation Failure Handling when validation fails at any stage.
+13. Publish the versioned evidence artifact through Governance Publication when governance publication is required.
 
 ## Delegation Boundary
 
@@ -241,6 +253,7 @@ Hard stops:
 - Feature context is missing.
 - Feature phase is not `finalizeplan-complete`, `dev-ready`, or `dev`.
 - `target_repos` is missing or unresolved.
+- Constitution resolution failed or any hard-gate requirement would be violated by the ask.
 - Target repo has unresolved merge conflicts.
 - Target repo branch state is dirty, detached, ambiguous, or unrelated to the active quickdev run.
 - The requested work exceeds the approved source/docs scope and no override is approved.
@@ -257,6 +270,9 @@ Validate this contract with focused tests or inspection that assert:
 - This skill names `bmad-quick-dev` as the only implementation engine.
 - Non-dev-ready features block before target-repo assessment.
 - Missing `target_repos` blocks without guessing a write target.
+- Constitution resolution failure stops before target-repo assessment or delegation.
+- Constitution hard-gate violations stop before delegation and report the violation list.
+- Constitution prose is passed as required context to the `bmad-quick-dev` delegate.
 - Versioned quickdev evidence paths use `quickdev/quickdev-[summaryofrequeststub]-vNNN.md`.
 - Reruns create the next available version and do not overwrite prior artifacts.
 - No separate `commit.md` or sidecar commit evidence file is created.
