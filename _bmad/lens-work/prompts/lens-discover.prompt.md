@@ -2,6 +2,10 @@
 description: 'Discover local target repos and sync governance inventory'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-discover
 
 Use this prompt as the entry controller for `/lens-discover`. Resolve config first, then delegate to the discover skill.

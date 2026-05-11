@@ -3,6 +3,10 @@ name: lens-next
 description: Lens lifecycle router. Invokes next-ops.py to determine the correct next step for a feature and delegates to the appropriate phase skill — no inline routing logic, no writes.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Next Conductor
 
 ## Overview

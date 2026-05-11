@@ -3,6 +3,10 @@ name: lens-complete
 description: Feature lifecycle completion contract. Use when the user requests to 'complete a feature', 'finalize a feature', or 'check archive status'.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Feature Completion
 
 ## Overview

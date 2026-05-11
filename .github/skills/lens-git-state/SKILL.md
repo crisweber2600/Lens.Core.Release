@@ -3,6 +3,10 @@ name: lens-git-state
 description: Read-only git and governance state reporting for the Lens feature branch model.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-git-state
 
 ## Overview

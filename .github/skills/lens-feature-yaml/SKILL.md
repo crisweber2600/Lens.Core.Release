@@ -3,6 +3,10 @@ name: lens-feature-yaml
 description: Read, validate, update, and persist Lens feature.yaml state.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-feature-yaml
 
 ## Overview

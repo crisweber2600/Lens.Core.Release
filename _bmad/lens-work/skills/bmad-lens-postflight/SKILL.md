@@ -3,6 +3,10 @@ name: bmad-lens-postflight
 description: Core postflight conductor. Takes one Lens session closeout and enforces commit, push, and clean-state verification across touched repos.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # /lens-postflight
 
 ## Overview

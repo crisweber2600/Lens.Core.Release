@@ -3,6 +3,10 @@ name: lens-new-domain
 description: Domain initializer — creates domain.yaml and constitution scaffold in the governance repo. Use when the user requests /new-domain or wants to register a new domain.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # New Domain
 
 ## Overview

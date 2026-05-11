@@ -2,6 +2,10 @@
 description: 'Next command — resolve and delegate to the current feature's recommended phase skill.'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # /next
 
 Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-next/SKILL.md` and follow it exactly.

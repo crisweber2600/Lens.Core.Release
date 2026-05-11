@@ -18,6 +18,8 @@ TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
 REPO_ROOT = MODULE_ROOT.parents[1]
 GITHUB_PROMPTS = REPO_ROOT / ".github" / "prompts"
+CORE_PROMPTS = MODULE_ROOT / "prompts"
+SKILLS_ROOT = MODULE_ROOT / "skills"
 LIFECYCLE = MODULE_ROOT / "lifecycle.yaml"
 PREFLIGHT = MODULE_ROOT / "skills" / "lens-preflight" / "scripts" / "preflight.py"
 NEXT_OPS = MODULE_ROOT / "skills" / "lens-next" / "scripts" / "next-ops.py"
@@ -98,6 +100,17 @@ def test_public_prompt_wrappers_match_installed_workspace_contract():
                 )
             assert "lens.core/_bmad/lens-work/prompts/" not in block
             assert LIGHT_PREFLIGHT_SCRIPT_PATH in block
+
+
+def test_core_skills_and_prompts_require_question_tool_guidance():
+    """Ensure all internal skills and prompts preserve ask-questions guidance."""
+    for prompt in sorted(CORE_PROMPTS.glob("lens-*.prompt.md")):
+        text = _read(prompt)
+        assert "vscode_askQuestions" in text, f"{prompt.name} must preserve question-tool guidance"
+
+    for skill in sorted(SKILLS_ROOT.glob("**/SKILL.md")):
+        text = _read(skill)
+        assert "vscode_askQuestions" in text, f"{skill} must preserve question-tool guidance"
 
 
 def test_preflight_caller_classification_covers_prompt_surface():

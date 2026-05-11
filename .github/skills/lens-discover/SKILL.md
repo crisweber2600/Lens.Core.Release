@@ -3,6 +3,10 @@ name: lens-discover
 description: Sync local TargetProjects repositories with governance repo-inventory.yaml. Use when the user runs discover or needs to reconcile local repo clones with governance inventory.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Discover
 
 ## Overview

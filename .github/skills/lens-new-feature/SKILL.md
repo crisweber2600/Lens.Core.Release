@@ -3,6 +3,10 @@ name: lens-new-feature
 description: Feature initializer entry controller — runs preflight, resolves config, then delegates to lens-init-feature for the full progressive-disclosure create flow. Use when the user requests /new-feature or wants to initialize a new Lens feature.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # New Feature
 
 ## Overview

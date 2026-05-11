@@ -3,6 +3,10 @@ name: lens-finalizeplan
 description: FinalizePlan planning consolidation conductor. Use when the user requests `/finalizeplan`, `lens-finalizeplan`, or post-TechPlan planning handoff.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # FinalizePlan Conductor
 
 ## Overview
