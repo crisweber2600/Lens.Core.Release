@@ -337,11 +337,15 @@ def build_workspace_scaffold_batches(
     for workspace_root, rel_paths in grouped.items():
         unique_rel_paths = unique_paths(rel_paths)
         noun = "folder" if len(unique_rel_paths) == 1 else "folders"
+        add_args = ["add"]
+        if any(Path(rel_path).parts[:1] == ("TargetProjects",) for rel_path in unique_rel_paths):
+            add_args.append("--force")
+        add_args.extend(unique_rel_paths)
         batches.append(
             (
                 workspace_root,
                 [
-                    ["add", *unique_rel_paths],
+                    add_args,
                     ["commit", "-m", f"scaffold({scope}): add {identifier} {noun}", "--only", "--", *unique_rel_paths],
                     ["push"],
                 ],

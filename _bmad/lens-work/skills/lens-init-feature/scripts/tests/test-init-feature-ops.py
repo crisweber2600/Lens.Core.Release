@@ -282,6 +282,64 @@ def test_create_domain_execute_governance_git_auto_publishes_workspace_scaffold(
     assert pushed_docs.stdout == ""
 
 
+def test_create_domain_execute_governance_git_force_adds_ignored_targetprojects_scaffold(tmp_path: Path):
+    _, gov = init_main_repo_with_remote(tmp_path, "gov")
+    workspace_remote, workspace = init_main_repo_with_remote(tmp_path, "workspace")
+    target = workspace / "TargetProjects"
+    docs = workspace / "docs"
+    personal = tmp_path / "personal"
+
+    (workspace / ".gitignore").write_text("TargetProjects/\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(workspace), "add", ".gitignore"], check=True)
+    subprocess.run(["git", "-C", str(workspace), "commit", "-m", "chore: ignore targetprojects scaffold"], check=True)
+    subprocess.run(["git", "-C", str(workspace), "push"], check=True)
+
+    completed, payload = run_script(
+        [
+            "create-domain",
+            "--governance-repo",
+            str(gov),
+            "--domain",
+            "finance",
+            "--target-projects-root",
+            str(target),
+            "--docs-root",
+            str(docs),
+            "--personal-folder",
+            str(personal),
+            "--execute-governance-git",
+        ]
+    )
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert payload["workspace_git_executed"] is True
+    assert any("add --force" in command for command in payload["workspace_git_commands"])
+
+    workspace_status = subprocess.run(
+        ["git", "-C", str(workspace), "status", "--short"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert workspace_status.stdout.strip() == ""
+
+    pushed_target = subprocess.run(
+        ["git", "--git-dir", str(workspace_remote), "show", "main:TargetProjects/finance/.gitkeep"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    pushed_docs = subprocess.run(
+        ["git", "--git-dir", str(workspace_remote), "show", "main:docs/finance/.gitkeep"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert pushed_target.stdout == ""
+    assert pushed_docs.stdout == ""
+
+
 def test_create_domain_governance_git_dirty_repo(tmp_path: Path):
     remote, gov = init_main_repo_with_remote(tmp_path)
     (gov / "DIRTY.txt").write_text("dirty\n", encoding="utf-8")
