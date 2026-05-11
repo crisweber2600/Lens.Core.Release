@@ -3,6 +3,10 @@ name: lens-businessplan
 description: BusinessPlan phase conductor — delegates PRD and UX authoring through lens-bmad-skill after publishing reviewed PrePlan artifacts to governance.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # BusinessPlan — Feature Business Planning Phase
 
 ## Overview

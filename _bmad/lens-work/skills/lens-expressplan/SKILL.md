@@ -3,6 +3,10 @@ name: lens-expressplan
 description: ExpressPlan lifecycle conductor. Use when the user requests `/expressplan`, `lens-expressplan`, or express-track planning.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # ExpressPlan Conductor
 
 ## Overview

@@ -2,6 +2,10 @@
 description: 'Feature completion entry controller'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-complete
 
 Use this prompt as the entry controller for `/lens-complete`. It must delegate lifecycle completion behavior to `lens-complete` and must not implement archive or governance writes inline.

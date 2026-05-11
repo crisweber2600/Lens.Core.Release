@@ -28,3 +28,17 @@ def test_skill_surfaces_related_service_clone_guidance() -> None:
     assert "TargetProjects/{domain}/{service}" in text
     assert "before running `/new-feature`" in text
     assert "related_service_clone_guidance" in text
+
+
+def test_release_prompt_uses_question_tool_and_skips_slug_confirmation() -> None:
+    text = read_text(RELEASE_PROMPT)
+    assert "vscode_askQuestions" in text
+    assert "without a confirmation stop when the derived slug is valid" in text
+    assert "Confirm the slug with edit/cancel options before invoking the script" not in text
+
+
+def test_skill_uses_question_tool_and_skips_slug_confirmation() -> None:
+    text = read_text(SKILL_MD)
+    assert "vscode_askQuestions" in text
+    assert "Do not ask for slug confirmation when the derived service slug is valid" in text
+    assert "Always confirm the derived service slug with the user before executing." not in text

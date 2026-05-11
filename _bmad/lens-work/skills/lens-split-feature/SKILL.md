@@ -3,6 +3,10 @@ name: lens-split-feature
 description: Split-feature thin conductor. Use when validating a split boundary, creating a split feature shell, or moving stories into the new feature.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Split Feature Thin Conductor
 
 ## Identity

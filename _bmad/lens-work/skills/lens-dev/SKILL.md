@@ -3,6 +3,10 @@ name: lens-dev
 description: Dev phase conductor for epic and story implementation in a clean-room target repo. Use when the user requests dev, implement stories, or continue sprint execution.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens Dev Skill
 
 ## Overview

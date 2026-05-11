@@ -4,6 +4,10 @@ description: "Public lightweight preflight runner for workspace validation befor
 classification: utility
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Preflight
 
 ## Overview

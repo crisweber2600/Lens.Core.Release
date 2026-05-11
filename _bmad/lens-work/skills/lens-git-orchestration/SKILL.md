@@ -3,6 +3,10 @@ name: lens-git-orchestration
 description: "Git write operations for the Lens control-repo feature branch model plus target-repo dev working-branch preparation."
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-git-orchestration
 
 ## Overview

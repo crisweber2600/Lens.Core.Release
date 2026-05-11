@@ -3,6 +3,10 @@ name: lens-quickplan
 description: Internal express planning pipeline. Use only when invoked by `lens-bmad-skill` for ExpressPlan.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # QuickPlan Internal Pipeline
 
 ## Overview

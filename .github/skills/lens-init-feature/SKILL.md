@@ -3,6 +3,10 @@ name: lens-init-feature
 description: Feature initialization orchestrator — creates 2-branch topology, feature.yaml, PR, and feature-index entry. Use when starting a new feature from scratch.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Feature Initializer
 
 ## Overview

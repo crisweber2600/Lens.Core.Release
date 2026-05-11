@@ -2,6 +2,10 @@
 description: 'Feature initializer entry controller'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-new-feature
 
 Use this prompt as the entry controller for `/lens-new-feature`. It must delegate to the `lens-init-feature` skill and must not create governance files, branches, or feature records inline.

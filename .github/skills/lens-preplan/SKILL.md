@@ -3,6 +3,10 @@ name: lens-preplan
 description: Runs PrePlan phase artifact orchestration. Use when the user requests `/preplan`, `lens-preplan`, or PrePlan phase planning.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # PrePlan Conductor
 
 ## Overview

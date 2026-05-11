@@ -3,6 +3,10 @@ name: lens-bmad-skill
 description: Lens-aware BMAD skill wrapper — resolves feature context, governance, and write boundaries then delegates to a registered BMAD skill.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens BMAD Skill Wrapper
 
 ## Overview

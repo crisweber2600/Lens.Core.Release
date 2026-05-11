@@ -3,6 +3,10 @@ name: lens-batch
 description: Universal two-pass batch intake and resume flow for Lens planning targets.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens Batch — Shared Two-Pass Planning Intake
 
 ## Overview

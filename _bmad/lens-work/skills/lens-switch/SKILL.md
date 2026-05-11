@@ -3,6 +3,10 @@ name: lens-switch
 description: Feature context switcher. Use when switching the active feature context, loading cross-feature context for a new feature, or listing available features to switch to.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Feature Context Switcher
 
 ## Overview

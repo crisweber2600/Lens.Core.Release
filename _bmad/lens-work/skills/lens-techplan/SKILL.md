@@ -3,6 +3,10 @@ name: lens-techplan
 description: TechPlan phase conductor for the Lens Workbench — resolves feature context, enforces publish-before-author and PRD reference gates, then delegates architecture authoring through the Lens BMAD wrapper.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # TechPlan — Feature Technical Architecture Phase
 
 ## Overview
