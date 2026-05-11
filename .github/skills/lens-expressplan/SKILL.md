@@ -47,7 +47,7 @@ You are the ExpressPlan conductor. You protect the express track from accidental
 2. Resolve `{governance_repo}`, `{control_repo}`, `{feature_id}`, and `{module_path}`.
 3. Load `feature.yaml` through `lens-feature-yaml` and resolve `domain`, `service`, `track`, `phase`, and `docs.path`.
 4. **Express-only gate before any delegation:** validate `feature.yaml.track` is `express` or `expressplan`. If not, stop with the state-gate block message. ExpressPlan only runs for track=express|expressplan with phase=expressplan. This command will not convert the feature track.
-5. Load the domain and service constitution through `lens-constitution`.
+5. Load the domain and service constitution through `lens-constitution`. If the constitution fails to resolve (missing required org level or parse error), stop immediately and report the resolution failure. Do not proceed to any permission or hard-gate check, and do not delegate.
 6. **Constitution permission and hard gate check:** confirm the resolved constitution permits `express` or `expressplan` in `permitted_tracks`. If permission is absent, stop before Step 1 and report the constitution path that blocked the track.
 
    **Constitution Hard Gate Enforcement:** After the track-permission check, extract all hard-gate requirements from the full resolved constitution — both structured fields and all prose articles. These requirements are **mandatory pre-authoring constraints** for all ExpressPlan artifacts. Before delegating to QuickPlan in Step 1:

@@ -117,7 +117,7 @@ If the constitution fails to resolve (missing required org level or parse error)
 - Pass the full resolved constitution prose as required context to every implementation delegate (e.g., Article 7 TDD red-green, Article 8 BDD GWT scenarios per AC, Article 9 security credential docs).
 - If a story's implementation plan or acceptance criteria would violate any hard-gate requirement, stop and report the violation list. Do not delegate and do not begin story implementation until all violations are resolved.
 
-
+## Story File Validation
 
 Before delegating a story for execution, validate the story file has all required sections:
 - `Context` section: Non-empty description.
