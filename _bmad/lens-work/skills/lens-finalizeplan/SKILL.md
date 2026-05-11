@@ -61,8 +61,8 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 
    **Constitution Hard Gate Enforcement:** Extract all hard-gate requirements from the full resolved constitution — both structured fields and all prose articles. These requirements are **mandatory constraints** for the FinalizePlan bundle (epics, stories, story files, sprint-status). Before proceeding to the Execution Contract:
    - Display the applicable hard-gate requirements to the operator.
-   - Any bundle artifact that would violate a hard-gate requirement must be corrected before the bundle is published. Apply hard-gate requirements as explicit constraints when delegating to bundle generators and review delegates.
-   - Do not publish a bundle that violates hard gates.
+   - If any planned bundle artifact would violate a hard-gate requirement, stop immediately and report the violation list. Do not delegate to bundle generators, do not write any bundle artifact, and do not publish until all violations are resolved.
+   - Pass hard-gate requirements as explicit constraints when delegating to bundle generators and review delegates.
 
 8. Confirm write boundaries before continuing:
    - Staged planning artifacts are read from the control repo docs path.
