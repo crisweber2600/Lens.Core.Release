@@ -210,6 +210,9 @@ def domain_service_local_path_issue(entry: dict[str, Any], local_path: str) -> s
             f"{path_to_posix(Path(*expected_prefix))}"
         )
 
+    if any(segment == ".." for segment in segments):
+        return "domain/service local_path must not contain path traversal segments ('..')"
+
     return None
 
 
@@ -221,6 +224,15 @@ def entry_local_paths(entry: dict[str, Any]) -> list[str]:
         paths.extend(str(path).strip() for path in extra_paths if str(path).strip())
     if not paths:
         paths.append(entry_local_path(entry))
+    return unique_local_paths(paths)
+
+
+def explicit_entry_local_paths(entry: dict[str, Any]) -> list[str]:
+    explicit_local_path = str(entry.get("local_path") or "").strip()
+    paths: list[str] = [explicit_local_path] if explicit_local_path else []
+    extra_paths = entry.get("local_paths")
+    if isinstance(extra_paths, list):
+        paths.extend(str(path).strip() for path in extra_paths if str(path).strip())
     return unique_local_paths(paths)
 
 
@@ -351,7 +363,17 @@ def validate_inventory(inventory_path: Path) -> dict[str, Any]:
             errors.append({"index": index, "name": name, "remote_url": remote_url, "issue": "missing name"})
         if not str(remote_url or "").strip():
             errors.append({"index": index, "name": name, "remote_url": remote_url, "issue": "missing remote_url"})
-        for local_path in entry_local_paths(entry):
+        explicit_local_paths = explicit_entry_local_paths(entry)
+        if str(entry.get("domain") or "").strip() and str(entry.get("service") or "").strip() and not explicit_local_paths:
+            errors.append(
+                {
+                    "index": index,
+                    "name": name,
+                    "remote_url": remote_url,
+                    "issue": "missing local_path/local_paths for domain/service entry",
+                }
+            )
+        for local_path in explicit_local_paths:
             issue = domain_service_local_path_issue(entry, local_path)
             if issue:
                 errors.append(
