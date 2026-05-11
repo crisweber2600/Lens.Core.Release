@@ -52,7 +52,18 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
    - For every accepted predecessor state, run `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase {predecessor_phase} --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json` and stop if it fails.
    - If phase wording is active `techplan` or active `expressplan`, continue only when the review-ready validation passes and the user is resuming a phase-complete handoff.
    - Otherwise stop with: "FinalizePlan requires TechPlan or ExpressPlan completion before it can begin."
-7. Load domain constitution through `lens-constitution` for final cross-feature and governance context.
+7. Load and enforce domain constitution before bundle generation:
+
+   Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-constitution/SKILL.md` and invoke:
+   `lens-constitution resolve --governance-dir {governance_repo}`
+
+   If the constitution fails to resolve, stop and report the failure. Do not proceed to the Execution Contract until the constitution is resolved.
+
+   **Constitution Hard Gate Enforcement:** Extract all hard-gate requirements from the full resolved constitution — both structured fields and all prose articles. These requirements are **mandatory constraints** for the FinalizePlan bundle (epics, stories, story files, sprint-status). Before proceeding to the Execution Contract:
+   - Display the applicable hard-gate requirements to the operator.
+   - Any bundle artifact that would violate a hard-gate requirement must be corrected before the bundle is published. Apply hard-gate requirements as explicit constraints when delegating to bundle generators and review delegates.
+   - Do not publish a bundle that violates hard gates.
+
 8. Confirm write boundaries before continuing:
    - Staged planning artifacts are read from the control repo docs path.
    - Governance mirrors are updated only by `publish-to-governance`, `lens-git-orchestration`, or `lens-feature-yaml`.

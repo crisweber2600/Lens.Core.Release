@@ -50,12 +50,17 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 
    If the hook exits non-zero, stop and surface the error.
 
-9. Load domain constitution for governance context by running:
+9. Load and enforce domain constitution before architecture authoring:
 
    Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-constitution/SKILL.md` and invoke:
    `lens-constitution resolve --governance-dir {governance_repo}`
 
-   If the constitution is missing, note it and continue.
+   If the constitution fails to resolve (missing required org level or parse error), stop immediately and report: "Constitution resolution failed for domain={domain} service={service}. Hard gate enforcement requires a valid constitution — run /new-domain or /new-service to scaffold missing levels." Do not continue to architecture authoring.
+
+   **Constitution Hard Gate Enforcement:** After resolving the constitution, extract all hard-gate requirements from the full resolved output — both structured fields (`gate_mode: hard`, `required_artifacts`, `enforce_stories`, `enforce_review`) and all prose articles. These requirements are **mandatory pre-authoring constraints** for architecture authoring. Before delegating in step 11:
+   - Display the applicable hard-gate requirements to the operator.
+   - Pass the full resolved constitution prose as required context to the authoring delegate in step 11.
+   - If the planned architecture artifact or delegation would violate any hard-gate requirement, stop and report the violation list. Do not delegate and do not write any artifact until all violations are resolved.
 
 10. Verify that the businessplan adversarial review artifact exists with `status: responses-recorded`.
 

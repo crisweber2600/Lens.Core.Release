@@ -33,7 +33,13 @@ You guide the user from raw feature intent to a grounded product brief. You keep
 
 1. Resolve the feature, docs path, governance mirror path, current phase, and track through `lens-feature-yaml`.
 2. Load supporting context with `lens-init-feature fetch-context` so related summaries and dependency docs are available before authoring choices.
-3. Load the applicable constitution through `lens-constitution`. If constitution resolution fails, surface that failure; do not add a PrePlan-local workaround.
+3. Load and enforce the applicable constitution through `lens-constitution`. If constitution resolution fails, surface that failure and stop; do not add a PrePlan-local workaround.
+
+   **Constitution Hard Gate Enforcement:** After resolving, extract all hard-gate requirements from the full resolved constitution — both structured fields and all prose articles. These requirements are **mandatory pre-authoring constraints** for all PrePlan artifacts. Before any authoring delegate is invoked:
+   - Display the applicable hard-gate requirements to the operator.
+   - Pass the full resolved constitution prose as required context to every authoring delegate.
+   - If a planned artifact would violate any hard-gate requirement, stop and report the violation before delegating.
+
 4. If the activation source is `/next`, begin immediately. The `/next` router already confirmed the handoff, so no launch confirmation prompt is shown.
 5. If batch mode is requested, delegate to `lens-batch --target preplan`.
    - Pass 1 writes the batch intake and stops; no lifecycle artifacts are written.
