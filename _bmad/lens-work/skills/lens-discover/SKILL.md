@@ -62,10 +62,11 @@ If the user confirms, clone missing repositories, register untracked repositorie
 
 With `--headless` or `-H`, do not ask confirmation prompts. Execute all detected actions immediately:
 
-1. Clone every `missing_from_disk` entry that has a `remote_url` and `local_path`.
-2. Register every `untracked` entry that has a resolvable `remote_url`.
-3. Validate the updated inventory.
-4. Run the auto-commit guard.
+1. Validate `repo-inventory.yaml` before any clone or registration work. If validation fails, stop and surface the exact error.
+2. Clone every `missing_from_disk` entry that has a `remote_url` and `local_path`.
+3. Register every `untracked` entry that has a resolvable `remote_url`.
+4. Validate the updated inventory.
+5. Run the auto-commit guard.
 
 ### Dry-Run Mode
 
@@ -117,21 +118,23 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/sc
   --json
 ```
 
-`validate` requires every entry to include `name` and `remote_url`. It returns `{ "valid": true, "errors": [] }` or structured errors with `index`, `name`, `remote_url`, and `issue`.
+`validate` requires every entry to include `name` and `remote_url`. For entries that also declare `domain` and `service`, every `local_path` must point to a repo subfolder under `TargetProjects/{domain}/{service}` rather than the service container root itself. It returns `{ "valid": true, "errors": [] }` or structured errors with `index`, `name`, `remote_url`, `local_path`, and `issue`.
 
 ## Orchestration
 
 1. Resolve config and exact paths.
 2. Run `scan --json`.
-3. If no work is detected, print the no-op message and stop.
-4. In interactive mode, show planned clone/register actions and ask for confirmation.
-5. In dry-run mode, show planned actions and stop before any writes.
-6. Capture the pre-mutation SHA-256 hash of `repo-inventory.yaml`.
-7. Clone each `missing_from_disk` repo with `git clone {remote_url} {resolved_local_path}` when confirmed or headless.
-8. For each untracked repo, read `git -C {repo_path} remote get-url origin`. If a remote exists, call `add-entry` with the scan result values.
-9. Run `validate --json`; stop and surface errors if validation fails.
-10. Capture the post-mutation SHA-256 hash of `repo-inventory.yaml`.
-11. Run the auto-commit guard below.
+3. Run `validate --json`; stop and surface errors if validation fails.
+4. If no work is detected, print the no-op message and stop.
+5. In interactive mode, show planned clone/register actions and ask for confirmation.
+6. In dry-run mode, show planned actions and stop before any writes.
+7. Capture the pre-mutation SHA-256 hash of `repo-inventory.yaml`.
+8. For each `missing_from_disk` repo, ensure `{resolved_local_path}` is the repo directory itself. If the entry declares both `domain` and `service`, never clone directly into `TargetProjects/{domain}/{service}`; the path must include a repo subfolder beneath that container. Create parent directories as needed. If `{resolved_local_path}` already exists and its only child is `.gitkeep`, remove that placeholder before cloning.
+9. Clone each `missing_from_disk` repo with `git clone {remote_url} {resolved_local_path}` when confirmed or headless.
+10. For each untracked repo, read `git -C {repo_path} remote get-url origin`. If a remote exists, call `add-entry` with the scan result values.
+11. Run `validate --json`; stop and surface errors if validation fails.
+12. Capture the post-mutation SHA-256 hash of `repo-inventory.yaml`.
+13. Run the auto-commit guard below.
 
 Repos without an `origin` remote are out of scope for this feature. Surface them as skipped registrations with a follow-up note rather than inventing a remote URL.
 

@@ -174,6 +174,45 @@ def unique_local_paths(paths: list[str]) -> list[str]:
     return unique
 
 
+def target_projects_segments(local_path: str) -> list[str] | None:
+    normalized = normalized_local_path_key(local_path)
+    if not normalized:
+        return None
+    segments = [segment for segment in normalized.split("/") if segment and segment != "."]
+    for index, segment in enumerate(segments):
+        if segment.casefold() == "targetprojects":
+            return segments[index:]
+    return None
+
+
+def domain_service_local_path_issue(entry: dict[str, Any], local_path: str) -> str | None:
+    domain = str(entry.get("domain") or "").strip()
+    service = str(entry.get("service") or "").strip()
+    if not domain or not service:
+        return None
+
+    segments = target_projects_segments(local_path)
+    if not segments:
+        return None
+
+    expected_prefix = ["TargetProjects", domain, service]
+    if len(segments) < len(expected_prefix) or [segment.casefold() for segment in segments[:3]] != [
+        segment.casefold() for segment in expected_prefix
+    ]:
+        return (
+            "domain/service local_path must stay under "
+            f"{path_to_posix(Path(*expected_prefix))}/<repo-name>"
+        )
+
+    if len(segments) == len(expected_prefix):
+        return (
+            "domain/service local_path must include a repo subfolder under "
+            f"{path_to_posix(Path(*expected_prefix))}"
+        )
+
+    return None
+
+
 def entry_local_paths(entry: dict[str, Any]) -> list[str]:
     explicit_local_path = str(entry.get("local_path") or "").strip()
     paths: list[str] = [explicit_local_path] if explicit_local_path else []
@@ -312,6 +351,18 @@ def validate_inventory(inventory_path: Path) -> dict[str, Any]:
             errors.append({"index": index, "name": name, "remote_url": remote_url, "issue": "missing name"})
         if not str(remote_url or "").strip():
             errors.append({"index": index, "name": name, "remote_url": remote_url, "issue": "missing remote_url"})
+        for local_path in entry_local_paths(entry):
+            issue = domain_service_local_path_issue(entry, local_path)
+            if issue:
+                errors.append(
+                    {
+                        "index": index,
+                        "name": name,
+                        "remote_url": remote_url,
+                        "local_path": local_path,
+                        "issue": issue,
+                    }
+                )
 
     return {"valid": not errors, "errors": errors}
 

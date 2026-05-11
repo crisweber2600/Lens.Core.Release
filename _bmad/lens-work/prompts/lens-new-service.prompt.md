@@ -19,7 +19,7 @@ The user wants to initialize a new service container, not a feature. The flow mu
 3. Resolve or ask for the parent domain when not supplied by active context.
 4. Ask for the service display name.
 5. Derive a safe service slug using the same normalization pattern as `new-domain`.
-6. If the derived slug is valid, proceed without a confirmation stop. Only ask for a manual slug when normalization yields an invalid safe ID.
+6. Proceed without a confirmation stop when the derived slug is valid. Only ask for a manual slug when normalization yields an invalid safe ID.
 7. Create `{governance_repo}/features/{domain}/{service}/service.yaml`.
 8. Create `{governance_repo}/constitutions/{domain}/{service}/constitution.md`.
 9. If the parent domain marker or constitution is absent, create them first by calling `create-domain` helpers — do not re-implement domain creation inline.
@@ -28,6 +28,6 @@ The user wants to initialize a new service container, not a feature. The flow mu
 12. Pass `--personal-folder {personal_output_folder}` so `context.yaml` is written with the active domain and service.
 13. Pass `--execute-governance-git` so governance `main` is pulled, written, committed, and pushed by the script.
 14. Do not create feature branches, feature.yaml, summary.md, feature-index entries, or lifecycle artifacts.
-15. After successful service creation, instruct the user to clone any related service repositories into `TargetProjects/{domain}/{service}` before running `/new-feature`.
+15. After successful service creation, instruct the user to clone any related service repositories into `TargetProjects/{domain}/{service}/{repo-name}` before running `/new-feature`.
 
 Report `governance_commit_sha` when present. Surface `related_service_clone_guidance` before the `/new-feature` handoff. Surface `remaining_git_commands` only for manual workspace scaffold follow-up. Do not implement service writes in this prompt; delegate to the skill script.

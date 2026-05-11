@@ -219,7 +219,7 @@ Both `create-domain` and `create-service` accept an optional `--docs-root` argum
 - `create-domain` creates `docs/{domain}/.gitkeep`
 - `create-service` creates `docs/{domain}/{service}/.gitkeep`
 - The returned JSON includes `docs_path` when the scaffold was created or planned
-- The returned JSON includes `related_service_clone_path` and `related_service_clone_guidance`; callers should instruct users to clone related service repositories into `TargetProjects/{domain}/{service}` before `/new-feature`
+- The returned JSON includes `target_projects_path`, `related_service_clone_path`, and `related_service_clone_guidance`; callers should instruct users to clone related service repositories into repo-named subfolders under `TargetProjects/{domain}/{service}` before `/new-feature`
 - `workspace_git_commands` lists the control-repo scaffold publish commands; for `create-domain` with `--execute-governance-git`, those commands are executed automatically and `remaining_git_commands` is empty on success
 - `governance_git_commands` exposes the governance publish sequence, and `governance_commit_sha` identifies the pushed commit when `--execute-governance-git` succeeds
 

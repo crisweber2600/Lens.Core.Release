@@ -18,14 +18,14 @@ def read_text(path: Path) -> str:
 
 def test_release_prompt_surfaces_related_service_clone_guidance() -> None:
     text = read_text(RELEASE_PROMPT)
-    assert "TargetProjects/{domain}/{service}" in text
+    assert "TargetProjects/{domain}/{service}/{repo-name}" in text
     assert "before running `/new-feature`" in text
     assert "related_service_clone_guidance" in text
 
 
 def test_skill_surfaces_related_service_clone_guidance() -> None:
     text = read_text(SKILL_MD)
-    assert "TargetProjects/{domain}/{service}" in text
+    assert "TargetProjects/{domain}/{service}/{repo-name}" in text
     assert "before running `/new-feature`" in text
     assert "related_service_clone_guidance" in text
 

@@ -313,14 +313,20 @@ def build_container_result_fields(
     }
 
 
-def related_service_clone_path(domain: str, service: str) -> str:
+def related_service_clone_container_path(domain: str, service: str) -> str:
     return f"TargetProjects/{domain}/{service}"
 
 
+def related_service_clone_path(domain: str, service: str) -> str:
+    return f"{related_service_clone_container_path(domain, service)}/<repo-name>"
+
+
 def related_service_clone_guidance(domain: str, service: str) -> str:
+    container_path = related_service_clone_container_path(domain, service)
+    example_path = related_service_clone_path(domain, service)
     return (
-        "Before running /new-feature, clone any related service repositories into "
-        f"{related_service_clone_path(domain, service)}."
+        "Before running /new-feature, clone each related service repository into its own "
+        f"repo-named subfolder under {container_path} (for example {example_path})."
     )
 
 
@@ -713,14 +719,11 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
     created_domain_constitution = False
 
     # Scaffold paths
-    tp_gitkeep_path: Path | None = None
+    target_projects_path: Path | None = None
     workspace_scaffold_entries: list[tuple[str, str]] = []
     if args.target_projects_root:
         tp_root = Path(args.target_projects_root)
-        tp_gitkeep_path = tp_root / domain / service / ".gitkeep"
-        workspace_scaffold_entries.append(
-            (str(tp_root.parent), (Path(tp_root.name) / domain / service / ".gitkeep").as_posix())
-        )
+        target_projects_path = tp_root / domain / service
 
     docs_gitkeep_path: Path | None = None
     if args.docs_root:
@@ -779,7 +782,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
             "created_constitution_paths": service_const_paths,
             "created_domain_marker": parent_domain_absent,
             "created_domain_constitution": parent_domain_absent,
-            "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
+            "target_projects_path": str(target_projects_path) if target_projects_path else None,
             "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
             "context_path": context_path,
             "related_service_clone_path": related_service_clone_path(domain, service),
@@ -822,11 +825,10 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
         return {"status": "fail", "scope": "service", "dry_run": False,
                 "error": f"Failed to write service constitution: {exc}"}
 
-    # Write scaffold .gitkeep files
-    if tp_gitkeep_path is not None:
+    # Create the service container folder without a tracked placeholder.
+    if target_projects_path is not None:
         try:
-            tp_gitkeep_path.parent.mkdir(parents=True, exist_ok=True)
-            tp_gitkeep_path.touch()
+            target_projects_path.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             return {"status": "fail", "scope": "service", "dry_run": False,
                     "error": f"Failed to scaffold TargetProjects service folder: {exc}"}
@@ -866,7 +868,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
                 "created_constitution_paths": service_const_paths,
                 "created_domain_marker": created_domain_marker,
                 "created_domain_constitution": created_domain_constitution,
-                "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
+                "target_projects_path": str(target_projects_path) if target_projects_path else None,
                 "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
                 "context_path": written_context_path,
                 "related_service_clone_path": related_service_clone_path(domain, service),
@@ -889,7 +891,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
         "created_constitution_paths": service_const_paths,
         "created_domain_marker": created_domain_marker,
         "created_domain_constitution": created_domain_constitution,
-        "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
+        "target_projects_path": str(target_projects_path) if target_projects_path else None,
         "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
         "context_path": written_context_path,
         "related_service_clone_path": related_service_clone_path(domain, service),
