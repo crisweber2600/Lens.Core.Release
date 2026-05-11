@@ -266,6 +266,7 @@ def write_governance_setup(path: Path, governance_repo_path: Path) -> dict[str, 
 def discover_governance_repo_path(project_root: Path) -> Path | None:
     candidates = (
         project_root / "TargetProjects" / "lens" / "lens-governance",
+        project_root / "TargetProjects" / "lens" / "Lens.Core.Governance",
         project_root / "TargetProjects" / "lens" / "Lens.Core.governance",
         project_root / "lens-governance",
     )
@@ -340,6 +341,9 @@ def ensure_governance_setup_file(project_root: Path) -> dict[str, str]:
             return values
         except OSError as exc:
             echo(f"  ⚠ Unable to create .lens/governance-setup.yaml from discovered governance repo: {exc}")
+
+    if bmadconfig_values:
+        return bmadconfig_values
 
     return {}
 

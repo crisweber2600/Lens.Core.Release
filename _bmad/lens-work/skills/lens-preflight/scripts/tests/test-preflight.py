@@ -300,6 +300,46 @@ def test_ensure_governance_setup_file_recovers_from_invalid_bmadconfig_path(tmp_
     assert (project_root / ".lens" / "governance-setup.yaml").is_file()
 
 
+def test_ensure_governance_setup_file_returns_invalid_bmadconfig_path_when_discovery_fails(
+    tmp_path: Path,
+    monkeypatch,
+):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+
+    monkeypatch.setattr(
+        ops,
+        "_load_bmadconfig_governance",
+        lambda _: {"governance_repo_path": "{project-root}/../../../lens/lens-governance"},
+    )
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    assert values["governance_repo_path"] == "{project-root}/../../../lens/lens-governance"
+    assert not (project_root / ".lens" / "governance-setup.yaml").exists()
+
+
+def test_ensure_governance_setup_file_persists_remote_url_when_origin_exists(tmp_path: Path):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    governance_repo = project_root / "TargetProjects" / "lens" / "lens-governance"
+    governance_repo.mkdir(parents=True)
+
+    subprocess.run(["git", "init", str(governance_repo)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(governance_repo), "remote", "add", "origin", "https://example.invalid/governance.git"],
+        check=True,
+        capture_output=True,
+    )
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    assert values["governance_repo_path"] == governance_repo.resolve().as_posix()
+    assert values["governance_remote_url"] == "https://example.invalid/governance.git"
+    saved = (project_root / ".lens" / "governance-setup.yaml").read_text(encoding="utf-8")
+    assert "governance_remote_url: https://example.invalid/governance.git" in saved
+
+
 def test_main_forces_release_refresh_on_develop_even_when_timestamp_is_fresh(tmp_path: Path, monkeypatch):
     ops = load_preflight_module()
     project_root = tmp_path / "workspace"
