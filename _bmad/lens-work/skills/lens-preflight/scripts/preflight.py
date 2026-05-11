@@ -232,6 +232,49 @@ def load_governance_setup(path: Path) -> dict[str, str]:
     return values
 
 
+def detect_git_remote(repo_path: Path, remote_name: str = "origin") -> str:
+    if not repo_path.is_dir():
+        return ""
+
+    result = subprocess.run(
+        ["git", "remote", "get-url", remote_name],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def write_governance_setup(path: Path, governance_repo_path: Path) -> dict[str, str]:
+    resolved = governance_repo_path.resolve()
+    values: dict[str, str] = {"governance_repo_path": resolved.as_posix()}
+    remote_url = detect_git_remote(resolved)
+    if remote_url:
+        values["governance_remote_url"] = remote_url
+
+    lines = [f"governance_repo_path: {values['governance_repo_path']}"]
+    if values.get("governance_remote_url"):
+        lines.append(f"governance_remote_url: {values['governance_remote_url']}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return values
+
+
+def discover_governance_repo_path(project_root: Path) -> Path | None:
+    candidates = (
+        project_root / "TargetProjects" / "lens" / "lens-governance",
+        project_root / "TargetProjects" / "lens" / "Lens.Core.governance",
+        project_root / "lens-governance",
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 def ensure_governance_setup_file(project_root: Path) -> dict[str, str]:
     active_file = governance_setup_file(project_root)
     legacy_personal_file = legacy_personal_governance_setup_file(project_root)
@@ -272,7 +315,31 @@ def ensure_governance_setup_file(project_root: Path) -> dict[str, str]:
 
     bmadconfig_values = _load_bmadconfig_governance(project_root)
     if bmadconfig_values:
-        return bmadconfig_values
+        configured_path_raw = bmadconfig_values.get("governance_repo_path", "")
+        configured_path = resolve_workspace_path(project_root, configured_path_raw) if configured_path_raw else None
+        if configured_path and configured_path.is_dir():
+            try:
+                write_governance_setup(active_file, configured_path)
+                echo("[preflight] Seeded .lens/governance-setup.yaml from bmadconfig fallback")
+                return load_governance_setup(active_file)
+            except OSError as exc:
+                echo(f"  ⚠ Unable to write .lens/governance-setup.yaml from bmadconfig fallback: {exc}")
+                return bmadconfig_values
+
+        if configured_path:
+            echo(
+                "[preflight] bmadconfig governance path does not exist: "
+                f"{configured_path}; attempting workspace governance discovery"
+            )
+
+    discovered_path = discover_governance_repo_path(project_root)
+    if discovered_path:
+        try:
+            values = write_governance_setup(active_file, discovered_path)
+            echo("[preflight] Created .lens/governance-setup.yaml from discovered workspace governance repo")
+            return values
+        except OSError as exc:
+            echo(f"  ⚠ Unable to create .lens/governance-setup.yaml from discovered governance repo: {exc}")
 
     return {}
 

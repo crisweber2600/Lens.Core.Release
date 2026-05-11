@@ -268,6 +268,38 @@ def test_ensure_lens_version_file_seeds_from_lifecycle_when_missing(tmp_path: Pa
     assert (project_root / ".lens" / "LENS_VERSION").read_text(encoding="utf-8") == "4.0.0"
 
 
+def test_ensure_governance_setup_file_bootstraps_from_workspace_discovery(tmp_path: Path):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    governance_repo = project_root / "TargetProjects" / "lens" / "lens-governance"
+    governance_repo.mkdir(parents=True)
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    setup_file = project_root / ".lens" / "governance-setup.yaml"
+    assert setup_file.is_file()
+    assert values["governance_repo_path"] == governance_repo.resolve().as_posix()
+    assert "governance_remote_url" not in values
+
+
+def test_ensure_governance_setup_file_recovers_from_invalid_bmadconfig_path(tmp_path: Path, monkeypatch):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    governance_repo = project_root / "TargetProjects" / "lens" / "lens-governance"
+    governance_repo.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        ops,
+        "_load_bmadconfig_governance",
+        lambda _: {"governance_repo_path": "{project-root}/../../../lens/lens-governance"},
+    )
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    assert values["governance_repo_path"] == governance_repo.resolve().as_posix()
+    assert (project_root / ".lens" / "governance-setup.yaml").is_file()
+
+
 def test_main_forces_release_refresh_on_develop_even_when_timestamp_is_fresh(tmp_path: Path, monkeypatch):
     ops = load_preflight_module()
     project_root = tmp_path / "workspace"
