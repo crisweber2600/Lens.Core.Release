@@ -476,6 +476,31 @@ def emit_onboard_next_steps(project_root: Path) -> None:
     echo("  Use /next anytime to get the recommended next command for the current context.")
 
 
+def emit_missing_authority_repo_guidance(
+    *,
+    release_dir: Path,
+    governance_path: Path | None,
+) -> None:
+    """Report concrete authority-path repair steps for the active workspace layout."""
+    echo("")
+    echo("⚠️  Authority repo check failed for the current workspace layout.")
+    echo("")
+
+    if not release_dir.is_dir():
+        echo(f"  Missing release checkout: {release_dir}")
+        echo("  Restore or clone the Lens release repo into that workspace path.")
+
+    if governance_path is None:
+        echo("  Governance repo path is not configured in .lens/governance-setup.yaml.")
+        echo("  Set governance_repo_path to the correct local governance clone and retry this command.")
+    elif not governance_path.is_dir():
+        echo(f"  Missing governance checkout: {governance_path}")
+        echo("  Clone the governance repo into that path or update .lens/governance-setup.yaml if the repo moved.")
+
+    echo("")
+    echo("  Fix the missing authority path or repo mapping, then retry this command.")
+
+
 def parse_timestamp(raw: str) -> datetime | None:
     val = raw.strip()
     if not val:
@@ -1254,25 +1279,13 @@ def main() -> int:
     if missing_release or governance_missing:
         if args.caller == "onboard":
             echo("[preflight] Authority repos incomplete — continuing so /onboard can show next steps")
-        elif missing_release:
-            echo("")
-            echo("⚠️  Missing authority repos — this workspace needs onboarding first.")
-            echo("")
-            echo("  Re-run setup-control-repo.py if the governance clone is missing.")
-            echo("  It takes about 2 minutes and only needs to run once.")
-            echo("")
-            echo("  Then run /new-project (or /new-domain for step-by-step setup) and retry this command.")
-            return 1
         elif request_class == "read-only":
             echo("⚠ Governance repo not found; freshness deferred for read-only request")
         else:
-            echo("")
-            echo("⚠️  Missing authority repos — this workspace needs onboarding first.")
-            echo("")
-            echo("  Re-run setup-control-repo.py if the governance clone is missing.")
-            echo("  It takes about 2 minutes and only needs to run once.")
-            echo("")
-            echo("  Then run /new-project (or /new-domain for step-by-step setup) and retry this command.")
+            emit_missing_authority_repo_guidance(
+                release_dir=release_dir,
+                governance_path=governance_path,
+            )
             return 1
 
     if control_repo_touched:

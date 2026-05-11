@@ -403,3 +403,41 @@ def test_main_syncs_agents_file_and_records_hash(tmp_path: Path, monkeypatch):
     expected_hash = ops.sha256_file(release / "AGENTS.md")
     hash_manifest = (personal / ".github-hashes").read_text(encoding="utf-8")
     assert f"{expected_hash}  AGENTS.md" in hash_manifest
+
+
+def test_main_reports_missing_governance_path_without_legacy_setup_guidance(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    release = project_root / "lens.core"
+    lifecycle = release / "_bmad" / "lens-work" / "lifecycle.yaml"
+    release_github = release / ".github"
+    personal = project_root / ".lens" / "personal"
+    missing_governance = project_root / "TargetProjects" / "lens" / "lens-governance"
+
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+    release_github.mkdir(parents=True)
+    personal.mkdir(parents=True)
+    (project_root / ".lens" / "LENS_VERSION").write_text("4.0.0", encoding="utf-8")
+    (project_root / ".lens" / "governance-setup.yaml").write_text(
+        f"governance_repo_path: {missing_governance.as_posix()}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(project_root)
+    monkeypatch.setattr(sys, "argv", ["preflight.py", "--caller", "lens-expressplan"])
+    monkeypatch.setattr(ops, "sync_release_repo", lambda repo: (True, "pulled origin"))
+    monkeypatch.setattr(ops, "release_branch_name", lambda _: "develop")
+
+    assert ops.main() == 1
+
+    out = capsys.readouterr().out
+    assert "Authority repo check failed for the current workspace layout." in out
+    assert f"Missing governance checkout: {missing_governance}" in out
+    assert "update .lens/governance-setup.yaml if the repo moved" in out
+    assert "setup-control-repo.py" not in out
+    assert "/new-project" not in out
