@@ -25,7 +25,7 @@ You are the service registration conductor. You resolve the parent domain, colle
 - Pass `--execute-governance-git` so governance `main` is pulled, committed, and pushed by the script.
 - Do not create feature branches, feature.yaml, summary.md, feature-index entries, or lifecycle artifacts.
 - Report `governance_commit_sha` when present. Surface `remaining_git_commands` only for manual follow-up.
-- After successful creation, instruct the user to clone any related service repositories into `TargetProjects/{domain}/{service}` before running `/new-feature`.
+- After successful creation, instruct the user to clone any related service repositories into repo-named subfolders under `TargetProjects/{domain}/{service}` before running `/new-feature`.
 
 ## On Activation
 
@@ -70,4 +70,4 @@ uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts
 | `service.yaml` | `{governance_repo}/features/{domain}/{service}/service.yaml` |
 | `constitution.md` | `{governance_repo}/constitutions/{domain}/{service}/constitution.md` |
 | `context.yaml` (personal) | `{personal_output_folder}/context.yaml` — sets active domain and service |
-| clone guidance | Instruct users to clone related service repositories into `TargetProjects/{domain}/{service}` before `/new-feature` |
+| clone guidance | Instruct users to clone related service repositories into `TargetProjects/{domain}/{service}/{repo-name}` before `/new-feature` |
