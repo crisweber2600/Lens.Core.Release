@@ -38,7 +38,7 @@ Call this before any workflow that needs to know what rules apply: plan workflow
 ## Script Usage
 
 ```bash
-python scripts/constitution-ops.py resolve \
+uv run scripts/constitution-ops.py resolve \
   --governance-repo /path/to/governance-repo \
   --domain platform \
   --service auth \

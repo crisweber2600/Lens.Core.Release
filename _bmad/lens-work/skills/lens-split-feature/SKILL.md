@@ -70,12 +70,12 @@ After `move-stories` completes, scan all moved story files and report any file w
 `./scripts/split-feature-ops.py` exposes the runtime subcommands. Use dry-run before live execution for every mutating operation.
 
 ```bash
-python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
+uv run --script ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
   validate-split \
   --sprint-plan-file /path/to/sprint-plan.md \
   --story-ids "story-1,story-2"
 
-python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
+uv run --script ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
   create-split-feature \
   --governance-repo /path/to/governance \
   --source-feature-id auth-login \
@@ -86,7 +86,7 @@ python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py 
   --track quickplan \
   --username cweber
 
-python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
+uv run --script ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
   move-stories \
   --governance-repo /path/to/governance \
   --source-feature-id auth-login \
@@ -97,7 +97,7 @@ python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py 
   --target-service identity \
   --story-ids "story-3,story-4"
 
-python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
+uv run --script ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
   create-split-feature \
   --governance-repo /path/to/governance \
   --source-feature-id auth-login \
@@ -109,7 +109,7 @@ python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py 
   --username cweber \
   --dry-run
 
-python ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
+uv run --script ./_bmad/lens-work/skills/lens-split-feature/scripts/split-feature-ops.py \
   move-stories \
   --governance-repo /path/to/governance \
   --source-feature-id auth-login \
