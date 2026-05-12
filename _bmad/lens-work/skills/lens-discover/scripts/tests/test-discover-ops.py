@@ -1,7 +1,6 @@
 import hashlib
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
@@ -12,7 +11,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "discover-ops.py"
 
 def run_discover(args: list[str]) -> tuple[dict, int]:
     completed = subprocess.run(
-        [sys.executable, str(SCRIPT), *args, "--json"],
+        ["uv", "run", "--script", str(SCRIPT), *args, "--json"],
         capture_output=True,
         text=True,
         check=False,

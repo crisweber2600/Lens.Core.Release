@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
 # dependencies = ["pyyaml>=6.0"]
@@ -10,7 +10,7 @@ Reads feature.yaml and lifecycle.yaml to produce a structured JSON routing
 recommendation. Produces no side effects: no file writes, no git operations.
 
 Usage:
-    python next-ops.py suggest --feature-id <id> [--governance-repo <path>] [--control-repo <path>]
+    uv run next-ops.py suggest --feature-id <id> [--governance-repo <path>] [--control-repo <path>]
 """
 import argparse
 import json

@@ -1,7 +1,6 @@
 import hashlib
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -11,7 +10,7 @@ COMMIT_MESSAGE = "[discover] Sync repo-inventory.yaml"
 
 def run_json(args: list[str], cwd: Path | None = None) -> tuple[dict, int]:
     completed = subprocess.run(
-        [sys.executable, str(SCRIPT), *args, "--json"],
+        ["uv", "run", "--script", str(SCRIPT), *args, "--json"],
         cwd=cwd,
         capture_output=True,
         text=True,
