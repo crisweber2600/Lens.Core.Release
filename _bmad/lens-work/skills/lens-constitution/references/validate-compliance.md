@@ -75,7 +75,7 @@ Then pass those paths to the script.
 ## Script Usage
 
 ```bash
-uv run scripts/constitution-ops.py check-compliance \
+python scripts/constitution-ops.py check-compliance \
   --governance-repo /path/to/governance-repo \
   --feature-id auth-sso \
   --feature-yaml /tmp/auth-sso.yaml \

@@ -18,7 +18,7 @@ Strategies:
   feature-user      → feature/{featureStub}-{username}
 
 Usage:
-  uv run --script branch_prep.py \\
+  python branch_prep.py \\
     --target-repo <path> \\
     --feature-id <id> \\
     --strategy <flat|feature-stub|feature-user> \\

@@ -32,7 +32,7 @@ You are the Lens git state reader. You inspect repository and governance state, 
 Reports the current branch, local and remote branches, all Lens-shaped feature branches, and which features have plan or dev branches open.
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py branch-state \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py branch-state \
   --repo <control-or-target-repo>
 ```
 
@@ -41,7 +41,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/s
 Reads `feature-index.yaml` from the governance repo and reports non-terminal features with their phase. When `feature.yaml` exists, phase comes from `feature.yaml.phase`; otherwise it falls back to the index phase/status.
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py active-features \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py active-features \
   --governance-repo <governance-repo>
 ```
 
@@ -50,7 +50,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/s
 Compares active feature phase to observed branch topology and returns field-level mismatch records. Example: `feature.yaml.phase=dev` with no `{featureId}-dev` or `{featureId}-dev-*` branch is reported against `branch_state.dev_branches`.
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py discrepancies \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py discrepancies \
   --repo <control-repo> \
   --governance-repo <governance-repo>
 ```
@@ -60,7 +60,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/s
 Combined report for branch topology, active features, and discrepancies. This is the default integration point for Lens conductors that need state context.
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py feature-state \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py feature-state \
   --repo <control-repo> \
   --governance-repo <governance-repo> \
   --feature-id <optional-feature-id>

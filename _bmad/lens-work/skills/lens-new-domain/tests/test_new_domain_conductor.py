@@ -25,7 +25,7 @@ def read_text(path: Path) -> str:
 
 def test_github_prompt_runs_preflight_then_release_prompt() -> None:
     text = read_text(GITHUB_PROMPT)
-    preflight = "uv run --script lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
+    preflight = "python lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
     release = "lens.core/_bmad/lens-work/prompts/lens-new-domain.prompt.md"
     assert preflight in text
     assert release in text

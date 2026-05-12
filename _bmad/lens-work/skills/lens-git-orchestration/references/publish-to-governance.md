@@ -15,7 +15,7 @@ Reviewed planning artifacts that already exist in the control repo docs path are
 1. Resolve `control_docs_path` from `feature.yaml.docs.path` or fallback to `docs/{domain}/{service}/{featureId}`
 2. Resolve `governance_docs_path` from `feature.yaml.docs.governance_docs_path` or fallback to `features/{domain}/{service}/{featureId}/docs`
 3. Expand the phase into the expected artifact filenames unless explicit `--artifact` values were provided
-4. Invoke `uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance --governance-repo {governance_repo} --control-repo {control_repo} --feature-id {feature_id} --phase {phase}` or the equivalent wrapper entrypoint
+4. Invoke `python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance --governance-repo {governance_repo} --control-repo {control_repo} --feature-id {feature_id} --phase {phase}` or the equivalent wrapper entrypoint
 5. Let the CLI copy all existing non-empty files for those artifacts into `governance_docs_path`
 6. Do not create governance files or directories directly with tool calls or patches; the publish CLI performs that copy
 7. Return `published_files`, `copied_from`, and `missing_artifacts`
@@ -23,7 +23,7 @@ Reviewed planning artifacts that already exist in the control repo docs path are
 ## Command Shape
 
 ```bash
-uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py publish-to-governance \
   --governance-repo {governance_repo} \
   --control-repo {control_repo} \
   --feature-id {feature_id} \

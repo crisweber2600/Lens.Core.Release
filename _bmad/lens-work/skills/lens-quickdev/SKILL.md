@@ -41,7 +41,7 @@ Resolve feature context before creating evidence or inspecting source code.
 3. Read canonical feature state with the sanctioned helper:
 
 ```bash
-uv run --script lens.core/_bmad/lens-work/skills/lens-feature-yaml/scripts/feature-yaml-ops.py read \
+python lens.core/_bmad/lens-work/skills/lens-feature-yaml/scripts/feature-yaml-ops.py read \
 	--governance-repo {governance_repo} \
 	--feature-id {feature_id}
 ```
@@ -154,7 +154,7 @@ Resolve branch policy before invoking the delegate.
 4. If the target repo is not on an active in-progress feature branch, prepare a working branch through Lens git orchestration:
 
 ```bash
-uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py prepare-dev-branch \
+python lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py prepare-dev-branch \
 	--repo {target_repo_path} \
 	--governance-repo {governance_repo} \
 	--feature-id {feature_id} \
@@ -165,7 +165,7 @@ uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/
 5. When a working branch is used, create or reuse the PR through Lens git orchestration after implementation creates a non-empty commit:
 
 ```bash
-uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py create-pr \
+python lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py create-pr \
 	--repo {target_repo_path} \
 	--governance-repo {governance_repo} \
 	--head {working_branch} \

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
 # ///
@@ -9,9 +9,9 @@ Inspects the three standard Lens repos (control, governance, target) for uncommi
 or unpushed changes. Exits 0 when all repos are clean, 1 when any repo is dirty.
 
 Usage (from workspace root):
-    uv run lens.core/_bmad/lens-work/scripts/bmad-lens-postflight.py
-    uv run lens.core/_bmad/lens-work/scripts/bmad-lens-postflight.py --format json
-    uv run lens.core/_bmad/lens-work/scripts/bmad-lens-postflight.py --target-repo path/to/repo
+    python lens.core/_bmad/lens-work/scripts/bmad-lens-postflight.py
+    python lens.core/_bmad/lens-work/scripts/bmad-lens-postflight.py --format json
+    python lens.core/_bmad/lens-work/scripts/bmad-lens-postflight.py --target-repo path/to/repo
 
 Options:
     --workspace-root PATH   Explicit workspace root; auto-detected from cwd if omitted.

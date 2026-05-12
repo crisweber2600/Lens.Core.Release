@@ -84,12 +84,12 @@ No `add-entry` calls are made and no governance commit is attempted. If the pre/
 
 ## Script Subcommands
 
-Run script commands with `uv run --script` from the source repo root.
+Run script commands with `python` from the source repo root.
 
 ### scan
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py scan \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py scan \
   --inventory-path {inventory_path} \
   --target-root {target_root} \
   --json
@@ -100,7 +100,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/sc
 ### add-entry
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py add-entry \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py add-entry \
   --inventory-path {inventory_path} \
   --name {repo_name} \
   --remote-url {remote_url} \
@@ -113,7 +113,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/sc
 ### validate
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py validate \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py validate \
   --inventory-path {inventory_path} \
   --json
 ```
@@ -169,6 +169,6 @@ No empty commit is allowed on a no-op run. The commit message must be exactly `[
 Run from the target source repo root:
 
 ```bash
-uv run --with pytest pytest {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/tests/ -q
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py --help
+python -m pytest {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/tests/ -q
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-discover/scripts/discover-ops.py --help
 ```

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import re
 from pathlib import Path
 
@@ -29,7 +30,7 @@ FINALIZEPLAN_SKILL = MODULE_ROOT / "skills" / "lens-finalizeplan" / "SKILL.md"
 CORE_BUGFIX_SKILL = MODULE_ROOT / "skills" / "bmad-lens-core-bugfix" / "SKILL.md"
 
 LIGHT_PREFLIGHT_SCRIPT_PATH = "lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
-STANDARD_PREFLIGHT = f"uv run --script {LIGHT_PREFLIGHT_SCRIPT_PATH}"
+STANDARD_PREFLIGHT = f"python {LIGHT_PREFLIGHT_SCRIPT_PATH}"
 LEGACY_PREFLIGHT_SCRIPT_PATTERN = r"_bmad/lens-work/skills/lens-preflight/scripts/light-preflight\.py"
 LEGACY_PREFLIGHT_PATTERNS = (
     rf"(^|\s)uv\s+run\s+{LEGACY_PREFLIGHT_SCRIPT_PATTERN}(\s|$)",
@@ -49,6 +50,25 @@ def _load_module(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_builtin_yaml_safe_dump_supports_stream_writes():
+    data = {"phase_order": ["preplan", "businessplan"]}
+    expected = "phase_order:\n  - preplan\n  - businessplan\n"
+    assert yaml.safe_dump(data) == expected
+    assert yaml.dump(data) == expected
+
+    stream = io.StringIO()
+    result = yaml.safe_dump({"repositories": [{"name": "repo", "enabled": True}]}, stream)
+    assert result is None
+    assert yaml.safe_load(stream.getvalue()) == {
+        "repositories": [{"name": "repo", "enabled": True}]
+    }
+
+    stream = io.StringIO()
+    result = yaml.dump(data, stream=stream)
+    assert result is None
+    assert stream.getvalue() == expected
 
 
 def _prompt_caller(prompt: Path) -> str:

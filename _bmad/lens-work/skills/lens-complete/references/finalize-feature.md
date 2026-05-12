@@ -46,7 +46,7 @@ Only proceed on explicit `yes`.
 Run the finalize operation:
 
 ```bash
-uv run --script ./scripts/complete-ops.py finalize \
+python ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {featureId} \
   --control-repo {control_repo} \
@@ -56,7 +56,7 @@ uv run --script ./scripts/complete-ops.py finalize \
 For dry-run preview (show what would change without writing):
 
 ```bash
-uv run --script ./scripts/complete-ops.py finalize \
+python ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {featureId} \
   --control-repo {control_repo} \
@@ -155,7 +155,7 @@ If finalize fails midway (e.g., disk error after writing feature.yaml but before
 
 ```bash
 # Manual index update if script failed:
-uv run --script ./scripts/complete-ops.py finalize \
+python ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {featureId} \
   --control-repo {control_repo} \

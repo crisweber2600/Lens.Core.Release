@@ -96,7 +96,7 @@ Load `{governance_repo}/users/{username}/user-profile.md` for user defaults. Loa
 
 ```bash
 # Initialize a new feature (validates + writes files + returns manual follow-up commands)
-uv run scripts/init-feature-ops.py create \
+python scripts/init-feature-ops.py create \
   --governance-repo /path/to/gov-repo \
   --feature-id platform-identity-auth-refresh \
   --domain platform \
@@ -106,7 +106,7 @@ uv run scripts/init-feature-ops.py create \
   --username cweber
 
 # Initialize a new feature and push governance artifacts automatically
-uv run scripts/init-feature-ops.py create \
+python scripts/init-feature-ops.py create \
   --governance-repo /path/to/gov-repo \
   --feature-id platform-identity-auth-refresh \
   --domain platform \
@@ -117,7 +117,7 @@ uv run scripts/init-feature-ops.py create \
   --execute-governance-git
 
 # With separate control repo
-uv run scripts/init-feature-ops.py create \
+python scripts/init-feature-ops.py create \
   --governance-repo /path/to/gov-repo \
   --control-repo /path/to/src-repo \
   --feature-id commerce-payments-payment-gateway \
@@ -128,7 +128,7 @@ uv run scripts/init-feature-ops.py create \
   --username cweber
 
 # Dry run — prints planned operations without writing anything
-uv run scripts/init-feature-ops.py create \
+python scripts/init-feature-ops.py create \
   --governance-repo /path/to/gov-repo \
   --feature-id platform-identity-auth-refresh \
   --domain platform \
@@ -139,18 +139,18 @@ uv run scripts/init-feature-ops.py create \
   --dry-run
 
 # Fetch cross-feature context (summaries for same-domain, full docs for depends_on)
-uv run scripts/init-feature-ops.py fetch-context \
+python scripts/init-feature-ops.py fetch-context \
   --governance-repo /path/to/gov-repo \
   --feature-id platform-identity-auth-refresh
 
 # Fetch full-depth context
-uv run scripts/init-feature-ops.py fetch-context \
+python scripts/init-feature-ops.py fetch-context \
   --governance-repo /path/to/gov-repo \
   --feature-id platform-identity-auth-refresh \
   --depth full
 
 # Create a new domain (governance marker + constitution + optional TargetProjects scaffold)
-uv run scripts/init-feature-ops.py create-domain \
+python scripts/init-feature-ops.py create-domain \
   --governance-repo /path/to/gov-repo \
   --domain platform \
   --name "Platform" \
@@ -160,7 +160,7 @@ uv run scripts/init-feature-ops.py create-domain \
   --personal-folder /path/to/.lens/personal
 
 # Create a new domain and push governance artifacts automatically
-uv run scripts/init-feature-ops.py create-domain \
+python scripts/init-feature-ops.py create-domain \
   --governance-repo /path/to/gov-repo \
   --domain platform \
   --name "Platform" \
@@ -169,7 +169,7 @@ uv run scripts/init-feature-ops.py create-domain \
   --execute-governance-git
 
 # Create a new service (service + domain markers + constitutions + optional TargetProjects scaffold)
-uv run scripts/init-feature-ops.py create-service \
+python scripts/init-feature-ops.py create-service \
   --governance-repo /path/to/gov-repo \
   --domain platform \
   --service identity \
@@ -180,7 +180,7 @@ uv run scripts/init-feature-ops.py create-service \
   --personal-folder /path/to/.lens/personal
 
 # Create a new service and push governance artifacts automatically
-uv run scripts/init-feature-ops.py create-service \
+python scripts/init-feature-ops.py create-service \
   --governance-repo /path/to/gov-repo \
   --domain platform \
   --service identity \
@@ -190,7 +190,7 @@ uv run scripts/init-feature-ops.py create-service \
   --execute-governance-git
 
 # Read the active domain/service context (for non-feature-branch commands)
-uv run scripts/init-feature-ops.py read-context \
+python scripts/init-feature-ops.py read-context \
   --personal-folder /path/to/.lens/personal
 ```
 

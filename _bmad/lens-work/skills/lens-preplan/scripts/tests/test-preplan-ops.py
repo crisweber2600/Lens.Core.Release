@@ -42,7 +42,7 @@ def section(text: str, heading: str) -> str:
 
 def test_stub_preflight_then_release_prompt():
     text = read_text(STUB_PROMPT)
-    preflight = "uv run --script lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
+    preflight = "python lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
     release_prompt = "_bmad/lens-work/prompts/lens-preplan.prompt.md"
 
     assert preflight in text
@@ -100,7 +100,7 @@ def test_review_ready_delegates_to_shared_validator():
     assert "validate-phase-artifacts.py --phase preplan --contract review-ready" in text
     assert "--lifecycle-path {lifecycle_contract}" in text
     assert "--docs-root {docs_path}" in text
-    assert "uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-phase-artifacts.py" in text
+    assert "python _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-phase-artifacts.py" in text
     assert "--phase preplan" in text
     assert "--contract review-ready" in text
     assert "--lifecycle-path" in text

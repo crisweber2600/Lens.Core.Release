@@ -168,7 +168,10 @@ class TestFinalizePlanContract:
         content = SKILL_PATH.read_text(encoding="utf-8")
         step_two = section_between(content, "### Step 2 - plan-pr-readiness", "### Step 3")
 
-        assert "uv run --script" in step_two
+        assert (
+            "python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py"
+            in step_two
+        )
         assert "git-orchestration-ops.py" in step_two
         assert "merge-plan" in step_two
         assert "--strategy pr" in step_two
@@ -180,7 +183,10 @@ class TestFinalizePlanContract:
         content = SKILL_PATH.read_text(encoding="utf-8")
         step_three = section_between(content, "### Step 3 - downstream-bundle-and-final-pr", "## Output Artifacts")
 
-        assert "uv run --script" in step_three
+        assert (
+            "python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py"
+            in step_three
+        )
         assert "git-orchestration-ops.py" in step_three
         assert "create-pr" in step_three
         assert "--base {featureId}-dev" in step_three
