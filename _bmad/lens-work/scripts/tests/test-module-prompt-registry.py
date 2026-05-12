@@ -7,7 +7,7 @@
 
 Run:
     cd TargetProjects/lens-dev/new-codebase/lens.core.src
-    uv run --with pytest --with pyyaml pytest _bmad/lens-work/scripts/tests/test-module-prompt-registry.py -q
+    python -m pytest _bmad/lens-work/scripts/tests/test-module-prompt-registry.py -q
 """
 
 from __future__ import annotations

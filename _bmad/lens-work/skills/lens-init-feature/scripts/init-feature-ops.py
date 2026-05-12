@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.12"
 # dependencies = ["pyyaml>=6.0"]
@@ -1119,12 +1119,12 @@ def cmd_create(args: argparse.Namespace) -> dict:
     if control_repo:
         remaining_commands = [
             (
-                f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/"
+                f"python {{project-root}}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/"
                 f"scripts/git-orchestration-ops.py create-feature-branches "
                 f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} --feature-id {shlex.quote(feature_id)}"
             ),
             (
-                f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-switch/"
+                f"python {{project-root}}/lens.core/_bmad/lens-work/skills/lens-switch/"
                 f"scripts/switch-ops.py switch "
                 f"--governance-repo {shlex.quote(governance_repo)} --feature-id {shlex.quote(feature_id)} --control-repo {shlex.quote(control_repo)}"
             ),

@@ -34,13 +34,13 @@ def test_public_wrappers_use_normalized_module_relative_paths():
         # Extract just the bash block(s) to avoid false-positives on the delegate path.
         bash_blocks = re.findall(r"```bash\n(.*?)```", text, re.DOTALL)
         for block in bash_blocks:
-            assert "uv run _bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py" not in block, (
+            assert "python _bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py" not in block, (
                 f"{prompt.name} preflight command still uses legacy _bmad root-relative path"
             )
 
 
 def test_public_wrappers_use_standard_preflight_command():
-    expected = "uv run --script lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
+    expected = "python lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
     for prompt in sorted(GITHUB_PROMPTS.glob("lens-*.prompt.md")):
         if prompt.name in NO_PREFLIGHT_PROMPTS:
             continue

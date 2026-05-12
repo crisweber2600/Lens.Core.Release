@@ -10,7 +10,7 @@ Use this prompt as the entry controller for `/lens-switch`. Do not begin by read
 
 Before reading config or invoking `switch-ops.py`:
 
-1. Check whether this `/lens-switch` invocation already includes a successful run of `uv run ./lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py` from the workspace root.
+1. Check whether this `/lens-switch` invocation already includes a successful run of `python ./lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py` from the workspace root.
 2. If not, run that command now from the workspace root.
 3. If that command exits non-zero, stop and surface the failure.
 4. Do not resolve config paths or execute `switch-ops.py` until the shared prompt-start sync has succeeded.
@@ -40,7 +40,7 @@ Before reading config or invoking `switch-ops.py`:
 - If the user supplied an explicit feature id, run:
 
 ```bash
-uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
+python {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
    switch \
    --governance-repo {governance_repo} \
    --feature-id {feature_id} \
@@ -51,7 +51,7 @@ uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-s
 - Otherwise run:
 
 ```bash
-uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
+python {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
    list \
    --governance-repo {governance_repo}
 ```

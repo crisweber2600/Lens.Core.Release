@@ -7,7 +7,7 @@
 
 Run:
     cd TargetProjects/lens-dev/new-codebase/lens.core.src
-    uv run --with pytest pytest _bmad/lens-work/skills/lens-techplan/scripts/tests/test-techplan-ops.py -q
+    python -m pytest _bmad/lens-work/skills/lens-techplan/scripts/tests/test-techplan-ops.py -q
 """
 
 from pathlib import Path
@@ -57,7 +57,7 @@ def test_stub_exists():
 def test_stub_preflight_then_release_prompt():
     """Stub must run preflight before loading the release prompt, and must stop on failure."""
     text = read_text(STUB_PROMPT)
-    preflight = "uv run --script lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
+    preflight = "python lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
     release = "_bmad/lens-work/prompts/lens-techplan.prompt.md"
     assert preflight in text, f"Stub missing preflight command: {preflight!r}"
     assert release in text, f"Stub missing release prompt reference: {release!r}"
@@ -299,4 +299,3 @@ def test_pr6_clean_room_no_old_codebase_prose():
         assert para not in new_text, (
             f"Clean-room violation: old-codebase paragraph reproduced verbatim in new skill:\n{para[:120]}..."
         )
-

@@ -184,7 +184,7 @@ FEATURE = {
 
 def test_stub_preflight_then_release_prompt():
     text = read_text(STUB_PROMPT)
-    preflight = "uv run --script lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
+    preflight = "python lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py"
     release = "_bmad/lens-work/prompts/lens-switch.prompt.md"
     assert preflight in text
     assert release in text
@@ -555,7 +555,7 @@ def test_skill_documents_contracts_and_focused_command():
     assert "target_repo_state" in text
     assert "context_paths" in text
     assert "branch_switched" in text
-    assert "uv run --with pytest _bmad/lens-work/skills/lens-switch/scripts/tests/test-switch-ops.py -q" in text
+    assert "python -m pytest _bmad/lens-work/skills/lens-switch/scripts/tests/test-switch-ops.py -q" in text
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@
 branch-prep.py — Thin entry-point wrapper for branch_prep.py.
 
 All implementation lives in branch_prep.py (underscore form).  This hyphenated
-alias exists so the script can be invoked via ``uv run --script branch-prep.py``
+alias exists so the script can be invoked via ``python branch-prep.py``
 from the command line.
 """
 

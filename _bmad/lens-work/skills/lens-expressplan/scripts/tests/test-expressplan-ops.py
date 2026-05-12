@@ -7,7 +7,7 @@
 
 Run:
     cd TargetProjects/lens-dev/new-codebase/lens.core.src
-    uv run --with pytest --with pyyaml pytest _bmad/lens-work/skills/lens-expressplan/scripts/tests/test-expressplan-ops.py -q
+    python -m pytest _bmad/lens-work/skills/lens-expressplan/scripts/tests/test-expressplan-ops.py -q
 """
 
 from __future__ import annotations

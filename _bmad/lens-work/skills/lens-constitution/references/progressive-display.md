@@ -69,7 +69,7 @@ Both default to `false` unless a constitution explicitly sets `true`. Once set `
 ## Script Usage
 
 ```bash
-uv run scripts/constitution-ops.py progressive-display \
+python scripts/constitution-ops.py progressive-display \
   --governance-repo /path/to/governance-repo \
   --domain platform \
   --service auth \
@@ -95,6 +95,6 @@ Frame rules as guidance, not gatekeeping:
 > Gate mode: informational (failures won't block, but will be noted)
 > Additional reviewers: security-team
 >
-> → Full constitution: `uv run constitution-ops.py resolve --domain platform --service auth`
+> → Full constitution: `python constitution-ops.py resolve --domain platform --service auth`
 
 Always offer the full resolution command if the user wants more detail.

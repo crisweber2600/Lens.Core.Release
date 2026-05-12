@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --script
+#!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
 # dependencies = ["PyYAML>=6.0", "pytest>=8.0"]
@@ -1219,7 +1219,7 @@ class TestCLIIntegration:
     def test_create_feature_branches_dry_run(self, repo):
         write_feature_yaml(repo, "cli-test-feat")
         proc = subprocess.run(
-            ["uv", "run", "--script", self._script(),
+            [sys.executable, self._script(),
              "create-feature-branches",
              "--governance-repo", str(repo),
              "--feature-id", "cli-test-feat",
@@ -1233,7 +1233,7 @@ class TestCLIIntegration:
 
     def test_invalid_feature_id_exit_1(self, repo):
         proc = subprocess.run(
-            ["uv", "run", "--script", self._script(),
+            [sys.executable, self._script(),
              "create-feature-branches",
              "--governance-repo", str(repo),
              "--feature-id", "Bad/Id"],
@@ -1246,7 +1246,7 @@ class TestCLIIntegration:
     def test_create_dev_branch_dry_run(self, repo):
         make_branch(repo, "cli-dev-feat")
         proc = subprocess.run(
-            ["uv", "run", "--script", self._script(),
+            [sys.executable, self._script(),
              "create-dev-branch",
              "--governance-repo", str(repo),
              "--feature-id", "cli-dev-feat",
@@ -1260,7 +1260,7 @@ class TestCLIIntegration:
 
     def test_prepare_dev_branch_dry_run(self, repo):
         proc = subprocess.run(
-            ["uv", "run", "--script", self._script(),
+            [sys.executable, self._script(),
              "prepare-dev-branch",
              "--repo", str(repo),
              "--feature-id", "cli-feature",
@@ -1274,7 +1274,7 @@ class TestCLIIntegration:
 
     def test_prepare_dev_branch_dry_run_with_feature_slug(self, repo):
         proc = subprocess.run(
-            ["uv", "run", "--script", self._script(),
+            [sys.executable, self._script(),
              "prepare-dev-branch",
              "--repo", str(repo),
              "--feature-id", "platform-identity-cli-feature",

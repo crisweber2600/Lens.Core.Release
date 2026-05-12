@@ -20,7 +20,7 @@ This skill registers the `lens` module into the host BMAD configuration. Run it 
 Run the config merge script to register the lens module in the host BMAD configuration:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/lens-work-setup/scripts/merge-config.py --module-yaml {project-root}/lens.core/_bmad/lens-work/lens-work-setup/assets/module.yaml --target-config {project-root}/lens.core/_bmad/_config/manifest.yaml
+python {project-root}/lens.core/_bmad/lens-work/lens-work-setup/scripts/merge-config.py --module-yaml {project-root}/lens.core/_bmad/lens-work/lens-work-setup/assets/module.yaml --target-config {project-root}/lens.core/_bmad/_config/manifest.yaml
 ```
 
 This uses the **anti-zombie pattern**: removes any existing `lens` section first, then writes the current values. This ensures clean upgrades without leftover stale entries.
@@ -30,7 +30,7 @@ This uses the **anti-zombie pattern**: removes any existing `lens` section first
 Run the help CSV merge script to register lens capabilities in the host help system:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/lens-work-setup/scripts/merge-help-csv.py --module-csv {project-root}/lens.core/_bmad/lens-work/lens-work-setup/assets/module-help.csv --target-csv {project-root}/lens.core/_bmad/_config/bmad-help.csv
+python {project-root}/lens.core/_bmad/lens-work/lens-work-setup/scripts/merge-help-csv.py --module-csv {project-root}/lens.core/_bmad/lens-work/lens-work-setup/assets/module-help.csv --target-csv {project-root}/lens.core/_bmad/_config/bmad-help.csv
 ```
 
 This also uses the anti-zombie pattern: removes all existing `Lens` rows, then appends the current rows.
@@ -48,7 +48,7 @@ After merging, verify the installation:
 If upgrading from a previous version, run the cleanup script to remove legacy artifacts:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/lens-work-setup/scripts/cleanup-legacy.py --module-dir {project-root}/lens.core/_bmad/lens-work
+python {project-root}/lens.core/_bmad/lens-work/lens-work-setup/scripts/cleanup-legacy.py --module-dir {project-root}/lens.core/_bmad/lens-work
 ```
 
 This safely removes:

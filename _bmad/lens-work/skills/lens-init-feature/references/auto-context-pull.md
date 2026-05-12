@@ -45,7 +45,7 @@ After this flow completes, the caller has a structured context payload for the t
 > **not_yet_implemented**: The `fetch-context` and `read-context` subcommands documented below are not yet available in `init-feature-ops.py`. The current implementation only exposes `create-domain` and `create-service`. These commands will be added during the lens-dev-new-codebase-new-feature dev phase. Do not attempt to run them until that phase is complete.
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
   fetch-context \
   --governance-repo {governance_repo} \
   --feature-id {feature_id}
@@ -54,7 +54,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-init-featur
 For full-depth context:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
   fetch-context \
   --governance-repo {governance_repo} \
   --feature-id {feature_id} \
@@ -66,7 +66,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-init-featur
 When no active feature branch is available, callers can read the local domain/service pointer from the personal context file:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
   read-context \
   --personal-folder {personal_output_folder}
 ```

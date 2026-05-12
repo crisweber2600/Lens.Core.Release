@@ -17,7 +17,7 @@ Feature list always reads from `feature-index.yaml` at the governance repo root.
 Run the list operation:
 
 ```bash
-uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
+python {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
   list \
   --governance-repo {governance_repo}
 ```
@@ -26,13 +26,13 @@ Optional status filter (default: all non-archived features):
 
 ```bash
 # Show all features including archived
-uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
+python {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
   list \
   --governance-repo {governance_repo} \
   --status-filter all
 
 # Show only archived/completed items
-uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
+python {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-switch/scripts/switch-ops.py \
   list \
   --governance-repo {governance_repo} \
   --status-filter archived

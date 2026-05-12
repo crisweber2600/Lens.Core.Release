@@ -60,7 +60,7 @@ If any field is missing, ask only for missing fields and stop until complete.
 3. Create bug intake artifact:
 
 ```bash
-uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py create-bug \
+python lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py create-bug \
   --title "{title}" \
   --description "{description}\n\nRepro Steps:\n{repro_steps}\n\nExpected:\n{expected}\n\nActual:\n{actual}" \
    --source "lens-core-bugfix" \
@@ -87,7 +87,7 @@ Actual: {actual}
 Required workflow in target project:
 1) Prepare the working branch by executing this standard Lens git operation from the workspace root:
     ```bash
-    uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py prepare-dev-branch \
+    python lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py prepare-dev-branch \
        --repo {target_project} \
        --governance-repo {governance_repo} \
        --feature-id {feature_id} \
@@ -124,7 +124,7 @@ STOP HERE. Do not push. Do not create a PR. Do not offer to push or create a PR.
    - Run `git rev-parse --short HEAD` and capture the result as `commit hash`.
    - Re-run the standard Lens push command from the workspace root and verify the branch is pushed:
      ```bash
-     uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py push \
+     python lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py push \
         --repo {target_project} \
         --governance-repo {governance_repo} \
         --branch {working_branch}
@@ -134,7 +134,7 @@ STOP HERE. Do not push. Do not create a PR. Do not offer to push or create a PR.
    - Verify governance and control repos are clean for changes introduced by this flow after required pushes complete.
    - Run the idempotent PR creation command from the workspace root, capture `pr_url`, and include it as `PR URL`. The command reuses an existing open PR when present:
      ```bash
-     uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py create-pr \
+     python lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py create-pr \
        --repo {target_project} \
        --governance-repo {governance_repo} \
        --head {working_branch} \
@@ -154,14 +154,14 @@ STOP HERE. Do not push. Do not create a PR. Do not offer to push or create a PR.
    - If `pr_url` is empty after both attempts, stop and surface `pr_creation_failed`.
    - Run `record-quickdev-pr` with `bug_slug` and the final `pr_url`, capture the returned `path`, and use it as `bug_artifact_path`:
      ```bash
-     uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py record-quickdev-pr \
+     python lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py record-quickdev-pr \
        --governance-repo {governance_repo} \
        --slug {bug_slug} \
        --pr-url "{pr_url}"
      ```
    - Run `close-quickdev-bug` with `bug_slug`, a concise change summary, and validation summary. Capture the returned `path` as the final `bug_artifact_path`, and verify it points under `bugs/Fixed/`:
      ```bash
-     uv run --script lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py close-quickdev-bug \
+     python lens.core/_bmad/lens-work/scripts/bug-reporter-ops.py close-quickdev-bug \
        --governance-repo {governance_repo} \
        --slug {bug_slug} \
        --summary "{concise_change_summary}" \

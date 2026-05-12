@@ -14,7 +14,7 @@ Use this prompt as the entry controller for `/lens-complete`. It must delegate l
 
 Before reading config or invoking `complete-ops.py`:
 
-1. Check whether this invocation already includes a successful run of `uv run ./lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py` from the workspace root.
+1. Check whether this invocation already includes a successful run of `python ./lens.core/_bmad/lens-work/skills/lens-preflight/scripts/light-preflight.py` from the workspace root.
 2. If not, run that command now from the workspace root.
 3. If that command exits non-zero, stop and surface the failure.
 4. Do not resolve config paths, read governance state, or execute completion operations until the shared prompt-start sync has succeeded.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -13,7 +14,7 @@ LIFECYCLE = Path(__file__).parent.parent.parent / "lifecycle.yaml"
 
 def _run(*args: str):
     return subprocess.run(
-        ["uv", "run", "--script", str(SCRIPT), *args],
+        [sys.executable, str(SCRIPT), *args],
         capture_output=True,
         text=True,
     )

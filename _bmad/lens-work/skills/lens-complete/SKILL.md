@@ -96,7 +96,7 @@ Failure shape when retrospective exists but is not approved:
 Invocation:
 
 ```bash
-uv run ./scripts/complete-ops.py check-preconditions \
+python ./scripts/complete-ops.py check-preconditions \
   --governance-repo {governance_repo} \
   --feature-id {feature_id}
 ```
@@ -157,18 +157,18 @@ Execute return shape:
 Invocations:
 
 ```bash
-uv run ./scripts/complete-ops.py finalize \
+python ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {feature_id} \
   --dry-run
 
-uv run ./scripts/complete-ops.py finalize \
+python ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {feature_id} \
   --confirm
 
 # With control-repo merge ({featureId}-dev -> main):
-uv run ./scripts/complete-ops.py finalize \
+python ./scripts/complete-ops.py finalize \
   --governance-repo {governance_repo} \
   --feature-id {feature_id} \
   --control-repo {project-root} \
@@ -200,7 +200,7 @@ Return shape:
 Invocation:
 
 ```bash
-uv run ./scripts/complete-ops.py archive-status \
+python ./scripts/complete-ops.py archive-status \
   --governance-repo {governance_repo} \
   --feature-id {feature_id}
 ```
@@ -266,7 +266,7 @@ The tests in `scripts/tests/test-complete-ops.py` define the executable regressi
 Focused validation for the scaffold:
 
 ```bash
-uv run --with pytest pytest {project-root}/lens.core/_bmad/lens-work/skills/lens-complete/scripts/tests/test-complete-ops.py -q
+python -m pytest {project-root}/lens.core/_bmad/lens-work/skills/lens-complete/scripts/tests/test-complete-ops.py -q
 ```
 
 ## References

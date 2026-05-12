@@ -29,12 +29,55 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install focused test dependencies
-        run: python -m pip install "pytest==9.0.3" "PyYAML==6.0.3"
-
       - name: Run recurring-regression gates
         run: |
-          python -m pytest \
-            _bmad/lens-work/scripts/tests/test-regression-gates.py \
-            _bmad/lens-work/scripts/tests/test-wrapper-path-precedence.py \
-            -q
+          python - <<'PY'
+          import importlib.util
+          import inspect
+          import tempfile
+          import traceback
+          from pathlib import Path
+
+          test_files = [
+              Path("_bmad/lens-work/scripts/tests/test-regression-gates.py"),
+              Path("_bmad/lens-work/scripts/tests/test-wrapper-path-precedence.py"),
+          ]
+          failures = []
+
+          for test_file in test_files:
+              spec = importlib.util.spec_from_file_location(test_file.stem.replace("-", "_"), test_file)
+              if spec is None or spec.loader is None:
+                  raise RuntimeError(f"Unable to load test module from {test_file}")
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+
+              for name, test in sorted(vars(module).items()):
+                  if not name.startswith("test_") or not callable(test):
+                      continue
+
+                  kwargs = {}
+                  tmpdirs = []
+                  for param_name in inspect.signature(test).parameters:
+                      if param_name != "tmp_path":
+                          raise RuntimeError(
+                              f"Unsupported fixture '{param_name}' for {test_file}:{name}. "
+                              "Only 'tmp_path' is supported."
+                          )
+                      tmpdir = tempfile.TemporaryDirectory()
+                      tmpdirs.append(tmpdir)
+                      kwargs[param_name] = Path(tmpdir.name)
+
+                  try:
+                      test(**kwargs)
+                      print(f"PASS {test_file}:{name}")
+                  except Exception as exc:
+                      failures.append((test_file, name, exc))
+                      print(f"FAIL {test_file}:{name}: {exc!r}")
+                      traceback.print_exc()
+                  finally:
+                      for tmpdir in tmpdirs:
+                          tmpdir.cleanup()
+
+          if failures:
+              raise SystemExit(1)
+          PY

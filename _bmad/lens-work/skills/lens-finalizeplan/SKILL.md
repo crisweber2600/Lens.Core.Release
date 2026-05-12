@@ -53,7 +53,7 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 6. Validate the predecessor phase gate and capture `predecessor_phase`:
    - `techplan-complete` or active `techplan` -> `predecessor_phase=techplan`.
    - `expressplan-complete` or active `expressplan` -> `predecessor_phase=expressplan`.
-   - For every accepted predecessor state, run `uv run {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase {predecessor_phase} --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json` and stop if it fails.
+   - For every accepted predecessor state, run `python {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py --phase {predecessor_phase} --contract review-ready --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml --docs-root {staged_docs_path} --json` and stop if it fails.
    - If phase wording is active `techplan` or active `expressplan`, continue only when the review-ready validation passes and the user is resuming a phase-complete handoff.
    - Otherwise stop with: "FinalizePlan requires TechPlan or ExpressPlan completion before it can begin."
 7. Load and enforce domain constitution before bundle generation:
@@ -97,7 +97,7 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 8. Publish reviewed upstream planning artifacts to the governance mirror through the CLI-backed boundary:
 
 ```bash
-uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
   publish-to-governance \
   --governance-repo {governance_repo} \
   --control-repo {control_repo} \
@@ -114,7 +114,7 @@ uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/sc
 1. Create or verify the planning PR from `{featureId}-plan` to `{featureId}` by executing this terminal command; do not narrate the operation or ask the user to create the PR:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
    merge-plan \
    --governance-repo {governance_repo} \
    --repo {control_repo} \
@@ -140,7 +140,7 @@ gh pr create --base {featureId} --head {featureId}-plan --title "[plan] {feature
    First run the track-specific FinalizePlan input gate. Flatten the `found_files` dict values into a single sorted list of relative file paths and use that list as `approved_input_documents`:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py \
+python {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py \
    --phase finalizeplan \
    --contract input-ready \
    --track {track} \
@@ -166,7 +166,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-
 3. Validate that bundle outputs exist in the resolved docs path and pass strict handoff metadata checks by executing:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py \
+python {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py \
    --phase finalizeplan \
    --contract phase-artifacts \
    --lifecycle-path {project-root}/lens.core/_bmad/lens-work/lifecycle.yaml \
@@ -180,7 +180,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-
 6. Open or verify the final PR from `{featureId}` to `{featureId}-dev` by executing this terminal command; do not narrate the operation or ask the user to create the PR:
 
 ```bash
-uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
+python {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
    create-pr \
    --governance-repo {governance_repo} \
    --repo {control_repo} \
