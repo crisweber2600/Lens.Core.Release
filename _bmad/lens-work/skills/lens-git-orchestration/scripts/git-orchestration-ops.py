@@ -777,6 +777,115 @@ class Runner:
 # Subcommands
 # ---------------------------------------------------------------------------
 
+def _gh_get_github_repo_slug(repo: str) -> str | None:
+    """Extract 'owner/repo' from the origin remote URL of *repo*.
+
+    Handles both HTTPS (https://github.com/owner/repo.git) and SSH
+    (git@github.com:owner/repo.git) remote URL formats.
+    Returns None when the remote is not a GitHub URL or cannot be resolved.
+    """
+    result = git(["remote", "get-url", "origin"], cwd=repo, check=False)
+    if result.returncode != 0:
+        return None
+    url = result.stdout.strip()
+    match = re.search(r"github\.com[/:]([^/]+/[^/]+?)(?:\.git)?$", url)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _ensure_delete_branch_on_merge(repo: str, *, dry_run: bool) -> dict[str, Any]:
+    """Verify and optionally enable delete_branch_on_merge on the GitHub repo for *repo*.
+
+    Called during prepare-dev-branch so that target repos always clean up merged
+    feature branches automatically, preventing the orphaned-branch problem that
+    occurs when lens-complete archives a feature whose target repo has this
+    setting disabled.
+
+    Returns a structured result dict with:
+    - status: 'pass', 'warn', 'dry_run', or 'skipped'
+    - delete_branch_on_merge: bool or None
+    - enabled: bool (True when this call enabled the setting)
+    - repo_slug: str or None
+    - detail: str
+    """
+    repo_slug = _gh_get_github_repo_slug(repo)
+    if not repo_slug:
+        return {
+            "status": "skipped",
+            "repo_slug": None,
+            "delete_branch_on_merge": None,
+            "enabled": False,
+            "detail": "Could not resolve GitHub repo slug from origin URL; skipping delete_branch_on_merge check.",
+        }
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "repo_slug": repo_slug,
+            "delete_branch_on_merge": None,
+            "enabled": False,
+            "detail": f"[dry-run] Would verify delete_branch_on_merge on {repo_slug}.",
+        }
+
+    check_result, check_error = _run_gh(
+        repo,
+        ["api", f"repos/{repo_slug}", "--jq", ".delete_branch_on_merge"],
+    )
+    if check_error or check_result is None or check_result.returncode != 0:
+        detail = (
+            (check_error or {}).get("detail")
+            or (check_result.stderr.strip() if check_result else "")
+            or "unknown error"
+        )
+        return {
+            "status": "warn",
+            "repo_slug": repo_slug,
+            "delete_branch_on_merge": None,
+            "enabled": False,
+            "detail": f"Could not verify delete_branch_on_merge for {repo_slug}: {detail}. Check manually.",
+        }
+
+    current_value = check_result.stdout.strip().lower()
+    if current_value == "true":
+        return {
+            "status": "pass",
+            "repo_slug": repo_slug,
+            "delete_branch_on_merge": True,
+            "enabled": False,
+            "detail": f"delete_branch_on_merge is already enabled on {repo_slug}.",
+        }
+
+    patch_result, patch_error = _run_gh(
+        repo,
+        ["api", f"repos/{repo_slug}", "-X", "PATCH", "-f", "delete_branch_on_merge=true"],
+    )
+    if patch_error or patch_result is None or patch_result.returncode != 0:
+        detail = (
+            (patch_error or {}).get("detail")
+            or (patch_result.stderr.strip() if patch_result else "")
+            or "unknown error"
+        )
+        return {
+            "status": "warn",
+            "repo_slug": repo_slug,
+            "delete_branch_on_merge": False,
+            "enabled": False,
+            "detail": (
+                f"delete_branch_on_merge was false on {repo_slug} and could not be enabled: {detail}. "
+                "Enable it manually via GitHub repo Settings → General → 'Automatically delete head branches'."
+            ),
+        }
+
+    return {
+        "status": "pass",
+        "repo_slug": repo_slug,
+        "delete_branch_on_merge": True,
+        "enabled": True,
+        "detail": f"Enabled delete_branch_on_merge on {repo_slug}.",
+    }
+
+
 def cmd_create_feature_branches(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     feature_id = args.feature_id
     governance_repo = args.governance_repo
@@ -1080,7 +1189,8 @@ def cmd_prepare_dev_branch(args: argparse.Namespace) -> tuple[dict[str, Any], in
         return {"error": "prepare_branch_failed", "detail": str(exc)}, 1
 
     if mode == "direct-default":
-        return {
+        dbm_check = _ensure_delete_branch_on_merge(repo, dry_run=args.dry_run)
+        result: dict[str, Any] = {
             "feature_id": feature_id,
             "feature_slug": feature_slug or feature_id,
             "mode": mode,
@@ -1091,8 +1201,12 @@ def cmd_prepare_dev_branch(args: argparse.Namespace) -> tuple[dict[str, Any], in
             "reused": True,
             "pushed": False,
             "requires_pr": False,
+            "delete_branch_on_merge_check": dbm_check,
             "dry_run": args.dry_run,
-        }, 0
+        }
+        if dbm_check.get("status") == "warn":
+            result.setdefault("warnings", []).append(dbm_check["detail"])
+        return result, 0
 
     working_branch = build_dev_branch_name(feature_id, mode, username, feature_slug=feature_slug)
     local_exists = branch_exists(repo, working_branch)
@@ -1121,7 +1235,8 @@ def cmd_prepare_dev_branch(args: argparse.Namespace) -> tuple[dict[str, Any], in
     except RuntimeError as exc:
         return {"error": "prepare_branch_failed", "detail": str(exc)}, 1
 
-    return {
+    dbm_check = _ensure_delete_branch_on_merge(repo, dry_run=args.dry_run)
+    final_result: dict[str, Any] = {
         "feature_id": feature_id,
         "feature_slug": feature_slug or feature_id,
         "mode": mode,
@@ -1133,8 +1248,12 @@ def cmd_prepare_dev_branch(args: argparse.Namespace) -> tuple[dict[str, Any], in
         "pushed": pushed,
         "requires_pr": True,
         "pr_base_branch": default_branch,
+        "delete_branch_on_merge_check": dbm_check,
         "dry_run": args.dry_run,
-    }, 0
+    }
+    if dbm_check.get("status") == "warn":
+        final_result.setdefault("warnings", []).append(dbm_check["detail"])
+    return final_result, 0
 
 
 def _run_gh(repo: str, args: list[str]) -> tuple[subprocess.CompletedProcess | None, dict[str, Any] | None]:
