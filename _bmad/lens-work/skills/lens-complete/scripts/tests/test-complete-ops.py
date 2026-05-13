@@ -763,3 +763,263 @@ def test_control_repo_cleanup_runs_for_already_merged_pr(
     assert ["git", "branch", "-d", "lens-dev-example-plan"] in calls
     assert ["git", "branch", "-d", "lens-dev-example"] in calls
     assert ["git", "branch", "-d", "lens-dev-example-dev"] in calls
+
+
+# ---------------------------------------------------------------------------
+# Orphaned branch hygiene check — check-preconditions --control-repo
+# ---------------------------------------------------------------------------
+
+def test_check_preconditions_warns_on_orphaned_control_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo warns when surviving feature branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        # fetch --prune: no-op
+        if "fetch" in cmd:
+            return R()
+        # rev-parse --verify refs/remotes/origin/... — simulate surviving branches
+        if "rev-parse" in cmd and any("refs/remotes/origin/" in a for a in cmd):
+            branch_ref = next(a for a in cmd if "refs/remotes/origin/" in a)
+            surviving = {
+                "refs/remotes/origin/lens-dev-test-feature",
+                "refs/remotes/origin/lens-dev-test-feature-dev",
+            }
+            return R(rc=0) if branch_ref in surviving else R(rc=1)
+        # branch --list: no local-only branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    # Should not fail — orphaned branches are advisory warnings
+    assert result["status"] in ("pass", "warn"), f"Expected pass or warn, got {result}"
+    assert "orphaned_control_repo_branches" in result.get("warnings", []), (
+        "Expected orphaned_control_repo_branches warning"
+    )
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None, "Expected orphaned_branches check in checks list"
+    assert orphan_check["status"] == "warn"
+    surviving = orphan_check.get("surviving_branches", [])
+    assert any("lens-dev-test-feature" in b for b in surviving)
+
+
+def test_check_preconditions_pass_no_orphaned_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo passes when no orphaned branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        if "fetch" in cmd:
+            return R()
+        if "rev-parse" in cmd:
+            return R(rc=1)  # no surviving remote branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")  # no local branches
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass", f"Expected pass, got {result}"
+    assert "orphaned_control_repo_branches" not in result.get("warnings", [])
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None
+    assert orphan_check["status"] == "pass"
+
+
+def test_check_preconditions_without_control_repo_skips_orphan_check(
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+) -> None:
+    """check-preconditions without --control-repo skips the orphaned branch check."""
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass"
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is None, "orphaned_branches check should not appear without --control-repo"
+
+
+# ---------------------------------------------------------------------------
+# Orphaned branch hygiene check — check-preconditions --control-repo
+# ---------------------------------------------------------------------------
+
+def test_check_preconditions_warns_on_orphaned_control_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo warns when surviving feature branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        # fetch --prune: no-op
+        if "fetch" in cmd:
+            return R()
+        # rev-parse --verify refs/remotes/origin/... — simulate surviving branches
+        if "rev-parse" in cmd and any("refs/remotes/origin/" in a for a in cmd):
+            branch_ref = next(a for a in cmd if "refs/remotes/origin/" in a)
+            surviving = {
+                "refs/remotes/origin/lens-dev-test-feature",
+                "refs/remotes/origin/lens-dev-test-feature-dev",
+            }
+            return R(rc=0) if branch_ref in surviving else R(rc=1)
+        # branch --list: no local-only branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    # Should not fail — orphaned branches are advisory warnings
+    assert result["status"] in ("pass", "warn"), f"Expected pass or warn, got {result}"
+    assert "orphaned_control_repo_branches" in result.get("warnings", []), (
+        "Expected orphaned_control_repo_branches warning"
+    )
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None, "Expected orphaned_branches check in checks list"
+    assert orphan_check["status"] == "warn"
+    surviving = orphan_check.get("surviving_branches", [])
+    assert any("lens-dev-test-feature" in b for b in surviving)
+
+
+def test_check_preconditions_pass_no_orphaned_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo passes when no orphaned branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        if "fetch" in cmd:
+            return R()
+        if "rev-parse" in cmd:
+            return R(rc=1)  # no surviving remote branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")  # no local branches
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass", f"Expected pass, got {result}"
+    assert "orphaned_control_repo_branches" not in result.get("warnings", [])
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None
+    assert orphan_check["status"] == "pass"
+
+
+def test_check_preconditions_without_control_repo_skips_orphan_check(
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+) -> None:
+    """check-preconditions without --control-repo skips the orphaned branch check."""
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass"
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is None, "orphaned_branches check should not appear without --control-repo"

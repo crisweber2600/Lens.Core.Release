@@ -294,6 +294,77 @@ def _check_retrospective(feature_dir: Path) -> dict[str, Any] | None:
     return None
 
 
+def _check_control_repo_orphaned_branches(
+    feature_id: str,
+    control_repo: Path,
+) -> dict[str, Any]:
+    """Scan the control repo remote for surviving {featureId}, {featureId}-plan,
+    and {featureId}-dev branches and surface them as warnings.
+
+    This check is advisory (not a blocker): callers should include its result in
+    the checks list and promote any surviving branches to the warnings list.
+    Returns a check dict with status 'pass' or 'warn'.
+    """
+    if not control_repo.is_dir():
+        return {
+            "name": "orphaned_branches",
+            "status": "warn",
+            "surviving_branches": [],
+            "message": (
+                f"Control repo path '{control_repo}' does not exist or is not a directory; "
+                "could not check for orphaned branches."
+            ),
+        }
+
+    cwd = str(control_repo)
+
+    def _git(*cmd_args: str) -> tuple[int, str, str]:
+        try:
+            r = subprocess.run(
+                ["git", *cmd_args], cwd=cwd, capture_output=True, text=True, timeout=30
+            )
+            return r.returncode, r.stdout.strip(), r.stderr.strip()
+        except FileNotFoundError:
+            return -1, "", "git not found on PATH"
+        except subprocess.TimeoutExpired:
+            return -1, "", "git command timed out"
+
+    # Refresh remote refs; ignore failure — this is a read-only advisory check
+    _git("fetch", "--prune", "origin")
+
+    expected_branches = [feature_id, f"{feature_id}-plan", f"{feature_id}-dev"]
+    surviving: list[str] = []
+
+    for branch in expected_branches:
+        # Check remote ref first
+        code, _, _ = _git("rev-parse", "--verify", f"refs/remotes/origin/{branch}")
+        if code == 0:
+            surviving.append(f"origin/{branch}")
+            continue
+        # Also check local branch
+        code_local, out_local, _ = _git("branch", "--list", branch)
+        if code_local == 0 and out_local.strip():
+            surviving.append(branch)
+
+    if not surviving:
+        return {
+            "name": "orphaned_branches",
+            "status": "pass",
+            "surviving_branches": [],
+            "message": f"No orphaned control-repo branches found for '{feature_id}'.",
+        }
+
+    return {
+        "name": "orphaned_branches",
+        "status": "warn",
+        "surviving_branches": surviving,
+        "message": (
+            f"Orphaned control-repo branches found for '{feature_id}': {surviving}. "
+            "Delete them manually or re-run finalize with --control-repo to trigger automated cleanup."
+        ),
+    }
+
+
 def _check_document_project(feature_dir: Path) -> dict[str, Any]:
     """Check for document-project output (advisory, not a blocker)."""
     # Common document-project output patterns
@@ -621,6 +692,15 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
     checks.append(doc_check)
     if doc_check["status"] == "warn":
         warnings.append("document_project_skipped")
+
+    # Orphaned control-repo branch check (advisory)
+    control_repo_arg = getattr(args, "control_repo", None)
+    if control_repo_arg:
+        control_repo_path = Path(control_repo_arg).expanduser().resolve()
+        orphan_check = _check_control_repo_orphaned_branches(feature_id, control_repo_path)
+        checks.append(orphan_check)
+        if orphan_check["status"] == "warn":
+            warnings.append("orphaned_control_repo_branches")
 
     # Aggregate result
     if blockers:
@@ -985,8 +1065,16 @@ def _build_parser() -> argparse.ArgumentParser:
     shared.add_argument("--workspace-root", dest="workspace_root", default=None)
 
     # check-preconditions
-    sub.add_parser("check-preconditions", parents=[shared],
-                   help="Validate a feature is ready to be finalized (read-only)")
+    p_chk = sub.add_parser("check-preconditions", parents=[shared],
+                           help="Validate a feature is ready to be finalized (read-only)")
+    p_chk.add_argument(
+        "--control-repo",
+        dest="control_repo",
+        default=None,
+        help="Path to the control repo. When provided, scans for orphaned "
+             "{featureId}, {featureId}-plan, and {featureId}-dev branches and "
+             "surfaces them as warnings.",
+    )
 
     # finalize
     p_fin = sub.add_parser("finalize", parents=[shared],

@@ -44,6 +44,7 @@ Inputs:
 - `--governance-repo <path>`: governance repo root.
 - `--feature-id <id>`: feature identifier.
 - `--dry-run`: optional; accepted for callers that always pass dry-run flags. No writes are performed either way.
+- `--control-repo <path>` *(optional)*: path to the control repo. When provided, scans for surviving `{featureId}`, `{featureId}-plan`, and `{featureId}-dev` branches on the remote and surfaces them as `orphaned_control_repo_branches` warnings. This check is advisory, not a blocker.
 
 Guards:
 
@@ -125,6 +126,8 @@ Operations:
 4. Write `summary.md` if absent, or update only the generated archive section if a managed section exists.
 5. If `--control-repo` is given, switch to `{featureId}-dev`, validate related branch ancestry, push it, create and merge a PR from `{featureId}-dev` to `main`, validate the dev branch reached `main`, then delete `{featureId}-plan`, `{featureId}`, and `{featureId}-dev` locally and on origin. An existing merged PR is treated as success. A merge or cleanup failure is non-fatal (warning only).
 6. Return all applied changes in structured JSON.
+
+> **3-branch topology requirement:** For any feature initialized with the standard Lens 3-branch control-repo topology (`{featureId}`, `{featureId}-plan`, `{featureId}-dev`), **always pass `--control-repo`** when invoking `finalize`. Without it, governance is archived but the control-repo branches are left orphaned. If `--control-repo` was omitted, run `check-preconditions --control-repo <path>` immediately after archiving to surface any surviving branches, then delete them manually.
 
 Dry-run return shape:
 
