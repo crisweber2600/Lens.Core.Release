@@ -106,12 +106,33 @@ updated_at: {ISO timestamp}
 
 When lifecycle-required businessplan artifacts are staged:
 
-1. **Adversarial review gate:** Run `lens-adversarial-review --phase businessplan --source phase-complete` using `phases.businessplan.completion_review` from `lifecycle.yaml`. Do not run during batch pass 1. In interactive mode and batch pass 2:
+1. **Commit authored artifacts:** Immediately after delegation returns, commit all authored artifacts that are present in `{staged_docs_path}` (any of `prd.md`, `ux-design.md`) to the `{featureId}-plan` branch before any session boundary can invalidate the working tree. Run from the workspace root:
+   ```bash
+   uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
+     --repo {control_repo} \
+     --governance-repo {governance_repo} \
+     --feature-id {feature_id} \
+     --files {authored_artifact_paths} \
+     --push \
+     --no-confirm
+   ```
+   If the command reports `nothing_to_commit`, the artifacts were already committed; continue. If it exits non-zero for any other reason, stop and surface the error.
+2. **Adversarial review gate:** Run `lens-adversarial-review --phase businessplan --source phase-complete` using `phases.businessplan.completion_review` from `lifecycle.yaml`. Do not run during batch pass 1. In interactive mode and batch pass 2:
    - Verdict `fail`: stop, do not update `feature.yaml`
    - Verdict `pass` or `pass-with-warnings`: apply the `lens-adversarial-review` Post-Review Command Contract to the command after the review, then continue
-2. **Phase transition:** Update `feature.yaml` phase to `businessplan-complete` via `lens-feature-yaml`
-3. **Defer governance publish:** Leave PRD, UX, and businessplan review report publication to TechPlan handoff unless user explicitly requests now
-4. **Report next action:** `/techplan` (or auto-advance per lifecycle.yaml)
+3. **Commit review artifact:** After review passes, commit `businessplan-adversarial-review.md` to the `{featureId}-plan` branch:
+   ```bash
+   uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
+     --repo {control_repo} \
+     --governance-repo {governance_repo} \
+     --feature-id {feature_id} \
+     --files {staged_docs_path}/businessplan-adversarial-review.md \
+     --push \
+     --no-confirm
+   ```
+4. **Phase transition:** Update `feature.yaml` phase to `businessplan-complete` via `lens-feature-yaml`
+5. **Defer governance publish:** Leave PRD, UX, and businessplan review report publication to TechPlan handoff unless user explicitly requests now
+6. **Report next action:** `/techplan` (or auto-advance per lifecycle.yaml)
 
 ## Integration Points
 
