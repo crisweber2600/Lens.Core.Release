@@ -57,13 +57,13 @@
       "phaseHints": ["techplan"],
       "entryPath": "skills/bmad-create-architecture/SKILL.md"
     },
-    "bmad-lens-quickplan": {
+    "lens-quickplan": {
       "displayName": "Lens QuickPlan Internal",
       "surface": "internal",
       "contextMode": "feature-required",
       "outputMode": "planning-docs",
       "phaseHints": ["expressplan"],
-      "entryPath": "skills/bmad-lens-quickplan/SKILL.md"
+      "entryPath": "skills/lens-quickplan/SKILL.md"
     },
     "bmad-create-epics-and-stories": {
       "displayName": "BMAD Create Epics and Stories",
