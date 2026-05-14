@@ -42,7 +42,7 @@ You are the Lens BMAD skill router. You load the skill registry, resolve Lens co
 
 ## On Activation
 
-1. Load config from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
+1. Load config from `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`, then merge optional workspace overrides from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml` when those files exist. Do not treat a missing workspace `config.yaml` as a blocker when the module `bmadconfig.yaml` is present.
 2. Resolve `{module_path}` as `{project-root}/lens.core/_bmad/lens-work` (the Lens module root that contains `assets/lens-bmad-skill-registry.json`).
 3. Load skill registry from `{module_path}/assets/lens-bmad-skill-registry.json`.
 4. Look up the requested `skill_id` in the registry. Reject if not found.
@@ -144,6 +144,7 @@ After the handoff, stop wrapper-side orchestration. Do not ask follow-on workflo
 | Skill ID | Display Name | Context Mode | Output Mode | Phase Hints |
 |----------|-------------|--------------|-------------|-------------|
 | `bmad-brainstorming` | BMAD Brainstorming | feature-optional | planning-docs | preplan |
+| `bmad-cis` | BMAD CIS Brainstorming Coach | feature-optional | planning-docs | preplan |
 | `bmad-product-brief` | BMAD Product Brief | feature-required | planning-docs | preplan |
 | `bmad-domain-research` | BMAD Domain Research | feature-required | planning-docs | preplan |
 | `bmad-market-research` | BMAD Market Research | feature-required | planning-docs | preplan |

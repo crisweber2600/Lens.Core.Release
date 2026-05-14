@@ -3,10 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["pyyaml>=6.0"]
 # ///
-"""Init feature operations (new-codebase implementation).
-
-This implementation currently exposes create-domain for the new-domain command.
-"""
+"""Init feature operations for Lens feature and container governance."""
 
 from __future__ import annotations
 
@@ -27,6 +24,8 @@ import yaml
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local changes"
 LIFECYCLE_PATH = Path(__file__).resolve().parents[3] / "lifecycle.yaml"
+CONTEXT_DOC_SUFFIXES = {".md", ".yaml", ".yml"}
+AMBIGUOUS_SERVICE_NAMES = {"api", "auth", "common", "core", "data", "identity"}
 
 
 @lru_cache(maxsize=1)
@@ -104,6 +103,132 @@ def unique_paths(paths: list[str]) -> list[str]:
             seen.add(path)
             ordered.append(path)
     return ordered
+
+
+def feature_entry_id(entry: dict) -> str:
+    return str(entry.get("featureId") or entry.get("id") or "").strip()
+
+
+def feature_dir_from_entry(governance_repo: str, entry: dict) -> Path:
+    return (
+        Path(governance_repo)
+        / "features"
+        / str(entry.get("domain") or "")
+        / str(entry.get("service") or "")
+        / feature_entry_id(entry)
+    )
+
+
+def collect_doc_files(root: Path) -> list[str]:
+    if not root.exists() or not root.is_dir():
+        return []
+    return [
+        str(path)
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and path.suffix.lower() in CONTEXT_DOC_SUFFIXES
+    ]
+
+
+def collect_feature_context_paths(governance_repo: str, entry: dict, depth: str) -> list[str]:
+    feature_dir = feature_dir_from_entry(governance_repo, entry)
+    summary = feature_dir / "summary.md"
+    if depth in {"summary", "summaries"}:
+        return [str(summary)] if summary.exists() else []
+
+    paths: list[str] = []
+    feature_yaml = feature_dir / "feature.yaml"
+    if feature_yaml.exists():
+        paths.append(str(feature_yaml))
+    paths.extend(collect_doc_files(feature_dir / "docs"))
+    return unique_paths(paths)
+
+
+def collect_service_context_paths(
+    governance_repo: str,
+    service_name: str,
+    exclude_feature_id: str,
+    domain: str | None = None,
+) -> list[str]:
+    features_root = Path(governance_repo) / "features"
+    if not features_root.exists():
+        return []
+
+    search_domains = [domain] if domain else [path.name for path in sorted(features_root.iterdir()) if path.is_dir()]
+    matches: list[str] = []
+    for domain_name in search_domains:
+        if not domain_name:
+            continue
+        service_dir = features_root / domain_name / service_name
+        if not service_dir.is_dir():
+            continue
+
+        service_yaml = service_dir / "service.yaml"
+        if service_yaml.exists():
+            matches.append(str(service_yaml))
+        matches.extend(collect_doc_files(service_dir / "docs"))
+
+        for summary_path in sorted(service_dir.glob("*/summary.md")):
+            if summary_path.parent.name != exclude_feature_id:
+                matches.append(str(summary_path))
+
+    return unique_paths(matches)
+
+
+def normalize_lookup_text(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return f" {normalized} " if normalized else ""
+
+
+def available_service_names(governance_repo: str, features: list[dict], domain: str | None = None) -> list[str]:
+    names: set[str] = set()
+    features_root = Path(governance_repo) / "features"
+
+    if features_root.exists():
+        pattern = f"{domain}/*/service.yaml" if domain else "*/*/service.yaml"
+        for service_yaml in sorted(features_root.glob(pattern)):
+            if service_yaml.is_file():
+                names.add(service_yaml.parent.name.lower())
+
+    for feature in features:
+        feature_domain = str(feature.get("domain") or "").strip().lower()
+        if domain and feature_domain != domain.lower():
+            continue
+        service_name = str(feature.get("service") or "").strip().lower()
+        if service_name:
+            names.add(service_name)
+
+    return sorted(names)
+
+
+def detect_service_refs_from_texts(texts: list[str], candidate_services: list[str]) -> list[str]:
+    haystacks = [normalize_lookup_text(text) for text in texts]
+    haystacks = [text for text in haystacks if text]
+    if not haystacks:
+        return []
+
+    detected: list[str] = []
+    for service_name in candidate_services:
+        service_key = service_name.lower()
+        needle = normalize_lookup_text(service_key)
+        if not needle:
+            continue
+
+        cue_matches = [
+            f" {service_key} service ",
+            f" service {service_key} ",
+            f" {service_key} svc ",
+            f" svc {service_key} ",
+            f" {service_key} api ",
+            f" api {service_key} ",
+        ]
+        has_cue_match = any(any(cue in haystack for cue in cue_matches) for haystack in haystacks)
+        has_bare_match = any(needle in haystack for haystack in haystacks)
+
+        if has_cue_match or (has_bare_match and service_key not in AMBIGUOUS_SERVICE_NAMES):
+            detected.append(service_name)
+
+    return unique_paths(detected)
 
 
 def is_same_path(first: str, second: str) -> bool:
@@ -989,6 +1114,23 @@ def _load_feature_index(gov_path: Path) -> dict:
     return data
 
 
+def load_existing_feature_index(gov_path: Path) -> tuple[dict, bool]:
+    index_path = gov_path / "feature-index.yaml"
+    if not index_path.exists():
+        return {"features": []}, False
+    return _load_feature_index(gov_path), True
+
+
+def feature_index_by_id(features: list[dict]) -> dict[str, dict]:
+    index: dict[str, dict] = {}
+    for feature in features:
+        for key in (feature.get("featureId"), feature.get("id")):
+            feature_id = str(key or "").strip()
+            if feature_id:
+                index[feature_id] = feature
+    return index
+
+
 def _feature_index_has_id(index_data: dict, feature_id: str) -> bool:
     for entry in index_data.get("features", []):
         if entry.get("featureId") == feature_id or entry.get("id") == feature_id:
@@ -1310,6 +1452,145 @@ def cmd_create(args: argparse.Namespace) -> dict:
     }
 
 
+def cmd_read_context(args: argparse.Namespace) -> dict:
+    context_path = Path(args.personal_folder) / "context.yaml"
+    if not context_path.exists():
+        return {
+            "status": "fail",
+            "error": "context_missing",
+            "path": str(context_path),
+        }
+
+    try:
+        data = yaml.safe_load(context_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        return {"status": "fail", "error": f"Failed to read context.yaml: {exc}", "path": str(context_path)}
+
+    return {
+        "status": "pass",
+        "domain": data.get("domain"),
+        "service": data.get("service"),
+        "updated_at": data.get("updated_at"),
+        "updated_by": data.get("updated_by"),
+        "path": str(context_path),
+    }
+
+
+def cmd_fetch_context(args: argparse.Namespace) -> dict:
+    gov_path = Path(args.governance_repo)
+    if not gov_path.is_dir():
+        return {"status": "fail", "error": f"Governance repo not found: {args.governance_repo}"}
+
+    try:
+        index_data, index_exists = load_existing_feature_index(gov_path)
+    except (OSError, yaml.YAMLError) as exc:
+        return {"status": "fail", "error": f"Failed to read feature-index.yaml: {exc}"}
+
+    if not index_exists:
+        return {"status": "fail", "error": "feature-index.yaml not found"}
+
+    features = index_data.get("features") or []
+    if not isinstance(features, list):
+        return {"status": "fail", "error": "feature-index.yaml features must be a list"}
+
+    index_by_id = feature_index_by_id(features)
+    target = index_by_id.get(args.feature_id)
+    if target is None:
+        return {"status": "fail", "error": f"Feature '{args.feature_id}' not found in feature-index.yaml"}
+
+    target_feature_dir = feature_dir_from_entry(str(gov_path), target)
+    target_feature_path = target_feature_dir / "feature.yaml"
+    if not target_feature_path.exists():
+        return {"status": "fail", "error": f"feature.yaml not found for '{args.feature_id}'"}
+
+    try:
+        feature_data = yaml.safe_load(target_feature_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        return {"status": "fail", "error": f"Failed to read feature.yaml: {exc}"}
+
+    depth = "summaries" if args.depth == "summary" else args.depth
+    target_domain = str(feature_data.get("domain") or target.get("domain") or "").strip().lower()
+    target_service = str(feature_data.get("service") or target.get("service") or "").strip().lower()
+    target_id = feature_entry_id(target)
+
+    dependencies = feature_data.get("dependencies") or {}
+    related_features = feature_data.get("related_features") or target.get("related_features") or {}
+    depends_on_ids = list(dependencies.get("depends_on") or related_features.get("depends_on") or [])
+    blocks_ids = list(dependencies.get("blocks") or related_features.get("blocks") or [])
+
+    related = [
+        feature
+        for feature in features
+        if str(feature.get("domain") or "").strip().lower() == target_domain
+        and feature_entry_id(feature) != target_id
+    ]
+    depends_on = [index_by_id[feature_id] for feature_id in depends_on_ids if feature_id in index_by_id]
+    blocks = [index_by_id[feature_id] for feature_id in blocks_ids if feature_id in index_by_id]
+
+    explicit_service_refs = unique_paths([
+        service.strip().lower()
+        for service in getattr(args, "service_ref", [])
+        if service.strip()
+    ])
+    service_ref_texts = [text.strip() for text in getattr(args, "service_ref_text", []) if text.strip()]
+    candidate_services = [
+        service_name
+        for service_name in available_service_names(str(gov_path), features, target_domain)
+        if service_name != target_service
+    ]
+    detected_service_refs = detect_service_refs_from_texts(service_ref_texts, candidate_services)
+    service_refs = unique_paths(explicit_service_refs + detected_service_refs)
+
+    related_paths: list[str] = []
+    dependency_paths: list[str] = []
+    blocking_paths: list[str] = []
+    for feature in related:
+        related_paths.extend(collect_feature_context_paths(str(gov_path), feature, "summaries"))
+    for feature in depends_on:
+        dependency_paths.extend(collect_feature_context_paths(str(gov_path), feature, "full"))
+    for feature in blocks:
+        blocking_paths.extend(collect_feature_context_paths(str(gov_path), feature, "full"))
+
+    if depth == "full":
+        for feature in related:
+            related_paths.extend(collect_feature_context_paths(str(gov_path), feature, "full"))
+
+    service_context_paths: list[str] = []
+    missing_service_refs: list[str] = []
+    for service_name in service_refs:
+        matched_paths = collect_service_context_paths(str(gov_path), service_name, target_id, target_domain)
+        if matched_paths:
+            service_context_paths.extend(matched_paths)
+        else:
+            missing_service_refs.append(service_name)
+
+    summaries = unique_paths(related_paths)
+    full_docs = unique_paths(dependency_paths + blocking_paths + service_context_paths)
+    flat_context_paths = unique_paths(summaries + full_docs)
+
+    return {
+        "status": "pass",
+        "feature_id": args.feature_id,
+        "depth": depth,
+        "related": [feature_entry_id(feature) for feature in related],
+        "depends_on": [feature_entry_id(feature) for feature in depends_on],
+        "blocks": [feature_entry_id(feature) for feature in blocks],
+        "service_refs": service_refs,
+        "detected_service_refs": detected_service_refs,
+        "missing_service_refs": missing_service_refs,
+        "summaries": summaries,
+        "full_docs": full_docs,
+        "context_paths": flat_context_paths,
+        "relationship_context_paths": {
+            "related": unique_paths(related_paths),
+            "depends_on": unique_paths(dependency_paths),
+            "blocks": unique_paths(blocking_paths),
+            "services": unique_paths(service_context_paths),
+        },
+        "service_context_paths": unique_paths(service_context_paths),
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Lens init-feature ops")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1353,6 +1634,21 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--execute-governance-git", action="store_true")
     create.add_argument("--dry-run", action="store_true")
 
+    read_context = subparsers.add_parser("read-context", help="Read active domain/service context")
+    read_context.add_argument("--personal-folder", required=True)
+
+    fetch_context = subparsers.add_parser("fetch-context", help="Fetch cross-feature context")
+    fetch_context.add_argument("--governance-repo", required=True)
+    fetch_context.add_argument("--feature-id", required=True)
+    fetch_context.add_argument(
+        "--depth",
+        default="summaries",
+        choices=("summary", "summaries", "full"),
+        help="Context depth: summaries (default) or full",
+    )
+    fetch_context.add_argument("--service-ref", action="append", default=[])
+    fetch_context.add_argument("--service-ref-text", action="append", default=[])
+
     return parser
 
 
@@ -1366,6 +1662,10 @@ def main() -> int:
         result = cmd_create_domain(args)
     elif args.command == "create-service":
         result = cmd_create_service(args)
+    elif args.command == "read-context":
+        result = cmd_read_context(args)
+    elif args.command == "fetch-context":
+        result = cmd_fetch_context(args)
     else:
         result = {"status": "fail", "error": f"Unsupported command: {args.command}"}
 

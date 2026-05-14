@@ -4,6 +4,7 @@
 # dependencies = ["pytest>=8.0"]
 # ///
 
+import json
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ RELEASE_PROMPT = MODULE_ROOT / "prompts" / "lens-preplan.prompt.md"
 STUB_PROMPT = REPO_ROOT / ".github" / "prompts" / "lens-preplan.prompt.md"
 MODULE_HELP = MODULE_ROOT / "module-help.csv"
 AGENT = MODULE_ROOT / "agents" / "lens.agent.md"
+SKILL_REGISTRY = MODULE_ROOT / "assets" / "lens-bmad-skill-registry.json"
 
 
 def read_text(path: Path) -> str:
@@ -112,7 +114,7 @@ def test_review_ready_delegates_to_shared_validator():
     assert "validate-phase-artifacts.py --phase preplan --contract review-ready" in text
     assert "--lifecycle-path {lifecycle_contract}" in text
     assert "--docs-root {docs_path}" in text
-    assert "uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-phase-artifacts.py" in text
+    assert "uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py" in text
     assert "--phase preplan" in text
     assert "--contract review-ready" in text
     assert "--lifecycle-path" in text
@@ -176,6 +178,16 @@ def test_integration_table_contains_required_delegations():
         "lens-git-orchestration",
     ):
         assert token in table
+
+
+def test_structured_bmad_cis_brainstorm_route_is_registered():
+    registry = json.loads(read_text(SKILL_REGISTRY))
+    bmad_cis = registry["skills"].get("bmad-cis")
+
+    assert bmad_cis is not None
+    assert bmad_cis["outputMode"] == "planning-docs"
+    assert "preplan" in bmad_cis["phaseHints"]
+    assert bmad_cis["entryPath"] == "skills/bmad-cis-agent-brainstorming-coach/SKILL.md"
 
 
 def test_module_help_and_shell_discovery_are_aligned_without_duplicates():
