@@ -44,3 +44,28 @@ def test_phase_validation_uses_resolved_governance_repo():
         in content
     )
     assert "MUST use the resolved `governance_repo`" in content
+
+
+def test_dev_queue_accepts_finalizeplan_not_started_stories():
+    content = _skill_text()
+    queue_resolution = content.split("## Story Queue Resolution", 1)[1].split(
+        "## Sprint Boundary Policy", 1
+    )[0]
+
+    assert "not-started" in queue_resolution
+    assert "FinalizePlan" in queue_resolution
+    assert "first dev session" in queue_resolution
+
+
+def test_story_validation_accepts_finalizeplan_story_packet_aliases():
+    content = _skill_text()
+    story_validation = content.split("## Story File Validation", 1)[1].split(
+        "## Story Queue Resolution", 1
+    )[0]
+
+    assert "Goal" in story_validation
+    assert "Scope" in story_validation
+    assert "Acceptance" in story_validation
+    assert "Files To Produce" in story_validation
+    assert "Dev Agent Record" in story_validation
+    assert "append" in story_validation

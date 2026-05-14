@@ -135,13 +135,13 @@ If the constitution fails to resolve (missing required org level or parse error)
 
 ## Story File Validation
 
-Before delegating a story for execution, validate the story file has all required sections:
-- `Context` section: Non-empty description.
-- `Implementation Steps` section: At least one numbered step.
-- `Acceptance Criteria` section: At least one criterion with a `[ ]` checkbox.
-- `Dev Agent Record` section: Present (may be empty at this point).
+Before delegating a story for execution, validate that the story file is actionable. Accept either the canonical dev-ready packet or the FinalizePlan story packet produced by this lifecycle:
+- Context: `Context` section with non-empty description, or FinalizePlan `Goal` plus `Scope` sections.
+- Implementation instructions: `Implementation Steps` section with at least one numbered step, or FinalizePlan `Files To Produce` plus `Notes For Dev` and/or `Scope` content that names concrete paths or actions.
+- Acceptance criteria: `Acceptance Criteria` section with at least one `[ ]` checkbox, or FinalizePlan `Acceptance` bullets. Checkbox-less FinalizePlan `Acceptance` bullets are valid acceptance criteria and must be passed to the implementation delegate.
+- Dev record: `Dev Agent Record` section when present. If an otherwise valid FinalizePlan story packet omits `Dev Agent Record`, append `## Dev Agent Record` before delegation as part of the normal control-repo docs update; do not hard-stop solely for this missing section.
 
-Any missing section → `story_file_invalid` hard-stop with the missing section name and story id.
+Any missing canonical section or accepted FinalizePlan alias content → `story_file_invalid` hard-stop with the missing content category and story id.
 
 Additionally, validate that the story file includes the `Governance Coordination Note` section if the story's `type` is `new` or `fix`. Missing governance note on new/fix stories → `governance_note_missing` warning (not hard-stop); log and continue.
 
@@ -150,10 +150,12 @@ Additionally, validate that the story file includes the `Governance Coordination
 After phase entry passes:
 
 1. Parse `sprint-status.yaml`. Stories are iterable items; each has at minimum `story_id`, `status`, and optionally `blocked_by`.
-2. Build the **ready queue**: stories where `status == 'ready'` and all `blocked_by` entries are in the `completed` list of `dev-session.yaml`.
+2. Build the **ready queue** from stories where all `blocked_by` entries are in the `completed` list of `dev-session.yaml` and the status is queueable. Queueable statuses are:
+   - `ready`.
+   - `not-started` when this is the first dev session for a FinalizePlan packet, or when the story is not already listed in `dev-session.yaml` as completed, failed, or blocked. Treat these FinalizePlan `not-started` stories as initially ready for dev and update them to `in-progress` immediately before delegation.
 3. If the `epic` input is set to a specific epic number or id, filter the ready queue to stories matching that epic prefix. The sentinel values `all` and `all stories` are treated the same as omitting `epic` — no epic filtering is applied; they do not filter the queue to a literal `all` prefix.
 4. If the ready queue is empty and there are stories in `status == 'in-progress'` from a prior session: re-enqueue those stories as `ready` (crash recovery).
-5. If the ready queue is empty and no stories remain in `ready` or `in-progress`: the sprint is **complete**. Emit `sprint_complete` signal and update `feature.yaml` phase to `dev-complete`, then run the complete cycle automatically when the invocation requested post-dev completion.
+5. If the ready queue is empty and no stories remain in `ready`, `not-started`, or `in-progress`: the sprint is **complete**. Emit `sprint_complete` signal and update `feature.yaml` phase to `dev-complete`, then run the complete cycle automatically when the invocation requested post-dev completion.
 
 ## Sprint Boundary Policy
 
