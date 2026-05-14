@@ -5,7 +5,7 @@ description: Runs PrePlan phase artifact orchestration. Use when the user reques
 
 ## Follow-up Questions
 
-Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts. If `vscode_askQuestions` is unavailable for an explicit selection, render the numbered menu and STOP.
 
 # PrePlan Conductor
 
@@ -52,7 +52,7 @@ You guide the user from raw feature intent to a grounded product brief. You keep
 6. Check for the review-ready fast path by delegating to the shared validator:
 
 ```bash
-uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-phase-artifacts.py \
+uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py \
    --phase preplan \
    --contract review-ready \
    --lifecycle-path {lifecycle_contract} \
@@ -68,7 +68,7 @@ uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-pha
 1. Activate `bmad-agent-analyst` to frame the feature's goals, constraints, assumptions, and unanswered questions.
 2. After analyst framing, present brainstorm mode selection:
    - `bmad-brainstorming` for divergent ideation.
-   - `bmad-cis` for structured innovation work.
+   - `bmad-cis` for structured innovation work through the external BMAD CIS brainstorming coach registered in `lens-bmad-skill`.
 3. Run the selected mode through `lens-bmad-skill` and guide it to produce `brainstorm.md` in the resolved docs path. If the user supplied source material paths or asked to use existing documents as brainstorming context, pass those paths as read-only grounding context and require the delegate to preserve the agreed decisions in the artifact.
 4. After the selected brainstorm delegate returns, perform a post-delegation artifact check for `{docs_path}/brainstorm.md` before responding with any completion language or next-step menu.
 5. If the user finishes brainstorming and `brainstorm.md` is missing, treat the delegate result as incomplete: re-enter the same selected brainstorm delegate with the captured session decisions, the resolved docs path, and the explicit instruction to write `brainstorm.md` with required frontmatter. Do not synthesize the artifact in the conductor.

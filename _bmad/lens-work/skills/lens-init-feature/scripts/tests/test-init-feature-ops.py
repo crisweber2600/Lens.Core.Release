@@ -77,6 +77,41 @@ def assert_iso8601(value: str) -> None:
     datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
 
 
+def write_feature(
+    gov: Path,
+    *,
+    domain: str,
+    service: str,
+    feature_id: str,
+    summary: bool = True,
+    docs: dict[str, str] | None = None,
+    depends_on: list[str] | None = None,
+    blocks: list[str] | None = None,
+) -> None:
+    feature_dir = gov / "features" / domain / service / feature_id
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    feature_yaml = {
+        "featureId": feature_id,
+        "domain": domain,
+        "service": service,
+        "dependencies": {
+            "depends_on": depends_on or [],
+            "blocks": blocks or [],
+        },
+    }
+    (feature_dir / "feature.yaml").write_text(yaml.safe_dump(feature_yaml), encoding="utf-8")
+    if summary:
+        (feature_dir / "summary.md").write_text(f"# {feature_id}\n", encoding="utf-8")
+    for relative_path, content in (docs or {}).items():
+        path = feature_dir / "docs" / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def write_feature_index(gov: Path, entries: list[dict]) -> None:
+    (gov / "feature-index.yaml").write_text(yaml.safe_dump({"features": entries}), encoding="utf-8")
+
+
 @pytest.mark.parametrize("slug", ["lens-dev", "platform", "my-domain-1", "a", "x" * 64])
 def test_validate_safe_id_valid(tmp_path: Path, slug: str):
     gov = tmp_path / "gov"
@@ -122,6 +157,105 @@ def test_create_domain_dry_run(tmp_path: Path):
     assert not Path(payload["path"]).exists()
     assert not Path(payload["constitution_path"]).exists()
     assert not Path(payload["context_path"]).exists()
+
+
+def test_read_context_returns_personal_domain_service(tmp_path: Path):
+    personal = tmp_path / "personal"
+    personal.mkdir()
+    (personal / "context.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "domain": "commerce",
+                "service": "payments",
+                "updated_at": "2026-05-14T00:00:00Z",
+                "updated_by": "new-service",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed, payload = run_script(["read-context", "--personal-folder", str(personal)])
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert payload["domain"] == "commerce"
+    assert payload["service"] == "payments"
+
+
+def test_read_context_missing_returns_context_missing(tmp_path: Path):
+    completed, payload = run_script(["read-context", "--personal-folder", str(tmp_path / "personal")])
+
+    assert completed.returncode == 1
+    assert payload["status"] == "fail"
+    assert payload["error"] == "context_missing"
+
+
+def test_fetch_context_returns_related_dependencies_and_service_refs(tmp_path: Path):
+    gov = tmp_path / "gov"
+    gov.mkdir()
+    write_feature_index(
+        gov,
+        [
+            {"featureId": "platform-identity-target", "id": "platform-identity-target", "domain": "platform", "service": "identity"},
+            {"featureId": "platform-identity-related", "id": "platform-identity-related", "domain": "platform", "service": "identity"},
+            {"featureId": "platform-billing-dep", "id": "platform-billing-dep", "domain": "platform", "service": "billing"},
+        ],
+    )
+    write_feature(
+        gov,
+        domain="platform",
+        service="identity",
+        feature_id="platform-identity-target",
+        depends_on=["platform-billing-dep"],
+    )
+    write_feature(gov, domain="platform", service="identity", feature_id="platform-identity-related")
+    write_feature(
+        gov,
+        domain="platform",
+        service="billing",
+        feature_id="platform-billing-dep",
+        docs={"architecture.md": "# Billing Architecture\n"},
+    )
+    billing_service = gov / "features" / "platform" / "billing" / "service.yaml"
+    billing_service.parent.mkdir(parents=True, exist_ok=True)
+    billing_service.write_text("service: billing\n", encoding="utf-8")
+
+    completed, payload = run_script(
+        [
+            "fetch-context",
+            "--governance-repo",
+            str(gov),
+            "--feature-id",
+            "platform-identity-target",
+            "--service-ref-text",
+            "Coordinate with the billing service before planning.",
+        ]
+    )
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert "platform-identity-related" in payload["related"]
+    assert payload["depends_on"] == ["platform-billing-dep"]
+    assert payload["detected_service_refs"] == ["billing"]
+    summaries = [path.replace("\\", "/") for path in payload["summaries"]]
+    full_docs = [path.replace("\\", "/") for path in payload["full_docs"]]
+    service_context_paths = [path.replace("\\", "/") for path in payload["service_context_paths"]]
+    assert any(path.endswith("platform-identity-related/summary.md") for path in summaries)
+    assert any(path.endswith("platform-billing-dep/feature.yaml") for path in full_docs)
+    assert any(path.endswith("billing/service.yaml") for path in service_context_paths)
+
+
+def test_fetch_context_fails_when_feature_index_missing(tmp_path: Path):
+    gov = tmp_path / "gov"
+    gov.mkdir()
+
+    completed, payload = run_script(
+        ["fetch-context", "--governance-repo", str(gov), "--feature-id", "missing-feature"]
+    )
+
+    assert completed.returncode == 1
+    assert payload["status"] == "fail"
+    assert payload["error"] == "feature-index.yaml not found"
 
 
 def test_create_domain_basic(tmp_path: Path):
