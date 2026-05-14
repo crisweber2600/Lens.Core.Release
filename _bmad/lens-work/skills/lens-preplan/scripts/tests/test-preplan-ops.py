@@ -84,6 +84,18 @@ def test_both_brainstorm_routes_and_brainstorm_first_gate():
     assert_order(authoring, "brainstorm.md", "bmad-product-brief")
 
 
+def test_brainstorming_cannot_complete_without_canonical_artifact():
+    text = read_text(SKILL)
+    authoring = section(text, "## Authoring Flow")
+
+    assert "chat-only" in authoring
+    assert "post-delegation artifact check" in authoring
+    assert "If the user finishes brainstorming and `brainstorm.md` is missing" in authoring
+    assert "same selected brainstorm delegate" in authoring
+    assert "Do not answer the user with brainstorming completion" in authoring
+    assert_order(authoring, "Run the selected mode", "post-delegation artifact check", "Do not answer the user")
+
+
 def test_batch_pass_one_and_pass_two_contract():
     text = read_text(SKILL)
 

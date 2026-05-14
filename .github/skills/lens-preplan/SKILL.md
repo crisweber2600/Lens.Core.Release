@@ -24,6 +24,7 @@ You guide the user from raw feature intent to a grounded product brief. You keep
 - Activate `bmad-agent-analyst` before brainstorm mode selection.
 - Offer the user a choice between `bmad-brainstorming` and `bmad-cis` after analyst framing.
 - Enforce brainstorm-first ordering: `brainstorm.md` must exist before research or product-brief delegation is offered.
+- A brainstorming session is not complete until the canonical `brainstorm.md` exists in the resolved docs path; chat-only summaries, menus, or agreement messages do not satisfy PrePlan output.
 - Delegate batch mode to `lens-batch --target preplan`; do not recreate the two-pass contract inline.
 - Delegate review-ready detection to `validate-phase-artifacts.py --phase preplan --contract review-ready --lifecycle-path {lifecycle_contract} --docs-root {docs_path} --json`; do not perform inline artifact checks.
 - Never invoke `publish-to-governance` and never write governance artifacts directly during PrePlan.
@@ -68,11 +69,14 @@ uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-pha
 2. After analyst framing, present brainstorm mode selection:
    - `bmad-brainstorming` for divergent ideation.
    - `bmad-cis` for structured innovation work.
-3. Run the selected mode through `lens-bmad-skill` and guide it to produce `brainstorm.md` in the resolved docs path.
-4. Do not offer research or product-brief work until `brainstorm.md` exists.
-5. Once brainstorming is complete, offer research delegation through the narrowest applicable wrapper: `bmad-domain-research`, `bmad-market-research`, or `bmad-technical-research`.
-6. Delegate product brief authoring through `bmad-product-brief`.
-7. Keep the conductor out of artifact synthesis. The BMAD wrappers own document content; PrePlan owns sequencing and handoff.
+3. Run the selected mode through `lens-bmad-skill` and guide it to produce `brainstorm.md` in the resolved docs path. If the user supplied source material paths or asked to use existing documents as brainstorming context, pass those paths as read-only grounding context and require the delegate to preserve the agreed decisions in the artifact.
+4. After the selected brainstorm delegate returns, perform a post-delegation artifact check for `{docs_path}/brainstorm.md` before responding with any completion language or next-step menu.
+5. If the user finishes brainstorming and `brainstorm.md` is missing, treat the delegate result as incomplete: re-enter the same selected brainstorm delegate with the captured session decisions, the resolved docs path, and the explicit instruction to write `brainstorm.md` with required frontmatter. Do not synthesize the artifact in the conductor.
+6. Do not answer the user with brainstorming completion, offer research, offer product-brief work, or close the session while the result is chat-only. If the same selected brainstorm delegate still cannot create `brainstorm.md`, stop with a structured blocker that names the missing artifact and the resolved docs path.
+7. Do not offer research or product-brief work until `brainstorm.md` exists.
+8. Once brainstorming is complete, offer research delegation through the narrowest applicable wrapper: `bmad-domain-research`, `bmad-market-research`, or `bmad-technical-research`.
+9. Delegate product brief authoring through `bmad-product-brief`.
+10. Keep the conductor out of artifact synthesis. The BMAD wrappers own document content; PrePlan owns sequencing, verification, and handoff.
 
 ## Phase Completion
 
@@ -104,6 +108,7 @@ uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-pha
 - Analyst framing happened before brainstorm mode selection.
 - The user selected either `bmad-brainstorming` or `bmad-cis`.
 - `brainstorm.md` exists before research or product-brief delegation.
+- Brainstorming did not close as a chat-only session; the canonical artifact was verified in the resolved docs path or a blocker was surfaced.
 - Review-ready and batch paths used their shared delegations.
 - The adversarial review ran in party mode and produced a pass or pass-with-warnings verdict.
 - `feature.yaml` was updated through `lens-feature-yaml` only after the gate passed.
