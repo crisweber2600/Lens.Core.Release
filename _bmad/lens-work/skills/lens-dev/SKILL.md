@@ -72,8 +72,20 @@ Validate this contract with focused tests that assert:
 - Required input keys are named in this skill.
 - Output contract includes story commit references and dev-session updates.
 - Control repo `{feature_id}-dev` branch activation is required before phase entry story validation.
+- Governance repo resolution prefers `.lens/governance-setup.yaml` and forbids sibling-probing fallbacks.
 - Hard-stop and recoverable error categories are explicitly documented.
 - Scope statement keeps this skill orchestration-only.
+
+## Governance Repo Resolution
+
+Before Control Dev Branch Activation or any Phase Entry Validation, the conductor MUST resolve `governance_repo` deterministically:
+
+1. Use an explicit `governance_repo` input when provided.
+2. Otherwise read `{project-root}/.lens/governance-setup.yaml`; if it contains `governance_repo_path`, use that path.
+3. Otherwise load `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`; if it contains `governance_repo_path`, use that path.
+4. If `governance_repo` remains unset, stop with `config_missing` and do not read feature state.
+
+The conductor MUST NOT probe sibling governance clone candidates such as `TargetProjects/lens/lens-governance` or choose a hardcoded default when `.lens/governance-setup.yaml` names a different governance repo. All `feature-yaml`, `lens-constitution`, `lens-git-orchestration`, and `lens-complete` calls in the dev flow MUST use the resolved `governance_repo`. Report the resolved path before reading `feature.yaml`.
 
 ## Control Dev Branch Activation
 
