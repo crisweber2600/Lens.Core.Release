@@ -38,6 +38,7 @@ PLANNING_PHASES = {
     "expressplan", "expressplan-complete", "finalizeplan-complete",
     "techplan-complete", "businessplan-complete",
 }
+DONE_STORY_STATUSES = {"done", "complete", "completed"}
 
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 
@@ -386,6 +387,155 @@ def _check_document_project(feature_dir: Path) -> dict[str, Any]:
     }
 
 
+def _append_unique_path(paths: list[Path], value: Any, governance_repo: Path) -> None:
+    if value is None:
+        return
+    candidate = Path(str(value)).expanduser().resolve()
+    if _path_key(candidate) == _path_key(governance_repo):
+        return
+    if all(_path_key(candidate) != _path_key(existing) for existing in paths):
+        paths.append(candidate)
+
+
+def _feature_docs_dir(
+    feature_data: dict[str, Any],
+    args: argparse.Namespace,
+    governance_repo: Path,
+    control_repo: Path | None = None,
+) -> Path | None:
+    """Resolve feature docs.path against likely control workspace roots."""
+    docs = feature_data.get("docs")
+    if not isinstance(docs, dict):
+        return None
+
+    raw_path = str(docs.get("path") or "").strip()
+    if not raw_path:
+        return None
+
+    docs_path = Path(raw_path)
+    if docs_path.is_absolute():
+        return docs_path if docs_path.exists() else None
+
+    roots: list[Path] = []
+    _append_unique_path(roots, getattr(args, "control_repo", None), governance_repo)
+    _append_unique_path(roots, getattr(args, "workspace_root", None), governance_repo)
+    _append_unique_path(roots, control_repo, governance_repo)
+    _append_unique_path(roots, os.getcwd(), governance_repo)
+
+    for root in roots:
+        candidate = root / docs_path
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
+def _story_id_set(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    return {str(value).strip() for value in values if str(value).strip()}
+
+
+def _check_completed_dev_evidence(
+    feature_data: dict[str, Any],
+    args: argparse.Namespace,
+    governance_repo: Path,
+    control_repo: Path | None = None,
+) -> dict[str, Any] | None:
+    """Return a dev-session completion check when control docs evidence exists."""
+    docs_dir = _feature_docs_dir(feature_data, args, governance_repo, control_repo)
+    if docs_dir is None:
+        return None
+
+    dev_session_path = docs_dir / "dev-session.yaml"
+    sprint_status_path = docs_dir / "sprint-status.yaml"
+    if not dev_session_path.exists() and not sprint_status_path.exists():
+        return None
+    if not dev_session_path.exists() or not sprint_status_path.exists():
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_evidence_incomplete",
+            "message": "Dev completion evidence requires both dev-session.yaml and sprint-status.yaml.",
+            "docs_path": str(docs_dir),
+        }
+
+    try:
+        dev_session = _read_yaml(dev_session_path)
+        sprint_status = _read_yaml(sprint_status_path)
+    except ValueError as exc:
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_evidence_malformed",
+            "message": str(exc),
+            "docs_path": str(docs_dir),
+        }
+
+    stories = sprint_status.get("stories")
+    if not isinstance(stories, list) or not stories:
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_evidence_incomplete",
+            "message": "sprint-status.yaml must include at least one story entry.",
+            "docs_path": str(docs_dir),
+        }
+
+    story_ids: set[str] = set()
+    unfinished: list[str] = []
+    for story in stories:
+        if not isinstance(story, dict):
+            unfinished.append("<malformed-story>")
+            continue
+        story_id = str(story.get("story_id") or story.get("id") or "").strip()
+        status = str(story.get("status") or "").strip()
+        if story_id:
+            story_ids.add(story_id)
+        if status not in DONE_STORY_STATUSES:
+            unfinished.append(story_id or "<missing-story-id>")
+
+    completed_ids = _story_id_set(dev_session.get("stories_completed"))
+    missing_completed = sorted(story_ids - completed_ids)
+    failed_ids = _story_id_set(dev_session.get("stories_failed"))
+    blocked_ids = _story_id_set(dev_session.get("stories_blocked"))
+    session_status = str(dev_session.get("status") or "").strip()
+
+    problems: list[str] = []
+    if session_status != "complete":
+        problems.append(f"dev-session.yaml status is '{session_status}', not 'complete'.")
+    if failed_ids:
+        problems.append(f"dev-session.yaml lists failed stories: {sorted(failed_ids)}.")
+    if blocked_ids:
+        problems.append(f"dev-session.yaml lists blocked stories: {sorted(blocked_ids)}.")
+    if unfinished:
+        problems.append(f"sprint-status.yaml has unfinished stories: {sorted(unfinished)}.")
+    if missing_completed:
+        problems.append(f"dev-session.yaml is missing completed story ids: {missing_completed}.")
+
+    total_stories = dev_session.get("total_stories")
+    if isinstance(total_stories, int) and total_stories != len(story_ids):
+        problems.append(f"dev-session.yaml total_stories is {total_stories}, expected {len(story_ids)}.")
+
+    if problems:
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_session_incomplete",
+            "message": " ".join(problems),
+            "docs_path": str(docs_dir),
+        }
+
+    return {
+        "name": "dev_session",
+        "status": "pass",
+        "effective_phase": "dev-complete",
+        "message": "Control docs show dev-session complete and every sprint story done.",
+        "docs_path": str(docs_dir),
+        "stories_completed": sorted(story_ids),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Control repo merge helper
 # ---------------------------------------------------------------------------
@@ -647,6 +797,8 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
     blockers: list[str] = []
     warnings: list[str] = []
 
+    dev_completion_check = _check_completed_dev_evidence(feature_data, args, governance_repo)
+
     # Phase check
     if phase in TERMINAL_PHASES:
         phase_check = {
@@ -657,16 +809,28 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
         }
         blockers.append("already_terminal")
     elif phase in PLANNING_PHASES:
-        phase_check = {
-            "name": "phase",
-            "status": "fail",
-            "blocker": "wrong_phase",
-            "message": (
-                f"Feature phase is '{phase}'; expected dev or dev-complete to complete. "
-                "Advance through all planning phases first."
-            ),
-        }
-        blockers.append("wrong_phase")
+        if phase == "finalizeplan-complete" and dev_completion_check and dev_completion_check["status"] == "pass":
+            phase_check = {
+                "name": "phase",
+                "status": "pass",
+                "effective_phase": "dev-complete",
+                "message": (
+                    "Feature phase is 'finalizeplan-complete', but completed dev-session evidence "
+                    "is present; treating the feature as completion-ready."
+                ),
+            }
+            warnings.append("phase_inferred_from_dev_session")
+        else:
+            phase_check = {
+                "name": "phase",
+                "status": "fail",
+                "blocker": "wrong_phase",
+                "message": (
+                    f"Feature phase is '{phase}'; expected dev or dev-complete to complete. "
+                    "Advance through all planning phases first."
+                ),
+            }
+            blockers.append("wrong_phase")
     elif phase in COMPLETABLE_PHASES:
         phase_check = {"name": "phase", "status": "pass", "message": f"Feature phase '{phase}' is completable."}
     else:
@@ -678,6 +842,10 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
         }
         blockers.append("phase_unrecognized")
     checks.append(phase_check)
+    if dev_completion_check is not None:
+        checks.append(dev_completion_check)
+        if dev_completion_check["status"] == "fail" and phase == "finalizeplan-complete":
+            blockers.append(dev_completion_check["blocker"])
 
     # Retrospective check (blocking)
     retro_result = _check_retrospective(feature_dir)
@@ -787,15 +955,25 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     phase = str(feature_data.get("phase") or "").strip()
     feature_dir = feature_yaml_path.parent
 
+    warnings: list[str] = []
+
     # Inline precondition check for finalize (mirrors check-preconditions logic)
     retro_result = _check_retrospective(feature_dir)
-    if phase not in COMPLETABLE_PHASES:
+    dev_completion_check = _check_completed_dev_evidence(feature_data, args, governance_repo, control_repo)
+    effective_phase_is_completable = phase in COMPLETABLE_PHASES
+    if not effective_phase_is_completable and phase == "finalizeplan-complete" and dev_completion_check:
+        effective_phase_is_completable = dev_completion_check["status"] == "pass"
+        if effective_phase_is_completable:
+            warnings.append("phase_inferred_from_dev_session")
+
+    if not effective_phase_is_completable:
         _out(
             _fail(
                 "wrong_phase",
                 f"Feature phase is '{phase}'; expected dev or dev-complete. check-preconditions failed.",
                 feature_id=feature_id,
                 phase=phase,
+                checks=[dev_completion_check] if dev_completion_check is not None else [],
             )
         )
         return 1
@@ -848,7 +1026,6 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         })
 
     doc_check = _check_document_project(feature_dir)
-    warnings = []
     if doc_check["status"] == "warn":
         warnings.append("document_project_skipped")
 

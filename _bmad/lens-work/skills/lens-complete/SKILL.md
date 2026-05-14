@@ -50,6 +50,7 @@ Guards:
 
 - Feature must exist in governance.
 - `feature.yaml.phase` must be in a completable state: `dev` or `dev-complete`; already terminal phases are reported by `archive-status`.
+- If `feature.yaml.phase` is still `finalizeplan-complete` but `docs.path` resolves under the control repo and contains `dev-session.yaml` with `status: complete` plus `sprint-status.yaml` with every story `done`, treat the feature as effectively `dev-complete`, return/pass through warning `phase_inferred_from_dev_session`, and continue evaluating the remaining completion gates. This is a recovery path for stale governance phase metadata after a completed dev run; it does not bypass retrospective approval.
 - **`retrospective.md` is a blocking prerequisite** (not advisory): the file MUST exist in the feature docs folder. If absent, return `status: fail` with `blocker: retrospective_missing` and a message directing the user to run `lens-retrospective` first. This check may not be downgraded to a warning.
 - **`retrospective.md` status must be `approved`**: the file's YAML frontmatter `status` field MUST equal `approved`. If the file exists but `status` is not `approved`, return `status: fail` with `blocker: retrospective_not_approved` and the current status value.
 - Missing document-project output is advisory and returns `status: warn` with `document_project_skipped: true`.
@@ -120,7 +121,7 @@ Before non-dry-run execution, display the planned changes and require an explici
 
 Operations:
 
-1. Run `check-preconditions` and require `pass` or `warn`. A `fail` status from any blocking check (including missing or unapproved retrospective) aborts finalize immediately.
+1. Run `check-preconditions` and require `pass` or `warn`. A stale `finalizeplan-complete` phase may pass only when completed dev-session evidence is present; a `fail` status from any blocking check (including missing or unapproved retrospective) aborts finalize immediately.
 2. Update `feature.yaml.phase` to `complete` and set `completed_at`.
 3. Update the matching `feature-index.yaml` entry to `status: archived` and set `updated_at`.
 4. Write `summary.md` if absent, or update only the generated archive section if a managed section exists.
