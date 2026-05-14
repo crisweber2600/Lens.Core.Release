@@ -158,6 +158,65 @@ def gov_already_complete(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _write_completed_dev_docs(control_repo: Path, feature_id: str) -> Path:
+    """Create a completed dev-session/sprint-status pair under a control docs path."""
+    docs_root = control_repo / "docs" / "lens-dev" / "new-codebase" / feature_id
+    docs_root.mkdir(parents=True)
+    (docs_root / "dev-session.yaml").write_text(
+        f"feature_id: {feature_id}\n"
+        "total_stories: 2\n"
+        "stories_completed:\n"
+        "- LD-1\n"
+        "- LD-2\n"
+        "stories_failed: []\n"
+        "stories_blocked: []\n"
+        "status: complete\n",
+        encoding="utf-8",
+    )
+    (docs_root / "sprint-status.yaml").write_text(
+        "stories:\n"
+        "- story_id: LD-1\n"
+        "  status: done\n"
+        "- story_id: LD-2\n"
+        "  status: done\n",
+        encoding="utf-8",
+    )
+    return docs_root
+
+
+@pytest.fixture
+def gov_finalizeplan_with_completed_dev_docs(tmp_path: Path) -> tuple[Path, Path]:
+    """Governance feature still in finalizeplan-complete with completed control dev docs."""
+    gov_root = tmp_path / "governance"
+    control_repo = tmp_path / "control"
+    feature_id = "lens-dev-finished-feature"
+    feature_dir = gov_root / "features" / "lens-dev" / "new-codebase" / feature_id
+    feature_dir.mkdir(parents=True)
+    control_repo.mkdir()
+    _write_completed_dev_docs(control_repo, feature_id)
+
+    (feature_dir / "feature.yaml").write_text(
+        f"featureId: {feature_id}\n"
+        "domain: lens-dev\n"
+        "service: new-codebase\n"
+        "phase: finalizeplan-complete\n"
+        "name: Finished Feature\n"
+        "track: express\n"
+        "docs:\n"
+        f"  path: docs/lens-dev/new-codebase/{feature_id}\n",
+        encoding="utf-8",
+    )
+    (feature_dir / "retrospective.md").write_text(
+        "---\nstatus: approved\n---\n\n# Retrospective\n\nApproved.\n",
+        encoding="utf-8",
+    )
+    (gov_root / "feature-index.yaml").write_text(
+        f"features:\n- id: {feature_id}\n  status: active\n",
+        encoding="utf-8",
+    )
+    return gov_root, control_repo
+
+
 # ---------------------------------------------------------------------------
 # CP-1 / CP-4: check-preconditions — pass case
 # ---------------------------------------------------------------------------
@@ -189,6 +248,63 @@ def test_check_preconditions_fail_no_retrospective(capsys: pytest.CaptureFixture
     error_or_blocker = result.get("error") or result.get("blocker")
     assert error_or_blocker == "retrospective_missing"
     assert exit_code != 0
+
+
+def test_check_preconditions_accepts_completed_dev_docs_from_finalizeplan_phase(
+    capsys: pytest.CaptureFixture,
+    gov_finalizeplan_with_completed_dev_docs: tuple[Path, Path],
+) -> None:
+    """Completed dev-session docs let completion proceed even before governance phase is synced."""
+    gov_root, control_repo = gov_finalizeplan_with_completed_dev_docs
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo",
+            str(gov_root),
+            "--feature-id",
+            "lens-dev-finished-feature",
+            "--workspace-root",
+            str(control_repo),
+        ],
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert result["status"] == "warn"
+    assert result["blockers"] == []
+    assert "phase_inferred_from_dev_session" in result["warnings"]
+    phase_check = next(check for check in result["checks"] if check["name"] == "phase")
+    assert phase_check["status"] == "pass"
+    assert phase_check["effective_phase"] == "dev-complete"
+
+
+def test_finalize_archives_completed_dev_docs_from_finalizeplan_phase(
+    capsys: pytest.CaptureFixture,
+    gov_finalizeplan_with_completed_dev_docs: tuple[Path, Path],
+) -> None:
+    """Finalize can archive when completed dev docs bridge a stale finalizeplan-complete phase."""
+    gov_root, control_repo = gov_finalizeplan_with_completed_dev_docs
+
+    exit_code, result = _run(
+        [
+            "finalize",
+            "--governance-repo",
+            str(gov_root),
+            "--feature-id",
+            "lens-dev-finished-feature",
+            "--workspace-root",
+            str(control_repo),
+            "--confirm",
+        ],
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert result["status"] == "complete"
+    assert "phase_inferred_from_dev_session" in result["warnings"]
+    feature_yaml = gov_root / "features" / "lens-dev" / "new-codebase" / "lens-dev-finished-feature" / "feature.yaml"
+    assert yaml.safe_load(feature_yaml.read_text(encoding="utf-8"))["phase"] == "complete"
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +512,7 @@ def test_resolve_control_repo_expands_tilde_for_explicit_alias(
     governance_repo = home / "gov"
     governance_repo.mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
 
     args = argparse.Namespace(control_repo="~/gov", workspace_root=None)
     assert mod._resolve_control_repo_for_finalize(args, governance_repo) is None
@@ -411,6 +528,7 @@ def test_resolve_control_repo_expands_tilde_for_workspace_alias(
     governance_repo = home / "gov"
     governance_repo.mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
 
     args = argparse.Namespace(control_repo=None, workspace_root="~/gov")
     monkeypatch.chdir(tmp_path)
