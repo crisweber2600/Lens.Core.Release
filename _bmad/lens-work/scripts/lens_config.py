@@ -42,6 +42,26 @@ PATH_FIELDS = {
 }
 
 _GIT_BASH_DRIVE_RE = re.compile(r"^/([A-Za-z])(?:/(.*))?$")
+_NEXTLENS_DOCS_CONTEXT = Path("docs") / "nextlens" / "src"
+_NEXTLENS_TOPDOWN_REFERENCE_DOCS = (
+    (
+        Path("nextlens-src-topdownlens") / "guides" / "bugfix-flow.md",
+        "TopDownLens bugfix guide",
+        (
+            "implement only in approved target surfaces",
+            "Governance repo: stay on `main`; no feature-branch governance topology.",
+            "They must not hand-copy changes into governance or release as a fallback.",
+        ),
+    ),
+    (
+        Path("nextlens-src-topdownlens") / "examples" / "bugfix-example.md",
+        "TopDownLens bugfix example",
+        (
+            "Target branch: prepared by `lens-git-orchestration` for the resolved target repo.",
+            "It does not write directly to governance feature folders or release paths.",
+        ),
+    ),
+)
 
 
 class ConfigError(ValueError):
@@ -55,6 +75,30 @@ class LensConfig:
     user_config_path: Path | None
     project_root: Path
     module_root: Path
+
+
+@dataclass(frozen=True)
+class DesignConstraint:
+    title: str
+    source_path: Path
+    excerpts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class NextLensDesignContext:
+    feature_id: str
+    governance_repo_root: Path
+    feature_yaml_path: Path
+    control_repo_root: Path
+    control_repo_path: Path
+    docs_context_root: Path
+    docs_context_path: Path
+    feature_docs_root: Path
+    skill_source_root: Path
+    skill_source_path: Path
+    runtime_target_root: Path
+    runtime_target_path: Path
+    constraints: tuple[DesignConstraint, ...]
 
 
 def _windows_from_git_bash_drive(value: str) -> str:
@@ -124,6 +168,7 @@ def _candidate_config_paths(start: Path) -> list[Path]:
         for candidate in (
             parent / "bmadconfig.yaml",
             parent / "_bmad" / "lens-work" / "bmadconfig.yaml",
+            parent / "TargetProjects" / "lens-dev" / "new-codebase" / "lens.core.src" / "_bmad" / "lens-work" / "bmadconfig.yaml",
             parent / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
         ):
             normalized = candidate.resolve(strict=False)
@@ -248,3 +293,284 @@ def discover_feature_yaml(governance_repo: str | os.PathLike[str], feature_id: s
         if isinstance(data, dict) and (data.get("featureId") == feature_id or data.get("feature_id") == feature_id):
             return yaml_file.resolve(strict=False)
     return None
+
+
+def _fold_path(path: Path) -> Path:
+    return Path(os.path.normcase(str(path)))
+
+
+def _resolve_boundary_path(
+    value: str | os.PathLike[str],
+    *,
+    base: str | os.PathLike[str] | None = None,
+    require_exists: bool = True,
+) -> Path:
+    path = normalize_absolute_path(value, base=base)
+    if require_exists:
+        try:
+            return path.resolve(strict=True)
+        except OSError as exc:
+            raise ConfigError(f"Path not found: {path}") from exc
+
+    missing_parts: list[str] = []
+    existing = path
+    while not existing.exists():
+        parent = existing.parent
+        if parent == existing:
+            break
+        missing_parts.append(existing.name)
+        existing = parent
+
+    resolved = existing.resolve(strict=True) if existing.exists() else existing.resolve(strict=False)
+    for name in reversed(missing_parts):
+        resolved /= name
+    return resolved
+
+
+def _path_is_within_root(candidate: Path, root: Path) -> bool:
+    try:
+        _fold_path(candidate).relative_to(_fold_path(root))
+        return True
+    except ValueError:
+        return False
+
+
+def ensure_within_root(
+    value: str | os.PathLike[str],
+    *,
+    approved_root: str | os.PathLike[str],
+    label: str,
+    base: str | os.PathLike[str] | None = None,
+    require_exists: bool = True,
+) -> Path:
+    root = _resolve_boundary_path(approved_root, require_exists=True)
+    candidate = _resolve_boundary_path(value, base=base, require_exists=require_exists)
+    if not _path_is_within_root(candidate, root):
+        raise ConfigError(f"{label} escapes approved root: {candidate} is outside {root}")
+    return candidate
+
+
+def _feature_repo_entries(feature_data: dict[str, Any]) -> list[dict[str, Any]]:
+    target_repos = feature_data.get("target_repos") or []
+    if not isinstance(target_repos, list):
+        raise ConfigError("feature.yaml target_repos must be a list")
+    entries = [entry for entry in target_repos if isinstance(entry, dict)]
+    if not entries:
+        raise ConfigError("feature.yaml target_repos must include mapping entries")
+    return entries
+
+
+def _resolve_control_repo_root(config: LensConfig) -> Path:
+    target_projects_root = _resolve_boundary_path(config.data["target_projects_path"], require_exists=True)
+    if _fold_path(config.project_root) == _fold_path(target_projects_root):
+        raise ConfigError("target_projects_path must resolve to the TargetProjects root, not the skill source root")
+    if not _path_is_within_root(config.project_root, target_projects_root):
+        raise ConfigError(
+            f"Configured skill source root {config.project_root} is outside target_projects_path {target_projects_root}"
+        )
+    return target_projects_root.parent.resolve(strict=True)
+
+
+def _resolve_feature_yaml_for_context(
+    *,
+    feature_id: str,
+    feature_path: str | os.PathLike[str] | None,
+    governance_repo_root: Path,
+) -> Path:
+    if feature_path:
+        path = _resolve_boundary_path(feature_path, require_exists=True)
+        if not path.is_file():
+            raise ConfigError(f"feature.yaml not found: {path}")
+        return path
+
+    path = discover_feature_yaml(governance_repo_root, feature_id)
+    if path is None:
+        raise ConfigError(f"feature.yaml not found for '{feature_id}'")
+    return path
+
+
+def _resolve_named_target_repo(
+    entries: list[dict[str, Any]],
+    *,
+    name: str,
+    control_repo_root: Path,
+    target_projects_root: Path,
+) -> Path:
+    matches: list[Path] = []
+    for entry in entries:
+        if str(entry.get("name") or "").strip().lower() != name.lower():
+            continue
+        local_path = str(entry.get("local_path") or "").strip()
+        if not local_path:
+            raise ConfigError(f"feature.yaml target_repos entry '{name}' is missing local_path")
+        matches.append(
+            ensure_within_root(
+                local_path,
+                approved_root=target_projects_root,
+                label=f"target repo '{name}' local_path",
+                base=control_repo_root,
+            )
+        )
+
+    if not matches:
+        raise ConfigError(f"feature.yaml target_repos does not include '{name}'")
+    if len(matches) > 1:
+        raise ConfigError(f"feature.yaml target_repos includes multiple '{name}' entries")
+    return matches[0]
+
+
+def _load_topdown_constraints(docs_context_root: Path) -> tuple[DesignConstraint, ...]:
+    constraints: list[DesignConstraint] = []
+    missing: list[str] = []
+    mismatched: list[str] = []
+
+    for relative_path, title, excerpts in _NEXTLENS_TOPDOWN_REFERENCE_DOCS:
+        source_path = docs_context_root / relative_path
+        if not source_path.is_file():
+            missing.append(str(source_path))
+            continue
+
+        text = source_path.read_text(encoding="utf-8")
+        missing_excerpts = tuple(excerpt for excerpt in excerpts if excerpt not in text)
+        if missing_excerpts:
+            mismatched.append(f"{source_path}: missing excerpt(s): {', '.join(missing_excerpts)}")
+            continue
+        constraints.append(DesignConstraint(title=title, source_path=source_path, excerpts=tuple(excerpts)))
+
+    if missing or mismatched:
+        details = []
+        if missing:
+            details.append(f"missing docs: {', '.join(missing)}")
+        if mismatched:
+            details.append("; ".join(mismatched))
+        raise ConfigError(f"NextLens docs context is incomplete or conflicting: {'; '.join(details)}")
+
+    return tuple(constraints)
+
+
+def resolve_nextlens_design_context(
+    feature_id: str,
+    *,
+    start: str | os.PathLike[str] | None = None,
+    config_path: str | os.PathLike[str] | None = None,
+    user_config_path: str | os.PathLike[str] | None = None,
+    governance_repo: str | os.PathLike[str] | None = None,
+    feature_path: str | os.PathLike[str] | None = None,
+    control_repo_override: str | os.PathLike[str] | None = None,
+    docs_path_override: str | os.PathLike[str] | None = None,
+    skill_source_override: str | os.PathLike[str] | None = None,
+    runtime_target_override: str | os.PathLike[str] | None = None,
+) -> NextLensDesignContext:
+    invocation_root = normalize_absolute_path(start or os.getcwd())
+    config = load_lens_config(config_path, start=invocation_root, user_config_path=user_config_path)
+    governance_repo_root = _resolve_boundary_path(governance_repo or config.data["governance_repo_path"], require_exists=True)
+    control_repo_root = _resolve_control_repo_root(config)
+    control_repo_path = (
+        ensure_within_root(
+            control_repo_override,
+            approved_root=control_repo_root,
+            label="control repo override",
+            base=invocation_root,
+        )
+        if control_repo_override
+        else control_repo_root
+    )
+    feature_yaml_path = _resolve_feature_yaml_for_context(
+        feature_id=feature_id,
+        feature_path=feature_path,
+        governance_repo_root=governance_repo_root,
+    )
+    feature_data = _read_yaml_mapping(feature_yaml_path)
+
+    docs = feature_data.get("docs")
+    if not isinstance(docs, dict) or not str(docs.get("path") or "").strip():
+        raise ConfigError(f"feature.yaml missing docs.path for '{feature_id}'")
+
+    target_projects_root = _resolve_boundary_path(config.data["target_projects_path"], require_exists=True)
+    skill_source_root = ensure_within_root(
+        config.project_root,
+        approved_root=target_projects_root,
+        label="skill source root",
+    )
+    feature_docs_root = ensure_within_root(
+        str(docs["path"]),
+        approved_root=control_repo_root,
+        label="feature docs path",
+        base=control_repo_root,
+    )
+    docs_context_root = ensure_within_root(
+        _NEXTLENS_DOCS_CONTEXT,
+        approved_root=control_repo_root,
+        label="NextLens docs context root",
+        base=control_repo_root,
+    )
+    if not _path_is_within_root(feature_docs_root, docs_context_root):
+        raise ConfigError(
+            f"feature docs path {feature_docs_root} conflicts with required NextLens docs root {docs_context_root}"
+        )
+
+    entries = _feature_repo_entries(feature_data)
+    feature_skill_source_root = _resolve_named_target_repo(
+        entries,
+        name="lens.core.src",
+        control_repo_root=control_repo_root,
+        target_projects_root=target_projects_root,
+    )
+    if _fold_path(feature_skill_source_root) != _fold_path(skill_source_root):
+        raise ConfigError(
+            f"feature.yaml lens.core.src path {feature_skill_source_root} conflicts with configured skill root {skill_source_root}"
+        )
+
+    runtime_target_root = _resolve_named_target_repo(
+        entries,
+        name="NextLens",
+        control_repo_root=control_repo_root,
+        target_projects_root=target_projects_root,
+    )
+
+    docs_context_path = (
+        ensure_within_root(
+            docs_path_override,
+            approved_root=docs_context_root,
+            label="docs context override",
+            base=invocation_root,
+        )
+        if docs_path_override
+        else docs_context_root
+    )
+    skill_source_path = (
+        ensure_within_root(
+            skill_source_override,
+            approved_root=skill_source_root,
+            label="skill source override",
+            base=invocation_root,
+        )
+        if skill_source_override
+        else skill_source_root
+    )
+    runtime_target_path = (
+        ensure_within_root(
+            runtime_target_override,
+            approved_root=runtime_target_root,
+            label="runtime target override",
+            base=invocation_root,
+        )
+        if runtime_target_override
+        else runtime_target_root
+    )
+
+    return NextLensDesignContext(
+        feature_id=feature_id,
+        governance_repo_root=governance_repo_root,
+        feature_yaml_path=feature_yaml_path,
+        control_repo_root=control_repo_root,
+        control_repo_path=control_repo_path,
+        docs_context_root=docs_context_root,
+        docs_context_path=docs_context_path,
+        feature_docs_root=feature_docs_root,
+        skill_source_root=skill_source_root,
+        skill_source_path=skill_source_path,
+        runtime_target_root=runtime_target_root,
+        runtime_target_path=runtime_target_path,
+        constraints=_load_topdown_constraints(docs_context_root),
+    )

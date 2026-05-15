@@ -11,7 +11,7 @@ workflowFile: '{workflow_path}/workflow.md'
 outputFile: '{output_folder}/game-brief.md'
 
 # Workflow References
-gddWorkflow: 'skill:gds-create-gdd'
+gddWorkflow: 'skill:gds-gdd'
 ---
 
 # Step 8: Success & Handoff
@@ -209,7 +209,7 @@ Do you want to review or adjust anything before we finalize?"
 "**Recommended Next Steps for {{game_name}}:**
 
 1. **Create GDD** - Transform this brief into a detailed Game Design Document
-   - Command: `create-gdd` (Game Designer agent)
+   - Command: `GDD` (Game Designer agent)
    - Input: This game brief
    - Output: Comprehensive GDD
 

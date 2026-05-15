@@ -52,6 +52,7 @@ def test_defect_7_expected_prompt_stubs_now_exist():
         "lens-complete.prompt.md",
         "lens-new-feature.prompt.md",
         "lens-core-bugfix.prompt.md",
+        "lens-nextlens-bugfix.prompt.md",
         "lens-postflight.prompt.md",
     ]
     expected_public = [name for name in expected_release if name != "lens-postflight.prompt.md"]
