@@ -133,6 +133,7 @@ def test_preflight_caller_classification_covers_prompt_surface():
         "lens-dev": "mixed",
         "lens-finalizeplan": "mixed",
         "lens-new-feature": "mixed",
+        "lens-nextlens-bugfix": "mixed",
         "lens-quickdev": "mixed",
         "lens-split-feature": "mixed",
         "lens-techplan": "mixed",
@@ -299,3 +300,6 @@ def test_targetprojects_git_policy_and_core_bugfix_safety_are_explicit(tmp_path)
         "PR URL",
     ]:
         assert phrase in core_bugfix
+    assert "bugs/nextlens/QuickDev" not in core_bugfix
+    assert "record-quickdev-pr" in core_bugfix
+    assert "close-quickdev-bug" in core_bugfix
