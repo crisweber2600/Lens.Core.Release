@@ -81,6 +81,7 @@ def test_skill_contract_names_required_inputs_and_boundaries():
         "nextlens_fix_spec.py",
         "git-orchestration-ops.py prepare-dev-branch",
         "direct the operator to `/lens-core-bugfix`",
+        "Do not treat new NextLens skill or install-surface work inside `TargetProjects/nextlens/src/NextLens` as a Lens core bug.",
     ):
         assert phrase in text
 
@@ -105,6 +106,7 @@ def test_operator_help_exposes_single_canonical_nextlens_bugfix_row():
     assert "fresh branch delegation" in row["description"]
     assert "PR plus Doctor closeout evidence" in row["description"]
     assert "TargetProjects/nextlens/src/NextLens" in row["description"]
+    assert "new skills and install-surface updates when warranted" in row["description"]
     assert "--what-should-have-happened" in row["args"]
     assert "--chat-history" in row["args"]
     assert "PR URL" in row["outputs"]
@@ -120,6 +122,7 @@ def test_setup_help_metadata_includes_nextlens_bugfix_surface():
     assert "fresh branch delegation" in rows[0]["description"]
     assert "PR plus Doctor closeout evidence" in rows[0]["description"]
     assert "TargetProjects/nextlens/src/NextLens" in rows[0]["description"]
+    assert "new skills and install-surface updates when warranted" in rows[0]["description"]
     assert "PR URL" in rows[0]["outputs"]
     assert "Doctor-backed closeout evidence" in rows[0]["outputs"]
 
@@ -148,6 +151,7 @@ def test_skill_test_hooks_cover_registration_helper_and_boundary_drift():
 
     for phrase in (
         "`module.yaml` registers `lens-nextlens-bugfix.prompt.md` and `lens-nextlens-bugfix` exactly once.",
+        "use model judgment, not keyword spotting alone",
         "`nextlens_fix_spec.py`",
         "`bug-reporter-ops.py`",
         "namespace `nextlens`",

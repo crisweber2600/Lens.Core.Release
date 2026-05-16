@@ -56,6 +56,21 @@ def test_skill_blocks_out_of_scope_target_edits():
     assert "Validate every changed path stays under `{allowed_write_root}`." in text
 
 
+def test_skill_uses_model_judgment_for_new_skill_expansion_inside_nextlens_repo():
+    text = _skill_text()
+
+    for required in (
+        "use model judgment",
+        "keyword spotting",
+        "new NextLens skill",
+        "`bmad-module-builder`",
+        "`bmad-workflow-builder`",
+        "`skills/module.yaml`",
+        "`bmad-nextlens-setup` assets",
+    ):
+        assert required in text
+
+
 def test_skill_keeps_push_pr_and_bug_closeout_with_conductor():
     text = _skill_text()
 
