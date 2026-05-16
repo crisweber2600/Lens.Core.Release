@@ -35,11 +35,6 @@ principles = [
 ]
 
 [[agent.menu]]
-code = "QP"
-description = "Rapid prototype to test if the mechanic is fun — start here for new ideas"
-skill = "gds-quick-prototype"
-
-[[agent.menu]]
 code = "QD"
 description = "Clarify, plan, implement, review, and present any intent end-to-end"
 skill = "gds-quick-dev"

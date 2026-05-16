@@ -19,7 +19,8 @@ finishes the conductor-owned push, PR recording, Doctor-backed validation captur
 ## Operator-Facing Boundaries
 
 - The skill source and registration live in `TargetProjects/lens-dev/new-codebase/lens.core.src`.
-- Runtime bug fixes belong only under `TargetProjects/nextlens/src/NextLens`.
+- All NextLens implementation changes for this command must stay under `TargetProjects/nextlens/src/NextLens`, including existing runtime logic, `.agents/skills/` skill roots, `skills/module.yaml`, and NextLens setup assets when the bug warrants expanding the module surface.
+- Use model judgment after inspecting the current NextLens repo surfaces to decide whether the bug is a bounded edit or a module-surface expansion that deserves a new skill. Do not reduce that decision to keyword spotting alone.
 - This command must not bypass Lens governance, story selection, validation, or review gates.
 - Preserve existing `/lens-core-bugfix` behavior as a separate command surface for Lens core bugs.
 - The conductor owns branch preparation, push, PR creation, validation evidence capture, and bug closeout. The implementation delegate does not own push, PR, bug closeout, or final success reporting.
@@ -34,6 +35,7 @@ finishes the conductor-owned push, PR recording, Doctor-backed validation captur
 - Branch reuse for another bug is forbidden. If `reused` is true for a newly created bug artifact, stop with `branch_reuse_blocked` unless the reused branch exactly matches `feature/{bugfix_feature_id}` and is already known to belong to the same `bug_slug`.
 - Capture `starting_head` immediately after branch preparation. On completion, if `HEAD` still matches `starting_head`, stop with `bugfix_no_changes`.
 - Block any proposed or committed edit whose path resolves outside `allowed_write_root`.
+- If the requested behavior warrants a new NextLens skill, author it inside `TargetProjects/nextlens/src/NextLens` through the local `bmad-module-builder`, use the local `bmad-workflow-builder` for companion workflow assets when needed, and update the NextLens install surfaces in the same repo so the capability is installable.
 - Never ask the implementation delegate to push, open a PR, record a PR URL, close the bug artifact, or report final success. Those actions belong to the conductor completion gate.
 - A successful run requires all of the following to be non-empty and verified: `working_branch`, `commit hash`, `PR URL`, and `bug_artifact_path` under `bugs/nextlens/Fixed/`.
 - Reuse `bug-reporter-ops.py record-quickdev-pr` and `close-quickdev-bug`; do not invent a parallel NextLens closeout path.
@@ -59,14 +61,14 @@ If any required input is missing, ask only for the missing field(s) and stop.
 
 ## Execution Contract
 
-1. Confirm the request is a NextLens runtime bug, not a Lens core bug.
+1. Confirm the request is a NextLens bug whose implementation stays inside `TargetProjects/nextlens/src/NextLens`, not a Lens core bug that requires edits in `TargetProjects/lens-dev/new-codebase/lens.core.src` or another non-NextLens repo.
 2. Resolve feature context through approved authority before reading or writing anything:
    - explicit feature input when provided
    - session feature context when already set
    - `feature.yaml` authority as the final source
 3. Resolve and restate the two write boundaries:
    - command source lives in `TargetProjects/lens-dev/new-codebase/lens.core.src`
-   - runtime fixes belong in `TargetProjects/nextlens/src/NextLens`
+  - NextLens implementation changes belong in `TargetProjects/nextlens/src/NextLens`
 4. Generate the NextLens fix spec before creating the branch. Use `nextlens_fix_spec.py` so the conductor receives:
    - `bug_slug`
    - `bug_artifact_path`
@@ -96,6 +98,8 @@ uv run --script lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/
 10. Delegate implementation only after the allowed target root resolves to `TargetProjects/nextlens/src/NextLens`. The implementation prompt must explicitly say:
     - edit only inside `{allowed_write_root}`
     - if any proposed edit resolves outside `{allowed_write_root}`, stop with `target_boundary_violation`
+  - inspect the current NextLens repo surfaces and use model judgment to decide whether the bug is a bounded edit to existing files or a module-surface expansion that deserves a new skill; do not rely on keyword spotting alone
+  - if a new NextLens skill is warranted, create it through the local `bmad-module-builder`, use the local `bmad-workflow-builder` when companion workflow assets are needed, and update install/discovery surfaces inside `{allowed_write_root}` including `skills/module.yaml` and the `bmad-nextlens-setup` assets
     - run focused validation for the touched NextLens surface and capture or reference NextLens Doctor output when it applies
     - create one conventional implementation commit in the target repo
     - do not push, create a PR, close the bug, or report final success
@@ -183,7 +187,7 @@ Return:
 
 ## Error Behavior
 
-- If the report is actually about Lens core, direct the operator to `/lens-core-bugfix`.
+- If the report actually requires changes in `TargetProjects/lens-dev/new-codebase/lens.core.src` or another non-NextLens repo, direct the operator to `/lens-core-bugfix`. Do not treat new NextLens skill or install-surface work inside `TargetProjects/nextlens/src/NextLens` as a Lens core bug.
 - If `dirty_working_tree`, `branch_reuse_blocked`, `branch_scope_mismatch`, `target_boundary_violation`, `bugfix_no_changes`, `pr_creation_failed`, missing PR evidence, or missing Doctor evidence/rationale occurs, stop with the exact blocker and do not report success.
 - If the request asks to reuse a branch from a different bug, stop with `branch_reuse_blocked`.
 - If required inputs are missing, stop after requesting only the missing inputs.
@@ -193,6 +197,7 @@ Return:
 - Prompt wrappers exist at `.github/prompts/lens-nextlens-bugfix.prompt.md` and `_bmad/lens-work/prompts/lens-nextlens-bugfix.prompt.md`.
 - `module.yaml` registers `lens-nextlens-bugfix.prompt.md` and `lens-nextlens-bugfix` exactly once.
 - Help metadata includes one canonical `lens-nextlens-bugfix` row with the required inputs, optional Salmon metadata, fresh branch delegation, runtime boundary path, `PR URL`, and Doctor-backed closeout evidence.
+- Contract guidance must tell the implementation delegate to use model judgment, not keyword spotting alone, when deciding whether a NextLens bug deserves a new skill and install-surface updates inside `TargetProjects/nextlens/src/NextLens`.
 - Validation hooks must fail with actionable blockers when `nextlens_fix_spec.py`, `bug-reporter-ops.py`, docs context access, target repo resolution, namespace `nextlens`, or `allowed_write_root` boundary enforcement drift.
 - Expected blocker text includes `NextLens docs context is incomplete or conflicting`, `does not include 'NextLens'`, `includes multiple 'NextLens' entries`, and `target_boundary_violation`.
 - Contract tests must cover branch identity, no-op completion, push/PR recording, Doctor-backed closeout, target boundary enforcement, and dirty-worktree or branch-reuse blockers.
