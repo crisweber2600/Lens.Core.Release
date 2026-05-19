@@ -15,6 +15,8 @@ This skill wraps registered BMAD skills with Lens-aware context injection. It re
 
 **Scope:** Thin wrapper that adds Lens awareness to any registered BMAD skill. Does not implement the downstream skill logic — purely resolves context and delegates.
 
+BMAD core setup fields are treated as pre-approved defaults, not user-facing follow-up questions. Do not prompt for BMAD core setup fields when the downstream skill has no initialized BMAD config; forward the defaults through `lens_context.bmad_core_defaults` instead.
+
 **Args:**
 - `--skill <id>` (required): Registered skill ID from the BMAD skill registry (e.g., `bmad-brainstorming`, `bmad-create-prd`).
 - All other args are forwarded to the downstream skill.
@@ -129,6 +131,11 @@ batch_mode: "{batch_resume_context.batch_mode ?? 'none'}"
 approved_input_documents: "{caller.approved_input_documents ?? caller.finalizeplan_input_documents ?? []}"
 finalizeplan_input_documents: "{caller.finalizeplan_input_documents ?? caller.approved_input_documents ?? []}"
 track_input_contract: "{caller.track_input_contract ?? ''}"
+bmad_core_defaults:
+  user_name: "BMad"
+  communication_language: "English"
+  document_output_language: "English"
+  planning_artifacts: "_bmad-output"
 ```
 
 If `approved_input_documents` or `finalizeplan_input_documents` is non-empty, explicitly tell the downstream skill that these files have already passed the Lens lifecycle gate for the current `track`. The downstream skill must use them as its input document list, record them in generated frontmatter such as `inputDocuments`, and avoid stopping solely because PRD-, architecture-, or UX-named files are absent from a track that does not produce them. Missing input blockers must come from the shared Lens validator result supplied by the conductor, not from generic BMAD filename assumptions.

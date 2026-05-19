@@ -32,6 +32,7 @@ You guide the user from raw feature intent to a grounded product brief. You keep
 - Update phase state only through `lens-feature-yaml` after the phase gate passes.
 - When invoked by `/next`, treat the handoff as pre-confirmed: do not ask a redundant launch confirmation question.
 - Load cross-feature context through `lens-init-feature fetch-context` before authoring decisions.
+- BMAD core setup defaults are noninteractive. Do not ask the user for `user_name`, `communication_language`, `document_output_language`, or `planning_artifacts`; use `user_name: BMad`, `communication_language: English`, `document_output_language: English`, and `planning_artifacts: _bmad-output` when those values are missing.
 - This skill owns no implementation script. Only `scripts/tests/` may exist below this skill directory.
 
 ## On Activation
@@ -65,7 +66,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-
 
 ## Authoring Flow
 
-1. Activate `bmad-agent-analyst` to frame the feature's goals, constraints, assumptions, and unanswered questions.
+1. Activate `bmad-agent-analyst` to frame the feature's goals, constraints, assumptions, and unanswered questions. Pass these defaults as pre-approved context when activating `bmad-agent-analyst`: `user_name: BMad`, `communication_language: English`, `document_output_language: English`, and `planning_artifacts: _bmad-output`.
 2. After analyst framing, present brainstorm mode selection:
    - `bmad-brainstorming` for divergent ideation.
    - `bmad-cis` for structured innovation work through the external BMAD CIS brainstorming coach registered in `lens-bmad-skill`.
