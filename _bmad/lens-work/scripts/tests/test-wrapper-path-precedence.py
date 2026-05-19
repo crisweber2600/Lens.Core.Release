@@ -68,3 +68,17 @@ def test_bmad_wrapper_declares_output_path_precedence_and_logging():
         "winning source (`caller`, `feature-yaml`, or `module-default`)",
     ]:
         assert phrase in text, f"Missing precedence/logging contract phrase: {phrase}"
+
+
+def test_bmad_wrapper_forwards_noninteractive_core_defaults():
+    text = _read(BMAD_WRAPPER_SKILL)
+    for phrase in [
+        "bmad_core_defaults",
+        "user_name: \"BMad\"",
+        "communication_language: \"English\"",
+        "document_output_language: \"English\"",
+        "planning_artifacts: \"_bmad-output\"",
+        "Do not prompt for BMAD core setup fields",
+        "pre-approved defaults",
+    ]:
+        assert phrase in text, f"Missing BMAD core defaults contract phrase: {phrase}"

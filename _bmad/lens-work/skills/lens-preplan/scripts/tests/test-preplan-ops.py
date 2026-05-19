@@ -74,6 +74,22 @@ def test_analyst_activation_precedes_brainstorm_mode_selection():
     assert_order(authoring, "bmad-agent-analyst", "brainstorm mode selection", "bmad-brainstorming")
 
 
+def test_analyst_activation_uses_noninteractive_bmad_core_defaults():
+    text = read_text(SKILL)
+    authoring = section(text, "## Authoring Flow")
+
+    assert "BMAD core setup defaults are noninteractive" in text
+    assert "Do not ask the user for `user_name`, `communication_language`, `document_output_language`, or `planning_artifacts`" in text
+    for phrase in (
+        "`user_name: BMad`",
+        "`communication_language: English`",
+        "`document_output_language: English`",
+        "`planning_artifacts: _bmad-output`",
+    ):
+        assert phrase in text
+    assert "Pass these defaults as pre-approved context when activating `bmad-agent-analyst`" in authoring
+
+
 def test_both_brainstorm_routes_and_brainstorm_first_gate():
     text = read_text(SKILL)
     authoring = section(text, "## Authoring Flow")
