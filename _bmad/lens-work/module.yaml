@@ -13,6 +13,14 @@ prompts:
   - lens-nextlens-bugfix.prompt.md
   - lens-discover.prompt.md
   - lens-expressplan.prompt.md
+  - lens-auspex-start.prompt.md
+  - lens-auspex-setup.prompt.md
+  - lens-auspex-map-audit.prompt.md
+  - lens-auspex-ledger-promotion.prompt.md
+  - lens-auspex-salmon-impact.prompt.md
+  - lens-auspex-topology-design.prompt.md
+  - lens-auspex-reporting-snapshot.prompt.md
+  - lens-auspex-reporting-ui.prompt.md
   - lens-new-domain.prompt.md
   - lens-new-feature.prompt.md
   - lens-new-service.prompt.md
@@ -36,6 +44,14 @@ skills:
   - lens-quickdev
   - lens-discover
   - lens-expressplan
+  - lens-auspex-start
+  - lens-auspex-setup
+  - lens-auspex-map-audit
+  - lens-auspex-ledger-promotion
+  - lens-auspex-salmon-impact
+  - lens-auspex-topology-design
+  - lens-auspex-reporting-snapshot
+  - lens-auspex-reporting-ui
   - lens-feature-yaml
   - lens-finalizeplan
   - lens-git-orchestration
