@@ -1,0 +1,58 @@
+schema_version: 1
+module: lens
+source_model: two-tree
+feature_root: docs/features
+landscape_root: docs
+phase_suffix_complete: -complete
+tracks:
+  full:
+    phases:
+      - preplan
+      - businessplan
+      - techplan
+      - finalizeplan
+      - dev
+  express:
+    phases:
+      - expressplan
+      - finalizeplan
+      - dev
+phase_artifacts:
+  preplan:
+    required:
+      - brainstorm.md
+      - research.md
+      - product-brief.md
+      - preplan-adversarial-review.md
+  businessplan:
+    required:
+      - prd.md
+      - ux-design.md
+      - businessplan-adversarial-review.md
+  techplan:
+    required:
+      - architecture.md
+      - techplan-adversarial-review.md
+  expressplan:
+    required:
+      - business-plan.md
+      - tech-plan.md
+      - sprint-plan.md
+      - expressplan-adversarial-review.md
+  finalizeplan:
+    required:
+      - finalizeplan-review.md
+      - epics.md
+      - stories.md
+      - implementation-readiness.md
+      - sprint-status.yaml
+    required_globs:
+      - stories/*.md
+  dev:
+    required:
+      - sprint-status.yaml
+    required_globs:
+      - stories/*.md
+next_after_complete:
+  route: lens-doctor
+  reason: completed features should flow into doctor, projection, promotion, Salmon, and reporting workflows.
