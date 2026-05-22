@@ -89,10 +89,10 @@ The conductor MUST NOT probe sibling governance clone candidates such as `Target
 
 ## Control Feature Docs Branch Activation
 
-Before any Phase Entry Validation that reads `sprint-status.yaml`, story files, or other feature docs, the conductor MUST ensure the control repo is on the feature docs branch for the active feature. In `flat`, this is `{feature_id}`. In legacy `3-branch`, this is `{feature_id}-dev`.
+Before any Phase Entry Validation that reads `sprint-status.yaml`, story files, or other feature docs, the conductor MUST ensure the control repo is on the topology-correct docs branch. In `flat`, this is the control repo default branch. In legacy `3-branch`, this is `{feature_id}-dev`.
 
 1. Resolve `feature_id` from the explicit input, active session context, or governance feature selection before reading control-repo feature docs.
-2. Resolve `control_docs_branch` from `control_topology`: `{feature_id}` for `flat`, `{feature_id}-dev` for `3-branch`.
+2. Resolve `control_docs_branch` from `control_topology`: the control repo default branch for `flat`, `{feature_id}-dev` for `3-branch`.
 3. Inspect the current control-repo branch with `git -C {control_repo} branch --show-current`.
 4. If the current branch is not `control_docs_branch`, attempt to check out that branch:
    - Prefer an existing local branch when present.
@@ -227,7 +227,7 @@ All timestamps are ISO 8601. All writes emit this schema exactly. Read-time comp
 When a dev invocation includes an explicit post-dev completion request, the conductor MUST:
 
 1. Finish all normal dev closing actions first: story statuses, target repo commits, target PR, and `feature.yaml` phase `dev-complete`.
-2. Check out or create the topology-correct control docs branch and keep it as the working branch for dev-cycle docs delivery (`{feature_id}` in `flat`, `{feature_id}-dev` in `3-branch`).
+2. Check out or create the topology-correct control docs branch and keep it as the working branch for dev-cycle docs delivery (the control repo default branch in `flat`, `{feature_id}-dev` in `3-branch`).
 3. Invoke the complete runtime from the installed module path:
 
 ```bash
@@ -239,7 +239,7 @@ uv run --script lens.core/_bmad/lens-work/skills/lens-complete/scripts/complete-
 ```
 
 4. Commit and push governance archive changes to `main` after a successful finalize response.
-5. The complete runtime performs the topology-specific control merge: in `flat`, `{feature_id}` is merged to `main` and then deleted; in `3-branch`, it validates `{feature_id}-plan` -> `{feature_id}` -> `{feature_id}-dev`, merges `{feature_id}-dev` into `main`, and deletes related control branches. Surface any `control_repo_merge_failed` warning from the complete runtime; do not report completion as blocked if governance archival succeeded.
+5. The complete runtime performs the topology-specific control completion: in `flat`, it synchronizes the control repo default branch directly; in `3-branch`, it validates `{feature_id}-plan` -> `{feature_id}` -> `{feature_id}-dev`, merges `{feature_id}-dev` into `main`, and deletes related control branches. Surface any `control_repo_merge_failed` warning from the complete runtime; do not report completion as blocked if governance archival succeeded.
 
 ## Integration Points
 

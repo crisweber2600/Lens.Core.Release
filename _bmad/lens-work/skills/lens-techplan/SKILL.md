@@ -80,7 +80,7 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 
     Pass context: `featureId`, `prd_path`, `staged_docs_path`, `governance_repo`.
 
-12. Immediately after architecture authoring returns, commit `architecture.md` to the `{featureId}-plan` branch before any session boundary can invalidate the working tree. Run from the workspace root:
+12. Immediately after architecture authoring returns, commit `architecture.md` to the topology-correct control branch (default branch in `flat`, `{featureId}-plan` in `3-branch`) before any session boundary can invalidate the working tree. Run from the workspace root:
     ```bash
     uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
       --repo {control_repo} \
@@ -95,7 +95,7 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 13. After architecture authoring completes, run the TechPlan phase completion adversarial review:
     `lens-adversarial-review --phase techplan --source phase-complete`
 
-14. After review passes, commit `techplan-adversarial-review.md` to the `{featureId}-plan` branch:
+14. After review passes, commit `techplan-adversarial-review.md` to the topology-correct control branch:
     ```bash
     uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
       --repo {control_repo} \

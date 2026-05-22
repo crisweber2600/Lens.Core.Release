@@ -723,6 +723,53 @@ def test_prerequisite_missing_degradation(capsys: pytest.CaptureFixture, gov_pas
     )
 
 
+def test_flat_control_repo_completion_syncs_default_branch_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Flat control completion synchronizes the default branch without PR or branch cleanup."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        assert cwd == str(control_repo)
+        calls.append(cmd)
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return Result()
+        if cmd == ["git", "fetch", "--prune", "origin"]:
+            return Result()
+        if cmd == ["git", "checkout", "main"]:
+            return Result()
+        if cmd == ["git", "pull", "--ff-only", "origin", "main"]:
+            return Result()
+        if cmd == ["git", "push", "origin", "main"]:
+            return Result()
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    pr_url, error = mod._gh_merge_to_main(
+        control_repo,
+        "lens-dev-example",
+        dry_run=False,
+        control_topology="flat",
+    )
+
+    assert error is None
+    assert pr_url == "default_branch"
+    assert ["git", "checkout", "main"] in calls
+    assert ["git", "pull", "--ff-only", "origin", "main"] in calls
+    assert ["git", "push", "origin", "main"] in calls
+    assert not any(cmd[:2] == ["gh", "pr"] for cmd in calls)
+    assert not any(cmd[:3] == ["git", "branch", "-d"] for cmd in calls)
+
+
 def test_control_repo_merge_validates_and_cleans_feature_dev_branch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

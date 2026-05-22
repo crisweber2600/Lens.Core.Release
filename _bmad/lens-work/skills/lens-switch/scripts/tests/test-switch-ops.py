@@ -483,14 +483,15 @@ def test_branch_missing_reports_new_feature_guidance(tmp_path: Path):
     assert payload["message"] == "Run /new-feature to initialize branches."
 
 
-def test_flat_topology_switch_checks_out_feature_branch(tmp_path: Path):
+def test_flat_topology_switch_checks_out_default_branch(tmp_path: Path):
     governance = tmp_path / "governance"
     control = tmp_path / "control"
     governance.mkdir()
     control.mkdir()
     init_git_repo(control)
-    create_branch(control, "auth-login")
-    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "auth-login"}])
+    subprocess.run(["git", "-C", str(control), "branch", "-M", "main"], capture_output=True, check=True)
+    create_branch(control, "work-in-progress")
+    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "main"}])
     feature_dir = write_feature(governance, "platform", "identity", "auth-login", FEATURE)
 
     payload, code = run_switch(
@@ -505,10 +506,80 @@ def test_flat_topology_switch_checks_out_feature_branch(tmp_path: Path):
 
     assert code == 0
     assert payload["control_topology"] == "flat"
-    assert payload["plan_branch"] == "auth-login"
+    assert payload["control_default_branch"] == "main"
+    assert payload["plan_branch"] == "main"
     assert payload["branch_switched"] is True
-    assert payload["checked_out_branch"] == "auth-login"
+    assert payload["checked_out_branch"] == "main"
     assert Path(payload["context_path"]) == feature_dir
+
+
+def test_flat_topology_switch_falls_back_to_current_branch_without_origin(tmp_path: Path):
+    governance = tmp_path / "governance"
+    control = tmp_path / "control"
+    governance.mkdir()
+    control.mkdir()
+    init_git_repo(control)
+    subprocess.run(["git", "-C", str(control), "branch", "-M", "release"], capture_output=True, check=True)
+    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "release"}])
+    write_feature(governance, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ]
+    )
+
+    assert code == 0
+    assert payload["control_topology"] == "flat"
+    assert payload["control_default_branch"] == "release"
+    assert payload["plan_branch"] == "release"
+    assert payload["branch_switched"] is True
+    assert payload["checked_out_branch"] == "release"
+
+
+def test_flat_topology_pull_failure_still_reports_checkout_success(tmp_path: Path):
+    governance = tmp_path / "governance"
+    control = tmp_path / "control"
+    governance.mkdir()
+    control.mkdir()
+    init_git_repo(control)
+    subprocess.run(["git", "-C", str(control), "branch", "-M", "main"], capture_output=True, check=True)
+    create_branch(control, "work-in-progress")
+    subprocess.run(["git", "-C", str(control), "checkout", "work-in-progress"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(control), "remote", "add", "origin", str(tmp_path / "missing-remote.git")],
+        capture_output=True,
+        check=True,
+    )
+    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "main"}])
+    write_feature(governance, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ]
+    )
+
+    assert code == 0
+    assert payload["branch_switched"] is True
+    assert payload["checked_out_branch"] == "main"
+    assert payload["branch_error"]
+    assert payload["branch_error"] != "branch_not_found"
+    current = subprocess.run(
+        ["git", "-C", str(control), "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert current == "main"
 
 
 def test_branch_dirty_tree_reports_raw_git_error(tmp_path: Path):

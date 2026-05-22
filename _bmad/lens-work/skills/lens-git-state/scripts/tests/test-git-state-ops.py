@@ -214,7 +214,7 @@ def test_discrepancies_report_specific_phase_vs_branch_mismatches(tmp_path: Path
     assert beta_plan["branch_state_value"] == []
 
 
-def test_flat_discrepancies_require_feature_branch_not_plan_branch(tmp_path: Path):
+def test_flat_discrepancies_reject_per_feature_control_branches(tmp_path: Path):
     repo = init_repo(tmp_path)
     make_branch(repo, "alpha")
 
@@ -239,10 +239,10 @@ def test_flat_discrepancies_require_feature_branch_not_plan_branch(tmp_path: Pat
     assert code == 0
     assert payload["control_topology"] == "flat"
     mismatches = payload["discrepancies"]
-    assert not any(item["feature_id"] == "alpha" for item in mismatches)
-    beta_base = next(item for item in mismatches if item["feature_id"] == "beta")
-    assert beta_base["branch_state_field"] == "branch_state.base_branches"
-    assert beta_base["expected_state"] == "one of beta or a remote beta exists"
+    assert not any(item["feature_id"] == "beta" for item in mismatches)
+    alpha_base = next(item for item in mismatches if item["feature_id"] == "alpha")
+    assert alpha_base["branch_state_field"] == "branch_state.feature_branches"
+    assert alpha_base["expected_state"] == "no per-feature control branches; default branch carries feature docs"
 
 
 def test_read_only_git_allowlist_rejects_write_operations():

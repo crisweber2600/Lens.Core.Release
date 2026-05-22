@@ -47,7 +47,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/s
 
 ### discrepancies
 
-Compares active feature phase to observed branch topology and returns field-level mismatch records. In `flat`, active phases require `{featureId}`. In legacy `3-branch`, planning phases require `{featureId}-plan` and dev phase requires `{featureId}-dev` or `{featureId}-dev-*`.
+Compares active feature phase to observed branch topology and returns field-level mismatch records. In `flat`, active phases use the control repo default branch and per-feature control branches are reported as mismatches. In legacy `3-branch`, planning phases require `{featureId}-plan` and dev phase requires `{featureId}-dev` or `{featureId}-dev-*`.
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py discrepancies \

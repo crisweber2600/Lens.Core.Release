@@ -971,7 +971,7 @@ class TestCreate:
             assert f"{fid}-plan" in cmd, f"track={non_express_track}"
             assert payload["planning_pr_deferred_reason"], f"track={non_express_track}"
 
-    def test_create_feature_flat_topology_uses_feature_branch_and_no_planning_pr(self, tmp_path: Path):
+    def test_create_feature_flat_topology_uses_default_branch_and_no_planning_pr(self, tmp_path: Path):
         gov = tmp_path / "gov"
         control = tmp_path / "control"
         gov.mkdir()
@@ -995,12 +995,48 @@ class TestCreate:
         assert completed.returncode == 0
         index_data = yaml.safe_load((gov / "feature-index.yaml").read_text(encoding="utf-8"))
         entry = next(e for e in index_data["features"] if e.get("featureId") == "lens-dev-new-codebase-flat-init")
-        assert entry["plan_branch"] == "lens-dev-new-codebase-flat-init"
+        assert entry["plan_branch"] == "main"
         assert payload["control_topology"] == "flat"
-        assert payload["plan_branch"] == "lens-dev-new-codebase-flat-init"
+        assert payload["control_default_branch"] == "main"
+        assert payload["plan_branch"] == "main"
         assert payload["planning_pr_followup_commands"] == []
         assert "not required" in payload["planning_pr_deferred_reason"]
         assert "--control-topology flat" in payload["remaining_commands"][0]
+
+    def test_create_feature_flat_topology_uses_master_when_origin_is_missing(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        control = tmp_path / "control"
+        gov.mkdir()
+        control.mkdir()
+        (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
+        (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
+        (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
+        subprocess.run(["git", "init", str(control)], check=True)
+        subprocess.run(["git", "-C", str(control), "config", "user.email", "test@example.com"], check=True)
+        subprocess.run(["git", "-C", str(control), "config", "user.name", "Test User"], check=True)
+        subprocess.run(["git", "-C", str(control), "commit", "--allow-empty", "-m", "init"], check=True)
+        subprocess.run(["git", "-C", str(control), "branch", "-M", "master"], check=True)
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-flat-master",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--name", "Flat Master",
+            "--track", "express",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ])
+
+        assert completed.returncode == 0
+        index_data = yaml.safe_load((gov / "feature-index.yaml").read_text(encoding="utf-8"))
+        entry = next(e for e in index_data["features"] if e.get("featureId") == "lens-dev-new-codebase-flat-master")
+        assert entry["plan_branch"] == "master"
+        assert payload["control_topology"] == "flat"
+        assert payload["control_default_branch"] == "master"
+        assert payload["plan_branch"] == "master"
+        assert payload["planning_pr_followup_commands"] == []
 
     def test_create_feature_index_failure_rolls_back_files(self, tmp_path: Path):
         """If feature-index.yaml write fails, written feature.yaml/summary.md are removed."""

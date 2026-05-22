@@ -488,28 +488,24 @@ def compare_features_to_branches(
             continue
 
         if control_topology == "flat":
-            if root not in TERMINAL_PHASES and not branches.get("has_base_branch"):
+            if (
+                branches.get("has_base_branch")
+                or branches.get("has_plan_branch")
+                or branches.get("has_dev_branch")
+            ):
                 discrepancies.append(
                     discrepancy(
                         feature_id,
                         "feature.yaml.phase",
                         phase,
-                        "branch_state.base_branches",
-                        branches.get("base_branches", []),
-                        f"one of {feature_id} or a remote {feature_id} exists",
-                        f"feature.yaml.phase={phase} indicates active work, but no flat feature branch is present.",
-                    )
-                )
-            if phase in TERMINAL_PHASES and branches.get("has_base_branch"):
-                discrepancies.append(
-                    discrepancy(
-                        feature_id,
-                        "feature.yaml.phase",
-                        phase,
-                        "branch_state.base_branches",
-                        branches.get("base_branches", []),
-                        "flat feature branch is merged or closed after completion",
-                        f"feature.yaml.phase={phase} but flat feature branch is still open for {feature_id}.",
+                        "branch_state.feature_branches",
+                        {
+                            "base_branches": branches.get("base_branches", []),
+                            "plan_branches": branches.get("plan_branches", []),
+                            "dev_branches": branches.get("dev_branches", []),
+                        },
+                        "no per-feature control branches; default branch carries feature docs",
+                        f"feature.yaml.phase={phase} but flat topology found per-feature control branches for {feature_id}.",
                     )
                 )
             continue

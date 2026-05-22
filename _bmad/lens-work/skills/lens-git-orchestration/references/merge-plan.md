@@ -2,7 +2,7 @@
 
 ## Outcome
 
-In legacy `3-branch`, planning artifacts from `{featureId}-plan` are integrated into `{featureId}` via PR or direct merge. In `flat`, this command returns a structured no-op because planning artifacts already live on `{featureId}`.
+In legacy `3-branch`, planning artifacts from `{featureId}-plan` are integrated into `{featureId}` via PR or direct merge. In `flat`, this command returns a structured no-op because planning artifacts already live on the control repo default branch.
 
 ## Merge Strategies
 
@@ -15,7 +15,7 @@ In legacy `3-branch`, planning artifacts from `{featureId}-plan` are integrated 
 ## Preconditions
 
 - In `3-branch`, both `{featureId}` and `{featureId}-plan` exist
-- In `flat`, `{featureId}` exists
+- In `flat`, the control repo default branch exists
 - Working directory is clean on the branch being merged from
 - For `pr` strategy: `gh` CLI is authenticated
 
@@ -42,8 +42,9 @@ In legacy `3-branch`, planning artifacts from `{featureId}-plan` are integrated 
   "feature_id": "payments-auth-oauth",
   "control_topology": "flat",
   "strategy": "pr",
-  "base_branch": "payments-auth-oauth",
-  "plan_branch": "payments-auth-oauth",
+  "default_branch": "main",
+  "base_branch": "main",
+  "plan_branch": "main",
   "no_op": true,
   "auto_merge_requested": true,
   "plan_branch_deleted": false
