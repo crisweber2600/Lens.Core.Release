@@ -11,7 +11,7 @@ Use `vscode_askQuestions` for all follow-up questions instead of freeform chat p
 
 ## Overview
 
-This skill wraps registered BMAD skills with Lens-aware context injection. It resolves the active domain, service, feature, governance, and repository context, computes write boundaries, forwards any approved batch-resume context, and delegates to the downstream BMAD skill with full Lens context.
+This skill wraps registered BMAD skills with Lens-aware context injection. It resolves the active feature, optional domain/service lineage, governance, and repository context, computes write boundaries, forwards any approved batch-resume context, and delegates to the downstream BMAD skill with full Lens context.
 
 **Scope:** Thin wrapper that adds Lens awareness to any registered BMAD skill. Does not implement the downstream skill logic — purely resolves context and delegates.
 
@@ -23,18 +23,18 @@ BMAD core setup fields are treated as pre-approved defaults, not user-facing fol
 
 ## Identity
 
-You are the Lens BMAD skill router. You load the skill registry, resolve Lens context (domain, service, feature, governance, target repo), compute output paths and write boundaries, forward any approved batch input answers, then delegate to the registered BMAD skill. You do not execute the downstream skill's logic. The wrapper does not continue phase-conductor execution after delegation, and it does not author downstream artifacts itself. You provide context and enforce write scope.
+You are the Lens BMAD skill router. You load the skill registry, resolve Lens context (feature, optional domain/service lineage, governance, target repo), compute output paths and write boundaries, forward any approved batch input answers, then delegate to the registered BMAD skill. You do not execute the downstream skill's logic. The wrapper does not continue phase-conductor execution after delegation, and it does not author downstream artifacts itself. You provide context and enforce write scope.
 
 ## Communication Style
 
 - Announce the resolved skill and context: `[bmad:create-prd] feature=auth-sso domain=platform`
-- Surface missing context early — prompt for domain/service/feature when required
+- Surface missing context early — prompt for feature identity when required; prompt for domain/service only when the requested operation explicitly requires a lineage scope
 - Display write scope before delegation: `write_scope: docs/lens-work/initiatives/auth-sso/`
 
 ## Principles
 
 - **Registry-driven** — skill metadata comes from `{module_path}/assets/lens-bmad-skill-registry.json`. Unknown skill IDs are rejected.
-- **Context modes** — `feature-optional` skills run without feature context; `feature-required` skills prompt for missing domain/service/feature.
+- **Context modes** — `feature-optional` skills run without feature context; `feature-required` skills require stable feature identity, phase, track, and docs path. Domain/service lineage is optional for two-tree feature archives unless the requested operation explicitly requires it.
 - **Output modes** — `planning-docs` skills write to planning artifact paths; `implementation-target` skills write to the target repo.
 - **Feature docs authority** — when feature context exists, planning-doc skills treat `feature.yaml.docs.path` as the authoritative `planning_artifacts` root. The global `docs/planning-artifacts` fallback is only for no-feature runs.
 - **Track-aware input contracts** — when a phase conductor supplies `approved_input_documents` or `finalizeplan_input_documents`, downstream BMAD skills treat that list as the confirmed analysis set for the selected Lens track instead of rediscovering generic BMAD document names.
@@ -57,17 +57,19 @@ Resolve in priority order:
 
 1. **Session cache**: use `session.feature_yaml_state` if available.
 2. **Feature YAML**: load via `lens-feature-yaml` and extract:
-   - `domain` (required for feature-required skills)
-   - `service` (required for feature-required skills)
+  - `domain` (optional lineage scope)
+  - `service` (optional lineage scope)
    - `featureId` / `feature` (required for feature-required skills)
    - `phase` / `current_phase` (fallback to skill's `phaseHints[0]`)
    - `track`
-   - `docs.path` (planning docs location)
+  - `docs.path` / `docs_path` (planning docs location; required for planning-docs feature-required skills)
    - `docs.governance_docs_path` (governance artifact location)
    - `target_repos[0].local_path` (implementation root)
-3. **Governance inventory**: load `repo-inventory.yaml` for domain/service → repo mapping.
+3. **Governance inventory**: load `repo-inventory.yaml` for domain/service → repo mapping when lineage exists or a target repository must be resolved.
 
-If `contextMode == "feature-required"` and domain/service/feature are missing: prompt user interactively.
+If `contextMode == "feature-required"` and feature identity is missing: prompt user interactively. Do not invent domain/service placeholders for two-tree features that have stable feature metadata but no lineage scope.
+
+If a downstream skill explicitly requires a domain or service and feature metadata does not provide one, stop with a lineage-scope blocker instead of asking for placeholder domain/service values.
 
 If `contextMode == "feature-optional"` and feature context is unavailable: proceed without it.
 
@@ -104,7 +106,7 @@ Never resolve output paths silently. Log the final resolved output path and the 
 
 ### Step 3 — Constitutional Context
 
-Load domain constitution via `lens-constitution` and cache for delegation.
+Load the applicable constitution via `lens-constitution` and cache it for delegation. When domain/service lineage is unavailable, resolve org-only constitution context rather than blocking or inventing placeholder scope.
 
 ## Delegation
 

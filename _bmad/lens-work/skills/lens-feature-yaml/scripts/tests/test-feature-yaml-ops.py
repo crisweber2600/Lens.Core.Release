@@ -105,6 +105,46 @@ def test_read_returns_feature_state_contract_fields(tmp_path: Path):
     assert payload["transition_history"] == payload["phase_transitions"]
 
 
+def test_read_discovers_flat_docs_feature_and_top_level_docs_path(tmp_path: Path):
+    feature_dir = tmp_path / "docs" / "features" / "lens-seed-improvements"
+    feature_dir.mkdir(parents=True)
+    (feature_dir / "feature.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "feature_id": "lens-seed-improvements",
+                "stable_id": "feature:lens-seed-improvements",
+                "entity_type": "feature",
+                "track": "full",
+                "phase": "preplan",
+                "docs_path": "docs/features/lens-seed-improvements",
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload, code = run_feature_yaml(
+        [
+            "read",
+            "--governance-repo",
+            str(tmp_path / "governance"),
+            "--workspace-root",
+            str(tmp_path),
+            "--feature-id",
+            "lens-seed-improvements",
+        ]
+    )
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert payload["feature_yaml_path"].replace("\\", "/").endswith("docs/features/lens-seed-improvements/feature.yaml")
+    assert payload["identity"]["featureId"] == "lens-seed-improvements"
+    assert payload["identity"]["domain"] is None
+    assert payload["identity"]["service"] is None
+    assert payload["docs_path"] == "docs/features/lens-seed-improvements"
+    assert payload["docs"] == {"path": "docs/features/lens-seed-improvements"}
+
+
 def test_validate_rejects_invalid_phase_transition(tmp_path: Path):
     feature_path = write_feature(tmp_path, "auth-login", base_feature(phase="expressplan"))
 

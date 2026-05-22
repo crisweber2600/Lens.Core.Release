@@ -156,10 +156,16 @@ def unique_paths(paths: list[str]) -> list[str]:
 
 
 def feature_entry_id(entry: dict) -> str:
-    return str(entry.get("featureId") or entry.get("id") or "").strip()
+    return str(entry.get("featureId") or entry.get("feature_id") or entry.get("id") or "").strip()
 
 
 def feature_dir_from_entry(governance_repo: str, entry: dict) -> Path:
+    explicit_dir = entry.get("_feature_dir")
+    if explicit_dir:
+        return Path(str(explicit_dir))
+    explicit_path = entry.get("_feature_yaml_path")
+    if explicit_path:
+        return Path(str(explicit_path)).parent
     return (
         Path(governance_repo)
         / "features"
@@ -167,6 +173,78 @@ def feature_dir_from_entry(governance_repo: str, entry: dict) -> Path:
         / str(entry.get("service") or "")
         / feature_entry_id(entry)
     )
+
+
+def feature_entry_from_yaml(feature_path: Path, feature_data: dict) -> dict:
+    feature_id = str(feature_data.get("featureId") or feature_data.get("feature_id") or feature_data.get("id") or "").strip()
+    entry = {
+        "id": feature_id,
+        "featureId": feature_id,
+        "feature_id": feature_id,
+        "domain": feature_data.get("domain"),
+        "service": feature_data.get("service"),
+        "status": feature_data.get("status"),
+        "phase": feature_data.get("phase"),
+        "track": feature_data.get("track"),
+        "related_features": feature_data.get("related_features") or {},
+        "_feature_yaml_path": str(feature_path),
+        "_feature_dir": str(feature_path.parent),
+    }
+    if feature_data.get("docs_path"):
+        entry["docs_path"] = feature_data.get("docs_path")
+    return entry
+
+
+def discover_feature_yaml_by_id(root: Path, feature_id: str) -> Path | None:
+    search_roots = [root / "features", root / "docs" / "features"]
+    for features_root in search_roots:
+        if not features_root.exists():
+            continue
+        for feature_path in sorted(features_root.rglob("feature.yaml")):
+            try:
+                data = yaml.safe_load(feature_path.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            current_id = str(data.get("featureId") or data.get("feature_id") or data.get("id") or "").strip()
+            if current_id == feature_id:
+                return feature_path.resolve(strict=False)
+    return None
+
+
+def discover_feature_entries(root: Path) -> list[dict]:
+    entries: list[dict] = []
+    for features_root in [root / "features", root / "docs" / "features"]:
+        if not features_root.exists():
+            continue
+        for feature_path in sorted(features_root.rglob("feature.yaml")):
+            try:
+                data = yaml.safe_load(feature_path.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            if isinstance(data, dict) and (data.get("featureId") or data.get("feature_id") or data.get("id")):
+                entries.append(feature_entry_from_yaml(feature_path.resolve(strict=False), data))
+    return entries
+
+
+def discover_feature_yaml_across_roots(governance_repo: Path, feature_id: str, workspace_root: str | None = None) -> Path | None:
+    candidate_roots = [governance_repo]
+    if workspace_root:
+        candidate_roots.append(Path(workspace_root))
+    candidate_roots.append(Path.cwd())
+
+    seen: set[str] = set()
+    for root in candidate_roots:
+        resolved_root = root.resolve(strict=False)
+        key = str(resolved_root)
+        if key in seen:
+            continue
+        seen.add(key)
+        found = discover_feature_yaml_by_id(resolved_root, feature_id)
+        if found is not None:
+            return found
+    return None
 
 
 def collect_doc_files(root: Path) -> list[str]:
@@ -1568,32 +1646,43 @@ def cmd_fetch_context(args: argparse.Namespace) -> dict:
     if not gov_path.is_dir():
         return {"status": "fail", "error": f"Governance repo not found: {args.governance_repo}"}
 
-    try:
-        index_data, index_exists = load_existing_feature_index(gov_path)
-    except (OSError, yaml.YAMLError) as exc:
-        return {"status": "fail", "error": f"Failed to read feature-index.yaml: {exc}"}
-
-    if not index_exists:
-        return {"status": "fail", "error": "feature-index.yaml not found"}
-
-    features = index_data.get("features") or []
-    if not isinstance(features, list):
-        return {"status": "fail", "error": "feature-index.yaml features must be a list"}
-
-    index_by_id = feature_index_by_id(features)
-    target = index_by_id.get(args.feature_id)
-    if target is None:
-        return {"status": "fail", "error": f"Feature '{args.feature_id}' not found in feature-index.yaml"}
-
-    target_feature_dir = feature_dir_from_entry(str(gov_path), target)
-    target_feature_path = target_feature_dir / "feature.yaml"
-    if not target_feature_path.exists():
-        return {"status": "fail", "error": f"feature.yaml not found for '{args.feature_id}'"}
+    target_feature_path = discover_feature_yaml_across_roots(
+        gov_path,
+        args.feature_id,
+        getattr(args, "workspace_root", None),
+    )
+    if target_feature_path is None:
+        return {"status": "fail", "error": f"Feature '{args.feature_id}' feature.yaml not found"}
 
     try:
         feature_data = yaml.safe_load(target_feature_path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as exc:
         return {"status": "fail", "error": f"Failed to read feature.yaml: {exc}"}
+    if not isinstance(feature_data, dict):
+        return {"status": "fail", "error": f"feature.yaml for '{args.feature_id}' must contain a YAML mapping"}
+
+    try:
+        index_data, index_exists = load_existing_feature_index(gov_path)
+    except (OSError, yaml.YAMLError) as exc:
+        return {"status": "fail", "error": f"Failed to read feature-index.yaml: {exc}"}
+
+    indexed_features = index_data.get("features") or [] if index_exists else []
+    if not isinstance(indexed_features, list):
+        return {"status": "fail", "error": "feature-index.yaml features must be a list"}
+
+    discovered_features = discover_feature_entries(gov_path)
+    workspace_root = getattr(args, "workspace_root", None)
+    if workspace_root:
+        discovered_features.extend(discover_feature_entries(Path(workspace_root)))
+    discovered_features.extend(discover_feature_entries(Path.cwd()))
+
+    features_by_id = feature_index_by_id(indexed_features)
+    for feature in discovered_features:
+        current_id = feature_entry_id(feature)
+        if current_id and current_id not in features_by_id:
+            features_by_id[current_id] = feature
+    target = features_by_id.get(args.feature_id) or feature_entry_from_yaml(target_feature_path, feature_data)
+    features = list(features_by_id.values())
 
     depth = "summaries" if args.depth == "summary" else args.depth
     target_domain = str(feature_data.get("domain") or target.get("domain") or "").strip().lower()
@@ -1602,17 +1691,21 @@ def cmd_fetch_context(args: argparse.Namespace) -> dict:
 
     dependencies = feature_data.get("dependencies") or {}
     related_features = feature_data.get("related_features") or target.get("related_features") or {}
-    depends_on_ids = list(dependencies.get("depends_on") or related_features.get("depends_on") or [])
-    blocks_ids = list(dependencies.get("blocks") or related_features.get("blocks") or [])
+    depends_on_ids = list(dependencies.get("depends_on") or related_features.get("depends_on") or feature_data.get("depends_on") or [])
+    blocks_ids = list(dependencies.get("blocks") or related_features.get("blocks") or feature_data.get("blocks") or [])
+    related_ids = list(related_features.get("related") or feature_data.get("related_to") or [])
 
-    related = [
-        feature
-        for feature in features
-        if str(feature.get("domain") or "").strip().lower() == target_domain
-        and feature_entry_id(feature) != target_id
-    ]
-    depends_on = [index_by_id[feature_id] for feature_id in depends_on_ids if feature_id in index_by_id]
-    blocks = [index_by_id[feature_id] for feature_id in blocks_ids if feature_id in index_by_id]
+    if target_domain:
+        related = [
+            feature
+            for feature in features
+            if str(feature.get("domain") or "").strip().lower() == target_domain
+            and feature_entry_id(feature) != target_id
+        ]
+    else:
+        related = [features_by_id[feature_id] for feature_id in related_ids if feature_id in features_by_id]
+    depends_on = [features_by_id[feature_id] for feature_id in depends_on_ids if feature_id in features_by_id]
+    blocks = [features_by_id[feature_id] for feature_id in blocks_ids if feature_id in features_by_id]
 
     explicit_service_refs = unique_paths([
         service.strip().lower()
@@ -1727,6 +1820,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch_context = subparsers.add_parser("fetch-context", help="Fetch cross-feature context")
     fetch_context.add_argument("--governance-repo", required=True)
+    fetch_context.add_argument("--workspace-root", help="Control/workspace root for docs/features discovery")
     fetch_context.add_argument("--feature-id", required=True)
     fetch_context.add_argument(
         "--depth",

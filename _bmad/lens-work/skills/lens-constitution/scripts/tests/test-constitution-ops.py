@@ -342,6 +342,13 @@ class TestResolve:
         assert out["levels_loaded"] == ["org"]
         assert "quickplan" in out["resolved_constitution"]["permitted_tracks"]
 
+    def test_resolve_without_domain_service_uses_org_only(self, gov_repo: Path) -> None:
+        out = run(["resolve", "--governance-repo", str(gov_repo)])
+        assert out["domain"] is None
+        assert out["service"] is None
+        assert out["levels_loaded"] == ["org"]
+        assert "quickplan" in out["resolved_constitution"]["permitted_tracks"]
+
     def test_resolve_missing_constitutions_dir(self, tmp_path: Path) -> None:
         out = run(["resolve", "--governance-repo", str(tmp_path), "--domain", "x", "--service", "y"], expect_code=1)
         assert out["error"] == "constitutions_dir_not_found"
@@ -477,10 +484,12 @@ class TestCheckCompliance:
         out = run(["check-compliance", "--governance-repo", str(gov_repo), "--feature-id", "x", "--feature-yaml", str(fy), "--phase", "planning"], expect_code=1)
         assert out["error"] == "feature_yaml_parse_error"
 
-    def test_compliance_missing_domain_in_yaml(self, gov_repo: Path, tmp_path: Path) -> None:
+    def test_compliance_missing_domain_in_yaml_uses_org_only(self, gov_repo: Path, tmp_path: Path) -> None:
         fy = self._make_feature_yaml(tmp_path, {"track": "quickplan"})
-        out = run(["check-compliance", "--governance-repo", str(gov_repo), "--feature-id", "x", "--feature-yaml", str(fy), "--phase", "planning"], expect_code=1)
-        assert out["error"] == "feature_yaml_missing_fields"
+        out = run(["check-compliance", "--governance-repo", str(gov_repo), "--feature-id", "x", "--feature-yaml", str(fy), "--phase", "planning"], expect_code=0)
+        assert out["domain"] is None
+        assert out["service"] is None
+        assert out["checks"][0]["status"] == "PASS"
 
     def test_compliance_track_not_permitted_informational_is_pass(self, full_gov_repo: Path, tmp_path: Path) -> None:
         fy = self._make_feature_yaml(tmp_path, {"domain": "platform", "service": "auth", "track": "hotfix"})
@@ -688,6 +697,13 @@ class TestProgressiveDisplay:
         assert "enforce_review" in out
         assert "required_artifacts_for_phase" not in out
         assert "track_permitted" not in out
+
+    def test_display_without_domain_service_uses_org_only(self, gov_repo: Path) -> None:
+        out = run(["progressive-display", "--governance-repo", str(gov_repo)])
+        assert out["domain"] is None
+        assert out["service"] is None
+        assert out["levels_loaded"] == ["org"]
+        assert out["full_constitution_available"] is True
 
     def test_display_full_constitution_available_true_when_org_loaded(self, gov_repo: Path) -> None:
         out = run(["progressive-display", "--governance-repo", str(gov_repo), "--domain", "x", "--service", "y"])
