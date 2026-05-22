@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   promote:
-    if: github.event.schedule == matrix.cron
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -34,11 +33,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
+          TRIGGER_SCHEDULE: ${{ github.event.schedule }}
+          SCHEDULE_CRON: ${{ matrix.cron }}
           SOURCE_BRANCH: ${{ matrix.source_branch }}
           TARGET_BRANCH: ${{ matrix.target_branch }}
+          RETRY_ATTEMPTS: '6'
+          RETRY_INTERVAL_SECONDS: '5'
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "${TRIGGER_SCHEDULE}" != "${SCHEDULE_CRON}" ]]; then
+            echo "Skipping ${SOURCE_BRANCH} -> ${TARGET_BRANCH} for schedule ${TRIGGER_SCHEDULE}."
+            exit 0
+          fi
 
           owner="${REPOSITORY%%/*}"
           repo="${REPOSITORY#*/}"
@@ -95,7 +103,7 @@ jobs:
           mergeable="null"
           mergeable_state="unknown"
 
-          for attempt in {1..6}; do
+          for ((attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++)); do
             pr_details="$(api_get "${api_url}/pulls/${pr_number}")"
             merged="$(jq -r '.merged' <<< "${pr_details}")"
 
@@ -116,7 +124,7 @@ jobs:
               exit 1
             fi
 
-            sleep 5
+            sleep "${RETRY_INTERVAL_SECONDS}"
           done
 
           if [[ "${mergeable}" != "true" ]]; then
