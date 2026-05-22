@@ -1,7 +1,7 @@
 ---
 name: 'step-04-docs-and-scripts'
 description: 'Document setup and add package.json scripts'
-nextStepFile: './step-05-validate-and-summary.md'
+nextStepFile: '{skill-root}/steps-c/step-05-validate-and-summary.md'
 outputFile: '{test_dir}/README.md'
 progressFile: '{test_artifacts}/framework-setup-progress.md'
 ---
@@ -62,7 +62,7 @@ Add to `package.json` at minimum:
 Add the idiomatic test commands for the detected framework:
 
 - **Python (pytest)**: Add to `pyproject.toml` scripts or `Makefile`: `pytest`, `pytest --cov`, `pytest -m integration`
-- **Java (JUnit)**: Add to `build.gradle`/`pom.yaml`: `./gradlew test`, `mvn test`, `mvn verify` (integration)
+- **Java (JUnit)**: Add to `build.gradle`/`pom.xml`: `./gradlew test`, `mvn test`, `mvn verify` (integration)
 - **Go**: Add to `Makefile`: `go test ./...`, `go test -race ./...`, `go test -cover ./...`
 - **C#/.NET**: Add to CI scripts or `Makefile`: `dotnet test`, `dotnet test --collect:"XPlat Code Coverage"`
 - **Ruby (RSpec)**: Add to `Gemfile` binstubs or `Makefile`: `bundle exec rspec`, `bundle exec rspec spec/integration`

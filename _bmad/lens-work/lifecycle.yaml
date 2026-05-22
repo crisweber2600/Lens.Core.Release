@@ -1,22 +1,15 @@
-# =============================================================================
-# Lens-Work Lifecycle Contract v3.1
-# =============================================================================
-# The single source of truth for lens-work lifecycle behavior.
-# The @lens agent (with 5 skills) and all workflows import
-# this contract. No lifecycle semantics should be hardcoded elsewhere.
-#
-# v3 redesign: Git-derived state replaces legacy file-based state entirely.
-# Branch existence + PR metadata + committed artifacts = state.
-# =============================================================================
+# Lens Workbench lifecycle contract for the clean-room target module.
+# Schema version 4 keeps shared workflow state in git/governance artifacts and
+# local personal state under .lens, while active generated docs live under docs/.
 
-schema_version: 3.2
+schema_version: 4
 close_states: [completed, abandoned, superseded]
 initiative_state_schema: initiative-state.yaml
-artifact_publication:
-  governance_root: "artifacts/"
-  enabled: true
 
-# Supported Programming Languages for Language-Specific Constitutions
+artifact_publication:
+  enabled: true
+  governance_root: artifacts/
+
 supported_languages:
   - typescript
   - python
@@ -29,563 +22,183 @@ supported_languages:
   - swift
   - cpp
 
-# Language auto-detection order:
-# 1. Explicit {language} field in initiative config
-# 2. .bmad/language file in target repository
-# 3. Build files (package.json → typescript, pyproject.toml → python, etc.)
-# 4. Source code analysis (file extension distribution)
-# 5. GitHub primary language (when available)
-# 6. "unknown" (default fallback)
+phase_order: [preplan, businessplan, techplan, finalizeplan, dev, complete]
 
-# -----------------------------------------------------------------------------
-# FUNDAMENTAL TRUTHS (non-negotiable design axioms)
-# -----------------------------------------------------------------------------
-fundamental_truths:
-  ft1: "Planning artifacts must exist and be reviewed before code is written"
-  ft2: "AI agents must work within disciplined constraints, not freestyle"
-  ft3: "Multi-service initiatives must have coordinated lifecycle governance"
-
-# -----------------------------------------------------------------------------
-# DESIGN AXIOMS (derived from v1 lessons)
-# -----------------------------------------------------------------------------
-design_axioms:
-  A1: "Git is the only source of truth for shared workflow state. No git-ignored runtime state."
-  A2: "PRs are the only gating mechanism. No side-channel approval."
-  A3: "Authority domains must be explicit. Every file belongs to exactly one authority."
-  A4: "Sensing must be automatic at lifecycle gates, not manual discovery."
-  A5: "The control repo is an operational workspace, not a code repo."
-
-# -----------------------------------------------------------------------------
-# LENS HIERARCHY
-# -----------------------------------------------------------------------------
-lens_hierarchy:
-  levels: [org, domain, service, repo]
-  constitution_inheritance: additive
-  language_constitution_support: enabled
-  language_scope_enforcement: "Language-specific constitutions apply ONLY to repos matching the declared language"
-
-# -----------------------------------------------------------------------------
-# MILESTONES (promotion backbone)
-# -----------------------------------------------------------------------------
 milestones:
-  techplan:
-    role: "IC creation work"
-    description: "Where early planning phases happen — individual contributor generates artifacts before promotion"
-    phases: [preplan, businessplan, techplan]
-  devproposal:
-    role: "Lead review"
-    description: "Adversarial review gate — devproposal milestone branches from here post-promotion"
-    phases: [devproposal]
-    entry_gate: adversarial-review
-    entry_gate_mode: party
-  sprintplan:
-    role: "Stakeholder approval"
-    description: "Stakeholder sign-off — sprintplan milestone branches from here post-promotion"
-    phases: [sprintplan]
-    entry_gate: stakeholder-approval
-    entry_gate_mode: informational   # v3.2: informational by default, constitution can set to 'hard'
-  dev-ready:
-    role: "Ready for execution"
-    description: "Constitution-gated — dev execution happens after sprintplan completes"
-    phases: []
-    entry_gate: constitution-gate
-  dev-complete:
-    role: "Execution complete"
-    description: "All planned epics merged to develop in target repos — tracks implementation completion"
-    phases: []
-    entry_gate: dev-complete-validation
-    optional: true
-    tracked_state:
-      stories_terminal: true          # All stories must be merged or explicitly deferred
-      epics_merged_to_develop: true   # All epic branches merged to develop
-      close_validation: true          # /close validates dev-complete before allowing 'completed' state
+  planning:
+    phases: [preplan, businessplan, techplan, expressplan]
+  finalizeplan:
+    phases: [finalizeplan]
+  implementation:
+    phases: [dev]
+  closeout:
+    phases: [complete]
 
-# -----------------------------------------------------------------------------
-# PHASES
-# -----------------------------------------------------------------------------
 phases:
   preplan:
-    display_name: "PrePlan"
+    display_name: PrePlan
     agent: mary
-    agent_role: Analyst
-    supporting_agents: []
-    description: "Analysis — brainstorm, research, product brief, project documentation"
-    artifacts:
-      - product-brief
-      - research
-      - brainstorm
-    milestone: techplan
+    description: Early discovery and feature framing.
+    artifacts: [product-brief, research, brainstorm]
+    milestone: planning
     auto_advance_to: /businessplan
-    auto_advance_promote: false
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: preplan-adversarial-review.md
+      ready_when_artifacts: [product-brief, research, brainstorm]
+      reviewed_artifacts: [product-brief, research, brainstorm]
+      outcomes: [pass, pass-with-warnings, fail]
 
   businessplan:
-    display_name: "BusinessPlan"
+    display_name: BusinessPlan
     agent: john
-    agent_role: PM
-    supporting_agents: [sally]
-    description: "Business planning — PRD creation/validation, UX design"
-    artifacts:
-      - prd
-      - ux-design
-    milestone: techplan
+    description: Product requirements and UX planning.
+    artifacts: [prd, ux-design]
+    milestone: planning
     auto_advance_to: /techplan
-    auto_advance_promote: false
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: businessplan-adversarial-review.md
+      ready_when_artifacts: [prd, ux-design]
+      reviewed_artifacts: [prd, ux-design]
+      outcomes: [pass, pass-with-warnings, fail]
 
   techplan:
-    display_name: "TechPlan"
+    display_name: TechPlan
     agent: winston
-    agent_role: Architect
-    supporting_agents: []
-    description: "Technical design — architecture document, technical decisions"
-    artifacts:
-      - architecture
-    milestone: techplan
-    auto_advance_to: /devproposal
-    auto_advance_promote: true
+    description: Architecture and technical implementation planning.
+    artifacts: [architecture]
+    milestone: planning
+    auto_advance_to: /finalizeplan
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: techplan-adversarial-review.md
+      ready_when_artifacts: [architecture]
+      reviewed_artifacts: [architecture]
+      outcomes: [pass, pass-with-warnings, fail]
 
-  devproposal:
-    display_name: "DevProposal"
-    agent: john
-    agent_role: PM
-    supporting_agents: []
-    description: "Implementation proposal — epics, stories, readiness check"
+  expressplan:
+    display_name: ExpressPlan
+    agent: lens
+    description: Accelerated planning bundle before FinalizePlan handoff.
     artifacts:
+      - business-plan
+      - tech-plan
+      - sprint-plan
+      - expressplan-adversarial-review
+    milestone: planning
+    auto_advance_to: /finalizeplan
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: expressplan-adversarial-review.md
+      legacy_report_aliases: [expressplan-review.md]
+      ready_when_artifacts: [business-plan, tech-plan, sprint-plan]
+      reviewed_artifacts: [business-plan, tech-plan]
+      outcomes: [pass, pass-with-warnings, fail]
+
+  finalizeplan:
+    display_name: FinalizePlan
+    agent: lens
+    description: Consolidate approved planning and prepare execution artifacts.
+    input_contracts_by_track:
+      full: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      express: [business-plan, tech-plan, sprint-plan]
+      quickdev: [business-plan, tech-plan, sprint-plan]
+      hotfix-express: [architecture]
+    artifacts:
+      - review-report
       - epics
       - stories
       - implementation-readiness
-    milestone: devproposal
-    branching_milestone: devproposal
-    auto_advance_to: /sprintplan
-    auto_advance_promote: true
-
-  sprintplan:
-    display_name: "SprintPlan"
-    agent: bob
-    agent_role: Scrum Master
-    supporting_agents: []
-    description: "Sprint planning — sprint-status, individual story files"
-    artifacts:
       - sprint-status
       - story-files
-    milestone: sprintplan
-    branching_milestone: sprintplan
+    milestone: finalizeplan
     auto_advance_to: /dev
-    auto_advance_promote: true
+    completion_review:
+      gate: adversarial-review
+      mode: party
+      report: finalizeplan-review.md
+      ready_when_artifacts: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      reviewed_artifacts: [product-brief, research, brainstorm, prd, ux-design, architecture]
+      outcomes: [pass, pass-with-warnings, fail]
 
-# Phase ordering (canonical sequence for full track)
-# NOTE: 'dev' is NOT a lifecycle phase — it is a delegation command that hands off
-# to implementation agents in target projects. It exists as a router workflow but
-# is not part of the phase ordering or milestone promotion chain.
-# NOTE: 'expressplan' is NOT in phase_order — it is a standalone single-phase track
-# that produces all artifacts in one session. It has its own phase definition below.
-phase_order: [preplan, businessplan, techplan, devproposal, sprintplan]
+  dev:
+    display_name: Dev
+    agent: amelia
+    description: Implement approved stories in the target repository.
+    artifacts: [stories]
+    milestone: implementation
+    auto_advance_to: /complete
+    completion_review:
+      gate: code-review
+      mode: focused
+      report: dev-review.md
+      ready_when_artifacts: [stories]
+      reviewed_artifacts: [stories]
+      outcomes: [pass, pass-with-warnings, fail]
 
-# Standalone phase — not part of phase_order, used only by express track
-  expressplan:
-    display_name: "ExpressPlan"
+  complete:
+    display_name: Complete
     agent: lens
-    agent_role: "Express Planner"
-    supporting_agents: [winston, john, sally, bob]
-    description: "Combined planning — product brief, PRD, architecture, epics, stories, and sprint plan in a single guided session"
-    artifacts:
-      - product-brief
-      - prd
-      - architecture
-      - epics
-      - stories
-      - sprint-status
-      - review-report
-    milestone: dev-ready
-    auto_advance_to: /dev
-    auto_advance_promote: false
+    description: Validate closeout, retrospective, and archival readiness.
+    artifacts: [retrospective]
+    milestone: closeout
+    terminal: true
+    completion_review:
+      gate: closeout-review
+      mode: focused
+      report: complete-review.md
+      ready_when_artifacts: [retrospective]
+      reviewed_artifacts: [retrospective]
+      outcomes: [pass, pass-with-warnings, fail]
 
-# -----------------------------------------------------------------------------
-# TRACKS (predefined lifecycle profiles)
-# -----------------------------------------------------------------------------
 tracks:
   full:
-    description: "Complete lifecycle — all phases, all milestones"
-    phases: [preplan, businessplan, techplan, devproposal, sprintplan]
-    milestones: [techplan, devproposal, sprintplan, dev-ready]
+    description: Full retained planning and implementation lifecycle.
+    phases: [preplan, businessplan, techplan, finalizeplan, dev, complete]
     start_phase: preplan
-
-  feature:
-    description: "Known business context — skip research, start at business plan"
-    phases: [businessplan, techplan, devproposal, sprintplan]
-    milestones: [techplan, devproposal, sprintplan, dev-ready]
-    start_phase: businessplan
-
-  tech-change:
-    description: "Pure technical change — no business case needed"
-    phases: [techplan, devproposal, sprintplan]
-    milestones: [techplan, devproposal, sprintplan, dev-ready]
-    constitution_controlled_gates: [devproposal, devproposal-to-sprintplan]
-    start_phase: techplan
-
-  hotfix:
-    description: "Urgent fix — minimal planning, fast to execution"
-    phases: [techplan]
-    milestones: [techplan, dev-ready]
-    constitution_controlled_gates: [adversarial-review]
-    start_phase: techplan
-
-  hotfix-express:
-    description: "Emergency fix — single promotion, constitution gate informational-only"
-    phases: [techplan]
-    milestones: [techplan, dev-ready]
-    constitution_controlled_gates: [adversarial-review]
-    gate_mode: informational         # Gates produce reports but do not block
-    bypass_constitution_gate: true   # Constitution gate is advisory, not blocking
-    start_phase: techplan
-    requires_constitution_permission: true  # Must be explicitly allowed in constitution
-
-  spike:
-    description: "Research only — no implementation"
-    phases: [preplan]
-    milestones: [techplan]
-    start_phase: preplan
-
-  quickdev:
-    description: "Rapid execution — delegates to target-project agents"
-    phases: [devproposal]
-    milestones: [devproposal, dev-ready]
-    constitution_controlled_gates: [adversarial-review]
-    start_phase: devproposal
+    topology: 2-branch
+    feature_yaml: true
 
   express:
-    description: "Lightweight single-phase planning — all artifacts in one session, no milestone branches, no PRs"
-    phases: [expressplan]
-    milestones: [dev-ready]
-    constitution_controlled_gates: [adversarial-review]
-    gate_mode: informational         # Gates produce reports but do not block
-    bypass_constitution_gate: false   # Constitution gate runs but is advisory
+    description: QuickPlan-style planning followed by FinalizePlan and implementation.
+    phases: [expressplan, finalizeplan, dev, complete]
     start_phase: expressplan
-    branch_model: single             # Only {initiative-root} branch, no milestone branches
-    pr_creation: disabled            # No PRs created during express workflow
-    requires_constitution_permission: true  # Must be permitted via permitted_tracks in constitution
+    topology: 2-branch
+    feature_yaml: true
+    requires_constitution_permission: true
 
-# -----------------------------------------------------------------------------
-# PROMOTE SEMANTICS (v3.1 — approval-only model)
-# -----------------------------------------------------------------------------
-# In the happy path, all promotion PRs are auto-created by auto_advance_promote.
-# /promote is an approval + verification action, not a creation action.
-# The PR already exists when the user runs /promote.
-promote:
-  behavior: approval-only
-  description: >
-    /promote verifies that the auto-created promotion PR has been approved
-    and merged, then transitions the initiative to the next milestone.
-    If the PR does not yet exist (edge case), /promote creates it.
-  actions:
-    - verify_pr_merged
-    - run_sensing_check
-    - transition_milestone
-  auto_create_fallback: true  # Create PR if somehow missing
+  quickdev:
+    description: Fast execution path for already-understood work.
+    phases: [finalizeplan, dev, complete]
+    start_phase: finalizeplan
+    topology: 2-branch
+    feature_yaml: true
+    requires_constitution_permission: true
 
-# -----------------------------------------------------------------------------
-# ARTIFACT VALIDATION HOOKS (v3.1)
-# -----------------------------------------------------------------------------
-# Per-artifact structural validation that runs before commit acceptance.
-# Constitution can add, remove, or override validators per domain/service.
-artifact_validation:
-  enabled: true
-  mode: pre-commit       # Validate before artifact commit
-  constitution_controlled: true    # Constitution can override per artifact
-  validators:
-    product-brief:
-      required_sections: [Vision, Target Audience, Success Criteria]
-      min_word_count: 200
-    prd:
-      required_sections: [Overview, Requirements, Non-Functional Requirements, Success Metrics]
-      must_reference: []   # Constitution can populate
-      min_word_count: 500
-    ux-design:
-      required_sections: [User Flows, Component Specifications]
-      min_word_count: 300
-    architecture:
-      required_sections: [Overview, System Design, Data Model, API Design]
-      must_reference: [prd]     # Must reference the PRD artifact
-      min_word_count: 500
-    epics:
-      required_sections: [Epic List]
-      must_reference: [architecture]
-      min_word_count: 200
-    stories:
-      required_sections: [Story List]
-      each_story_requires: [Acceptance Criteria, Story Points]
-      must_reference: [epics]
-      min_word_count: 300
-    implementation-readiness:
-      required_sections: [Readiness Assessment, Risk Assessment]
-      min_word_count: 100
-    sprint-status:
-      format: yaml
-      required_fields: [sprint_number, stories, status]
-    # Express track validators — relaxed thresholds for single-session planning
-    express-product-brief:
-      required_sections: [Vision, Target Audience]
-      min_word_count: 100
-    express-prd:
-      required_sections: [Overview, Requirements]
-      min_word_count: 200
-    express-architecture:
-      required_sections: [Overview, System Design]
-      min_word_count: 200
-    express-review-report:
-      required_sections: [Review Summary, Findings]
-      min_word_count: 100
+  hotfix-express:
+    description: Urgent fix path with shortened planning and explicit closeout.
+    phases: [techplan, finalizeplan, dev, complete]
+    start_phase: techplan
+    topology: 2-branch
+    feature_yaml: true
+    requires_constitution_permission: true
 
-# -----------------------------------------------------------------------------
-# PARALLEL PHASE EXECUTION (v3.1)
-# -----------------------------------------------------------------------------
-# Within the same milestone, phases can run concurrently when dependencies allow.
-# Constitution can enable/disable per domain.
-parallel_phases:
-  enabled: false                    # Disabled by default — opt-in via constitution
-  constitution_controlled: true
-  allowed_parallels:
-    techplan_milestone:
-      # UX design (businessplan/Sally) can overlap with architecture (techplan/Winston)
-      # once the PRD is committed. PRD is the shared dependency.
-      - phases: [businessplan, techplan]
-        dependency: prd             # businessplan must commit prd before techplan starts
-        description: "UX design and architecture can proceed in parallel after PRD"
-  merge_strategy: last-writer-wins  # If parallel phases modify the same artifact (shouldn't happen)
-  completion_rule: all-complete     # Milestone promotion requires ALL parallel phases done
+  spike:
+    description: Research-only path with closeout evidence and no implementation handoff.
+    phases: [preplan, complete]
+    start_phase: preplan
+    topology: 2-branch
+    feature_yaml: true
 
-# -----------------------------------------------------------------------------
-# CONTENT-AWARE SENSING (v3.1)
-# -----------------------------------------------------------------------------
-# Extends sensing beyond scope-name overlap to artifact content comparison.
-sensing:
-  scope_overlap:
-    same_feature: high
-    same_service: medium
-    same_domain: low
-  content_overlap:
-    enabled: true
-    artifacts_to_compare: [epics, stories, architecture]
-    similarity_threshold: 0.7       # Cosine similarity for section comparison
-    diff_strategy: section-headers  # Compare by section heading + content blocks
-    description: >
-      Two initiatives in the same service with overlapping epic or story
-      content generates a stronger signal than just sharing a service scope.
-      Content-aware sensing reduces false positives (low-value domain alerts)
-      and catches true conflicts.
-  output_format: sensing-report     # Uses sensing-report include for PR body
+artifact_aliases:
+  expressplan-adversarial-review:
+    - expressplan-review.md
 
-# -----------------------------------------------------------------------------
-# GATE COLLAPSING (v3.1)
-# -----------------------------------------------------------------------------
-# Constitution-controlled gate collapsing for smaller-scope features.
-# Reduces the 3-PR promotion chain to fewer PRs when appropriate.
-gate_collapsing:
-  enabled: false                    # Disabled by default — constitution opt-in
-  constitution_controlled: true
-  description: >
-    For features under a configured threshold, constitutions may collapse
-    multiple gates into a single combined promotion PR. No global bypass.
-  rules:
-    - name: small-feature
-      max_stories: 3
-      collapsed_gates: [adversarial-review, stakeholder-approval]
-      result: single-promotion-pr   # techplan → dev-ready in one PR
-      combined_reviewers: true      # All gate reviewers on the single PR
-    - name: medium-feature
-      max_stories: 8
-      collapsed_gates: [stakeholder-approval]
-      result: two-promotion-prs     # techplan → devproposal, devproposal → dev-ready
-      combined_reviewers: false
-
-# -----------------------------------------------------------------------------
-# BRANCH CLEANUP (v3.1)
-# -----------------------------------------------------------------------------
-# Post-promotion branch lifecycle management.
-branch_cleanup:
-  strategy: squash-and-delete
-  description: >
-    After a promotion PR is merged, the source milestone branch is
-    squash-merged and deleted. This keeps the branch topology clean
-    and avoids stale long-lived branches.
-  behavior:
-    post_merge: delete-source-branch
-    squash_commits: true            # Squash milestone commits into single merge commit
-    preserve_dev_ready: true        # Never delete dev-ready (execution baseline)
-    preserve_initiative_root: true  # Never delete the initiative root branch
-  exceptions:
-    - branch: "{initiative-root}"
-    - branch: "{initiative-root}-dev-ready"
-
-# -----------------------------------------------------------------------------
-# DASHBOARD (v3.1)
-# -----------------------------------------------------------------------------
-# Multi-initiative status visualization command.
-dashboard:
-  command: /dashboard
-  code: DB
-  description: >
-    Generate a consolidated view of all active initiatives across domains,
-    showing current phase, milestone, blocking PRs, and sensing alerts.
-    Replaces the need to /switch + /status repeatedly.
-  output_format: mermaid
-  data_sources:
-    - git_branch_list               # All initiative branches
-    - provider_adapter_pr           # Open/blocking PRs
-    - committed_artifacts           # Artifact completion state
-    - sensing                       # Cross-initiative alerts
-  grouping: [domain, service]
-  display:
-    columns: [initiative, track, phase, milestone, blocking_prs, sensing_alerts, last_activity]
-    sort_by: last_activity
-    filter_closed: true             # Hide closed initiatives by default
-
-# -----------------------------------------------------------------------------
-# ARTIFACT TEMPLATES (v3.1)
-# -----------------------------------------------------------------------------
-# Per-artifact starter templates that agents load as scaffolds.
-# Templates ensure consistent structure and speed up adversarial review.
-# Constitution can override templates per domain.
-artifact_templates:
-  enabled: true
-  location: assets/templates/       # Relative to module root
-  constitution_controlled: true     # Constitution can override per domain
-  templates:
-    product-brief: product-brief-template.md
-    prd: prd-template.md
-    ux-design: ux-design-template.md
-    architecture: architecture-template.md
-    epics: epics-template.md
-    stories: stories-template.md
-    implementation-readiness: implementation-readiness-template.md
-    sprint-status: sprint-status-template.yaml
-
-# -----------------------------------------------------------------------------
-# ADVERSARIAL REVIEW (party mode)
-# -----------------------------------------------------------------------------
-adversarial_review:
-  mode: party
-  reviews:
-    product-brief:
-      lead: john
-      participants: [john, winston, sally]
-      focus: "Actionable? Buildable? User-centered?"
-    prd:
-      lead: winston
-      participants: [winston, mary, sally]
-      focus: "Buildable? Well-researched? UX-aligned?"
-    ux-design:
-      lead: john
-      participants: [john, winston, mary]
-      focus: "Serves requirements? Technically feasible? Grounded?"
-    architecture:
-      lead: john
-      participants: [john, mary, bob]
-      focus: "Meets spec? Practical? Sprintable?"
-    epics-and-stories:
-      lead: winston
-      participants: [winston, bob, amelia]
-      focus: "Buildable? Right-sized? Implementable?"
-
-# -----------------------------------------------------------------------------
-# BRANCH TOPOLOGY — PLANNING REPO (control repo)
-# -----------------------------------------------------------------------------
-planning_repo:
-  artifacts_location: central-only
-  # v3.2: initiative_root_pattern controls naming convention
-  # Resolved from constitution (default: domain-service-feature)
-  initiative_root_patterns:
-    domain-service-feature: "{domain}-{service}-{feature}"   # default — e.g., payments-auth-oauth
-    feature-only: "{feature}"                                 # e.g., oauth (domain/service in folder path + features.yaml)
-  branch_patterns:
-    initiative_root: "{initiative-root}"
-    milestone: "{initiative-root}-{milestone}"
-  merge_chain:
-    - source: "{initiative-root}-techplan"
-      target: "{initiative-root}-devproposal"
-      type: milestone-promotion
-      gate: adversarial-review
-    - source: "{initiative-root}-devproposal"
-      target: "{initiative-root}-sprintplan"
-      type: milestone-promotion
-      gate: stakeholder-approval
-    - source: "{initiative-root}-sprintplan"
-      target: "{initiative-root}-dev-ready"
-      type: milestone-promotion
-      gate: constitution-gate
-  # v3: Lazy milestone branch creation
-  milestone_branch_creation: lazy
-  # Create `{root}` and `{root}-techplan` at init; higher milestone branches are created on-demand at promotion time
-
-# -----------------------------------------------------------------------------
-# BRANCH TOPOLOGY — TARGET PROJECTS (code repos)
-# -----------------------------------------------------------------------------
-target_projects:
-  branching_model: gitflow
-  branch_patterns:
-    epic: "feature/{epic-key}"
-    story: "feature/{epic-key}-{story-key}"
-    integration: develop
-    release: "release/{version}"
-    production: main
-  merge_chain:
-    - source: "feature/{epic-key}-{story-key}"
-      target: "feature/{epic-key}"
-      type: story-completion
-      gate: code-review
-      auto_pr: true
-    - source: "feature/{epic-key}"
-      target: develop
-      type: epic-completion
-      gate: feature-complete-review
-    - source: develop
-      target: "release/{version}"
-      type: release-cut
-      gate: release-readiness
-    - source: "release/{version}"
-      target: main
-      type: production-deploy
-      gate: production-gate
-
-# -----------------------------------------------------------------------------
-# INITIATIVE CONFIGURATION
-# -----------------------------------------------------------------------------
-initiative:
-  scope_levels: [repo, service, domain, org]
-
-  # Scope hierarchy — each level's containment and next-step behavior:
-  #   domain  → contains services  → next step: /new-service
-  #   service → contains features  → next step: /new-feature
-  #   feature → has phases/milestones → next step: /{start_phase}
-  # Only feature-level initiatives have milestone branches and lifecycle phases.
-  # Domain and service scopes are organizational containers.
-  scope_hierarchy:
-    domain:
-      contains: service
-      next_command: /new-service
-      has_phases: false
-      has_milestones: false
-    service:
-      contains: feature
-      next_command: /new-feature
-      has_phases: false
-      has_milestones: false
-    feature:
-      contains: null
-      next_command: null  # determined by track start_phase
-      has_phases: true
-      has_milestones: true
-
-  config_schema:
-    required_fields: [initiative, scope, domain, track, created, initiative_root]
-    optional_fields: [service, feature, language]
-    path_patterns:
-      domain: "_bmad-output/lens-work/initiatives/{domain}/initiative.yaml"
-      service: "_bmad-output/lens-work/initiatives/{domain}/{service}/initiative.yaml"
-      feature: "_bmad-output/lens-work/initiatives/{domain}/{service}/{feature}.yaml"
-
-# -----------------------------------------------------------------------------
-# CONSTITUTION SCHEMA
-# -----------------------------------------------------------------------------
 constitution:
   inheritance: additive
   resolution_order: [org, domain, service, repo]
@@ -595,195 +208,20 @@ constitution:
     - additional_review_participants
     - required_artifacts
     - enforce_stories
-    # v3.1 capabilities
-    - permit_hotfix_express          # Allow hotfix-express track (bypass_constitution_gate)
-    - enable_parallel_phases         # Allow parallel phase execution within milestones
-    - collapse_gates                 # Allow gate collapsing for small features
-    - artifact_validator_overrides   # Override per-artifact validation rules
-    - template_overrides             # Override artifact templates per domain
-    - content_sensing_mode           # Override content-aware sensing (informational | hard-gate)
-    # v3.2 capabilities
-    - branching_strategy             # pr-per-milestone | pr-per-epic | trunk-based (planning repo)
-    - target_repo_branching          # pr-per-story | pr-per-epic | trunk-based (target repos)
-    - stakeholder_gate               # hard | informational (default: informational)
-    - features_registry              # Enable features.yaml-based feature tracking
+    - enforce_review
 
-# -----------------------------------------------------------------------------
-# GIT STATE MODEL (v3 — git-derived)
-# -----------------------------------------------------------------------------
-# State is derived from three durable sources:
-# 1. Branch existence — what branches exist tells you what's been started
-# 2. PR provider metadata — open/merged/closed PRs tell you what's been reviewed
-# 3. Committed artifacts — what files exist on what branches tells you what's been produced
-#
-# NO event-log.jsonl. NO git-ignored runtime state.
-git_state:
-  sources:
-    - git_symbolic_ref: "Current branch → initiative lookup key; phase and milestone come from initiative-state.yaml"
-    - git_branch_list: "Branch existence → milestone progression attempted"
-    - provider_adapter_pr: "PR state → phase complete, promotion complete"
-    - git_show: "Cross-branch config reads without checkout"
-    - committed_artifacts: "File existence → artifact inventory"
-  skill: git-state
-  write_skill: git-orchestration
-
-# -----------------------------------------------------------------------------
-# DATA ZONES
-# -----------------------------------------------------------------------------
 data_zones:
   governance:
-    description: "Universal artifacts shared across all initiatives"
-    setup_file: "_bmad-output/lens-work/governance-setup.yaml"
-    artifacts:
-      - constitutions/
-      - roster/
-      - policies/
-      - repo-inventory.yaml
-    write_roles: [Tech Lead, Architect]
-    pr_required: true
-
-  initiative:
-    description: "Initiative-scoped planning artifacts in control repo"
-    local_path: _bmad-output/lens-work/initiatives/
-    branch_strategy:
-      pattern: "{initiative_root}-{milestone}"
-      merge_target: "{initiative_root}"
-
+    artifacts: [constitutions/, features/, feature-index.yaml]
+  control:
+    artifacts: [docs/]
   personal:
-    description: "User profile and preferences"
-    local_path: _bmad-output/lens-work/
-    artifacts:
-      - profile.yaml
-      - governance-setup.yaml
+    local_path: .lens/personal/
 
-# -----------------------------------------------------------------------------
-# CREDENTIAL POLICY (NFR4)
-# -----------------------------------------------------------------------------
-credentials:
-  storage: "OS credential store or provider CLI login state ONLY"
-  git_tracked: never
-  enforcement: "Scanning all git-tracked files for credential patterns must find nothing"
-
-# -----------------------------------------------------------------------------
-# FEATURES REGISTRY (v3.2)
-# -----------------------------------------------------------------------------
-# Optional feature-to-domain/service mapping for simplified branch naming
-# and feature mobility. When enabled, branch names use {feature} only;
-# domain/service classification lives in this registry + folder structure.
-features_registry:
-  enabled: false                    # Opt-in — enable via constitution or /lens-upgrade
-  file: "_bmad-output/lens-work/features.yaml"
-  schema:
-    features:
-      "{feature-name}":
-        domain: "{domain}"
-        service: "{service}"
-        status: active | closed
-        branch: "{feature-name}"
-        track: "{track}"
-        created: "{ISO-8601}"
-
-# -----------------------------------------------------------------------------
-# PROBLEM LOGGING (v3.2)
-# -----------------------------------------------------------------------------
-# Standard convention for capturing issues encountered during initiative work.
-# Used by /log-problem command and consumed by /retrospective workflow.
-problem_logging:
-  enabled: true
-  file_pattern: "_bmad-output/lens-work/initiatives/{domain}/{service}/problems.md"
-  entry_format: |
-    ## [{severity}] {title}
-    **Phase:** {phase} | **Date:** {date}
-    {description}
-  severity_levels: [blocker, warning, note]
-  consumed_by: retrospective
-
-# -----------------------------------------------------------------------------
-# MIGRATIONS
-# -----------------------------------------------------------------------------
-migrations:
-  - from_version: 2
-    to_version: 3
-    breaking: true
-    migration_command: "/lens-upgrade --from 2 --to 3"
-    branch_rename_required: true
-    changes:
-      - type: rename_key
-        path: audiences
-        new_path: milestones
-      - type: rename_field
-        path: milestones.small
-        new_path: milestones.techplan
-      - type: rename_field
-        path: milestones.medium
-        new_path: milestones.devproposal
-      - type: rename_field
-        path: milestones.large
-        new_path: milestones.sprintplan
-      - type: rename_field
-        path: milestones.base
-        new_path: milestones.dev-ready
-      - type: rename_field
-        path: phases.*.audience
-        new_path: phases.*.milestone
-      - type: rename_field
-        path: phases.*.branching_audience
-        new_path: phases.*.branching_milestone
-      - type: rename_field
-        path: tracks.*.audiences
-        new_path: tracks.*.milestones
-      - type: rename_field
-        path: scope_hierarchy.*.has_audiences
-        new_path: scope_hierarchy.*.has_milestones
-      - type: add_field
-        path: close_states
-        value: [completed, abandoned, superseded]
-      - type: add_field
-        path: artifact_publication
-        value: { governance_root: "artifacts/", enabled: true }
-      - type: add_field
-        path: initiative_state_schema
-        value: initiative-state.yaml
-
-  - from_version: 3.1
-    to_version: 3.2
-    breaking: false
-    migration_command: "/lens-upgrade --from 3.1 --to 3.2"
-    branch_rename_required: false  # only required if switching to feature-only naming
-    changes:
-      - type: add_capability
-        path: constitution.capabilities
-        value: branching_strategy
-      - type: add_capability
-        path: constitution.capabilities
-        value: target_repo_branching
-      - type: add_capability
-        path: constitution.capabilities
-        value: stakeholder_gate
-      - type: add_capability
-        path: constitution.capabilities
-        value: features_registry
-      - type: add_section
-        path: features_registry
-        value: { index_file: "_bmad-output/lens-work/features.yaml", scope: per-domain-service }
-      - type: add_section
-        path: problem_logging
-        value: { enabled: true, consumed_by: retrospective }
-      - type: add_track
-        path: tracks.express
-        value: { phases: [expressplan], milestones: [dev-ready], gate_mode: informational }
-      - type: change_default
-        path: milestones.sprintplan.entry_gate_mode
-        old_value: hard
-        new_value: informational
-    optional_migrations:
-      - name: feature-only-branch-naming
-        description: "Rename initiative branches from {domain}-{service}-{feature} to {feature}"
-        prerequisite: "Set initiative_root_pattern: feature-only in your constitution"
-        steps:
-          - "Detect initiatives using domain-service-feature branch names"
-          - "For each active initiative: git branch -m {old} {new}"
-          - "Update initiative-state.yaml with new initiative_root"
-          - "Create features.yaml entries mapping feature→domain/service"
-          - "Update any open PRs (close old, create new with same body)"
-          - "Old branches preserved with -archived suffix until user confirms cleanup"
+required_frontmatter:
+  enforcement: warn
+  fields:
+    feature: {type: string, required: true}
+    doc_type: {type: enum, required: true}
+    status: {type: enum, required: true, values: [draft, in-review, approved]}
+    updated_at: {type: iso8601, required: true}

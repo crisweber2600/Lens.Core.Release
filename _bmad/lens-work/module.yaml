@@ -1,347 +1,90 @@
-# LENS Workbench Module Configuration v3.2
-# Source repo — CI/CD promotes to bmad.lens.release
-
-code: lens-work
-name: "LENS Workbench"
-module_version: "3.2.0"
-description: "Guided lifecycle router with git-orchestrated discipline. Phase-aware orchestration for BMAD workflows with automated branch topology."
-header: "Guided lifecycle router with git-orchestrated discipline"
-subheader: "Phase-aware orchestration for BMAD workflows with automated branch topology"
-default_selected: false
-module_greeting: |
-  Welcome to **LENS Workbench** — your guided lifecycle router.
-  Type `/help` to see available commands, or `/status` to check your current initiative state.
-
-# Module Type
+code: "lens"
+name: "Lens Workbench"
+description: "LENS lifecycle workbench — feature context switching, initialization, planning, and governance."
+module_version: "5.4.31"
 type: standalone
-global: false
-
-# Lifecycle Contract
-lifecycle:
-  file: lifecycle.yaml
-  schema_version: 3.2
-
-# Dependencies
-dependencies:
-  - core
-
-optional_dependencies:
-  - cis
-  - tea
-
-# Skills (v2: git-state replaces state-management, sensing replaces discovery)
-# Provider adapter operations are integrated into git-orchestration skill
-skills:
-  - id: git-state
-    file: skills/git-state/SKILL.md
-    description: "Derive initiative state from git primitives — read-only queries"
-  - id: git-orchestration
-    file: skills/git-orchestration/SKILL.md
-    description: "Branch creation, commits, pushes, PR management, provider adapter — write operations"
-  - id: constitution
-    file: skills/constitution/SKILL.md
-    description: "Constitutional governance resolution and compliance checks"
-  - id: sensing
-    file: skills/sensing/SKILL.md
-    description: "Cross-initiative overlap detection at lifecycle gates"
-  - id: checklist
-    file: skills/checklist/SKILL.md
-    description: "Phase gate checklists with progressive validation"
-  - id: dashboard
-    file: workflows/utility/dashboard/SKILL.md
-    description: "Cross-initiative status overview with Gantt timeline"
-
-# Workflows
-workflows:
-  core:
-    - id: phase-lifecycle
-      path: workflows/core/phase-lifecycle/
-      description: "Phase start, phase end, phase-to-audience PR"
-    - id: audience-promotion
-      path: workflows/core/audience-promotion/
-      description: "Audience→audience PR with gate + sensing"
-    - id: milestone-promotion
-      path: workflows/core/milestone-promotion/
-      description: "Milestone branch creation and promotion"
-  router:
-    - id: init-initiative
-      path: workflows/router/init-initiative/
-      description: "/new-domain, /new-service, /new-feature"
-    - id: preplan
-      path: workflows/router/preplan/
-      description: "/preplan phase workflow"
-    - id: businessplan
-      path: workflows/router/businessplan/
-      description: "/businessplan phase workflow"
-    - id: techplan
-      path: workflows/router/techplan/
-      description: "/techplan phase workflow"
-    - id: devproposal
-      path: workflows/router/devproposal/
-      description: "/devproposal phase workflow"
-    - id: sprintplan
-      path: workflows/router/sprintplan/
-      description: "/sprintplan phase workflow"
-    - id: dev
-      path: workflows/router/dev/
-      description: "/dev phase workflow"
-    - id: discover
-      path: workflows/router/discover/
-      description: "/discover — repo discovery, governance inventory, branch creation"
-    - id: close
-      path: workflows/router/close/
-      description: "/close — close/abandon initiative"
-    - id: expressplan
-      path: workflows/router/expressplan/
-      description: "/expressplan — all planning artifacts in one session (express track)"
-    - id: retrospective
-      path: workflows/router/retrospective/
-      description: "/retrospective — post-initiative review and lessons learned"
-  utility:
-    - id: onboard
-      path: workflows/utility/onboard/
-      description: "/onboard — profile, auth, governance bootstrap, TargetProjects auto-clone"
-    - id: status
-      path: workflows/utility/status/
-      description: "/status — git-derived state report"
-    - id: next
-      path: workflows/utility/next/
-      description: "/next — recommended next action"
-    - id: switch
-      path: workflows/utility/switch/
-      description: "/switch — checkout different initiative"
-    - id: help
-      path: workflows/utility/help/
-      description: "/help — command reference"
-    - id: module-management
-      path: workflows/utility/module-management/
-      description: "Module version check, update detection, and self-service update"
-    - id: promote
-      path: workflows/utility/promote/
-      description: "/promote — advance audience tier with gate checks"
-    - id: upgrade
-      path: workflows/utility/upgrade/
-      description: "/lens-upgrade — migrate control repo to latest schema version"
-    - id: log-problem
-      path: workflows/utility/log-problem/
-      description: "/log-problem — record issues and friction points for active initiative"
-    - id: move-feature
-      path: workflows/utility/move-feature/
-      description: "/move-feature — reclassify feature to different domain/service"
-    - id: split-feature
-      path: workflows/utility/split-feature/
-      description: "/split-feature — split feature into multiple initiatives"
-    - id: approval-status
-      path: workflows/utility/approval-status/
-      description: "/approval-status — show pending promotion PR approval state"
-    - id: pause-epic
-      path: workflows/utility/pause-epic/
-      description: "/pause-epic — suspend in-flight epic without losing state"
-    - id: resume-epic
-      path: workflows/utility/resume-epic/
-      description: "/resume-epic — resume paused epic with re-sensing"
-    - id: rollback-phase
-      path: workflows/utility/rollback-phase/
-      description: "/rollback-phase — revert phase to restart artifact production"
-    - id: profile
-      path: workflows/utility/profile/
-      description: "/profile — view or update onboarding profile"
-  governance:
-    - id: compliance-check
-      path: workflows/governance/compliance-check/
-      description: "Constitution compliance scan"
-    - id: resolve-constitution
-      path: workflows/governance/resolve-constitution/
-      description: "4-level hierarchy resolution"
-    - id: cross-initiative
-      path: workflows/governance/cross-initiative/
-      description: "Cross-initiative sensing at gates"
-    - id: audit-all
-      path: workflows/governance/audit-all/
-      description: "/audit-all-initiatives — cross-initiative compliance dashboard"
-
-# Module Installer (BMAD standard contract)
-installer: _module-installer/installer.js
-
-# Scripts (cross-platform, no CLI dependencies beyond git+curl)
-scripts:
-  - id: install
-    files:
-      - scripts/install.sh
-      - scripts/install.ps1
-    description: "Standalone installer — alternative to _module-installer/installer.js"
-  - id: promote-branch
-    files:
-      - scripts/promote-branch.ps1
-      - scripts/promote-branch.sh
-    description: "Branch promotion, PR creation via REST API, and branch cleanup"
-  - id: store-github-pat
-    files:
-      - scripts/store-github-pat.ps1
-      - scripts/store-github-pat.sh
-    description: "Secure PAT collection into environment variables (run outside AI context)"
-  - id: create-pr
-    files:
-      - scripts/create-pr.ps1
-      - scripts/create-pr.sh
-    description: "PR creation via REST API with provider detection"
-  - id: setup-control-repo
-    files:
-      - scripts/setup-control-repo.ps1
-      - scripts/setup-control-repo.sh
-    description: "Control repo bootstrapping — clone governance and target repos"
-
-# Installation Questions
-install_questions:
-  target-projects-path:
-    prompt: "Path to TargetProjects folder (where repos are cloned)"
-    default: "../TargetProjects"
-    result: "{project-root}/{value}"
-  default-git-remote:
-    prompt: "Default git remote provider"
-    default: "github"
-    result: "{value}"
-    single-select:
-      - value: "github"
-        label: "GitHub"
-      - value: "gitlab"
-        label: "GitLab"
-      - value: "azure-devops"
-        label: "Azure DevOps"
-  ides:
-    prompt: "IDE adapters to install"
-    default: ["github-copilot"]
-    result: "{value}"
-    multi-select:
-      - value: "github-copilot"
-        label: "GitHub Copilot (VS Code)"
-      - value: "cursor"
-        label: "Cursor"
-      - value: "claude"
-        label: "Claude Code"
-      - value: "codex"
-        label: "Codex CLI"
-
-# Prompts
 prompts:
-  - lens-work.onboard.prompt.md
-  - lens-work.new-initiative.prompt.md
-  - lens-work.preplan.prompt.md
-  - lens-work.expressplan.prompt.md
-  - lens-work.businessplan.prompt.md
-  - lens-work.techplan.prompt.md
-  - lens-work.devproposal.prompt.md
-  - lens-work.sprintplan.prompt.md
-  - lens-work.dev.prompt.md
-  - lens-work.discover.prompt.md
-  - lens-work.close.prompt.md
-  - lens-work.retrospective.prompt.md
-  - lens-work.log-problem.prompt.md
-  - lens-work.move-feature.prompt.md
-  - lens-work.split-feature.prompt.md
-  - lens-work.status.prompt.md
-  - lens-work.next.prompt.md
-  - lens-work.switch.prompt.md
-  - lens-work.promote.prompt.md
-  - lens-work.constitution.prompt.md
-  - lens-work.compliance-check.prompt.md
-  - lens-work.sense.prompt.md
-  - lens-work.help.prompt.md
-  - lens-work.setup-repo.prompt.md
-  - lens-work.module-management.prompt.md
-  - lens-work.upgrade.prompt.md
-  - lens-work.approval-status.prompt.md
-  - lens-work.rollback-phase.prompt.md
-  - lens-work.pause-epic.prompt.md
-  - lens-work.resume-epic.prompt.md
-  - lens-work.profile.prompt.md
-  - lens-work.audit-all-initiatives.prompt.md
+  - lens-preflight.prompt.md
+  - lens-complete.prompt.md
+  - lens-constitution.prompt.md
+  - lens-dev.prompt.md
+  - lens-quickdev.prompt.md
+  - lens-core-bugfix.prompt.md
+  - lens-nextlens-bugfix.prompt.md
+  - lens-discover.prompt.md
+  - lens-expressplan.prompt.md
+  - lens-setup.prompt.md
+  - lens-work-intake.prompt.md
+  - lens-doctor.prompt.md
+  - lens-ledger-promotion.prompt.md
+  - lens-lifecycle.prompt.md
+  - lens-map-audit.prompt.md
+  - lens-projection-rebuild.prompt.md
+  - lens-reporting-snapshot.prompt.md
+  - lens-salmon-impact.prompt.md
+  - lens-topology-design.prompt.md
+  - lens-new-domain.prompt.md
+  - lens-new-feature.prompt.md
+  - lens-new-service.prompt.md
+  - lens-next.prompt.md
+  - lens-split-feature.prompt.md
+  - lens-switch.prompt.md
+  - lens-techplan.prompt.md
+  - lens-finalizeplan.prompt.md
+  - lens-upgrade.prompt.md
+  - lens-businessplan.prompt.md
+  - lens-preplan.prompt.md
+skills:
+  - lens-adversarial-review
+  - lens-batch
+  - lens-bmad-skill
+  - lens-businessplan
+  - lens-complete
+  - lens-constitution
+  - lens-dev
+  - lens-nextlens-bugfix
+  - lens-quickdev
+  - lens-discover
+  - lens-expressplan
+  - lens-setup
+  - lens-work-intake
+  - lens-doctor
+  - lens-ledger-promotion
+  - lens-lifecycle
+  - lens-map-audit
+  - lens-projection-rebuild
+  - lens-reporting-snapshot
+  - lens-salmon-impact
+  - lens-topology-design
+  - lens-feature-yaml
+  - lens-finalizeplan
+  - lens-git-orchestration
+  - lens-git-state
+  - lens-init-feature
+  - lens-new-domain
+  - lens-next
+  - lens-preflight
+  - lens-preplan
+  - lens-split-feature
+  - lens-switch
+  - lens-techplan
+  - lens-upgrade
+  - lens-new-domain
+  - lens-new-service
+  - lens-new-feature
+  # DEFERRED: lens-document-project — skill absent in new-codebase.
+  # Full specification available in old-codebase: skills/lens-document-project/SKILL.md.
+  # Scope: feature-aware output path routing, governance docs copy, prompt stub, module.yaml registration.
+  # Schedule for next release cycle.
 
-# IDE Adapter Layers
-# Generated by _module-installer/installer.js (or standalone scripts/install.sh|install.ps1)
-# Each IDE gets thin stubs that reference module content by path
-adapters:
-  github-copilot:
-    dir: .github/
-    agent: .github/agents/bmad-agent-lens-work-lens.agent.md
-    instructions: .github/lens-work-instructions.md
-    stub_prompts:
-      - .github/prompts/lens-work.onboard.prompt.md
-      - .github/prompts/lens-work.new-initiative.prompt.md
-      - .github/prompts/lens-work.new-domain.prompt.md
-      - .github/prompts/lens-work.new-service.prompt.md
-      - .github/prompts/lens-work.new-feature.prompt.md
-      - .github/prompts/lens-work.switch.prompt.md
-      - .github/prompts/lens-work.status.prompt.md
-      - .github/prompts/lens-work.next.prompt.md
-      - .github/prompts/lens-work.discover.prompt.md
-      - .github/prompts/lens-work.help.prompt.md
-      - .github/prompts/lens-work.promote.prompt.md
-      - .github/prompts/lens-work.constitution.prompt.md
-      - .github/prompts/lens-work.preplan.prompt.md
-      - .github/prompts/lens-work.businessplan.prompt.md
-      - .github/prompts/lens-work.techplan.prompt.md
-      - .github/prompts/lens-work.devproposal.prompt.md
-      - .github/prompts/lens-work.sprintplan.prompt.md
-  cursor:
-    dir: .cursor/
-    commands:
-      - .cursor/commands/bmad-lens-work-onboard.md
-      - .cursor/commands/bmad-lens-work-init-initiative.md
-      - .cursor/commands/bmad-lens-work-preplan.md
-      - .cursor/commands/bmad-lens-work-businessplan.md
-      - .cursor/commands/bmad-lens-work-techplan.md
-      - .cursor/commands/bmad-lens-work-devproposal.md
-      - .cursor/commands/bmad-lens-work-sprintplan.md
-      - .cursor/commands/bmad-lens-work-dev.md
-      - .cursor/commands/bmad-lens-work-status.md
-      - .cursor/commands/bmad-lens-work-next.md
-      - .cursor/commands/bmad-lens-work-switch.md
-      - .cursor/commands/bmad-lens-work-help.md
-      - .cursor/commands/bmad-lens-work-promote.md
-      - .cursor/commands/bmad-lens-work-constitution.md
-      - .cursor/commands/bmad-lens-work-compliance.md
-      - .cursor/commands/bmad-lens-work-sense.md
-      - .cursor/commands/bmad-lens-work-module-management.md
-  claude:
-    dir: .claude/
-    commands:
-      - .claude/commands/bmad-lens-work-onboard.md
-      - .claude/commands/bmad-lens-work-init-initiative.md
-      - .claude/commands/bmad-lens-work-preplan.md
-      - .claude/commands/bmad-lens-work-businessplan.md
-      - .claude/commands/bmad-lens-work-techplan.md
-      - .claude/commands/bmad-lens-work-devproposal.md
-      - .claude/commands/bmad-lens-work-sprintplan.md
-      - .claude/commands/bmad-lens-work-dev.md
-      - .claude/commands/bmad-lens-work-status.md
-      - .claude/commands/bmad-lens-work-next.md
-      - .claude/commands/bmad-lens-work-switch.md
-      - .claude/commands/bmad-lens-work-help.md
-      - .claude/commands/bmad-lens-work-promote.md
-      - .claude/commands/bmad-lens-work-constitution.md
-      - .claude/commands/bmad-lens-work-compliance.md
-      - .claude/commands/bmad-lens-work-sense.md
-      - .claude/commands/bmad-lens-work-module-management.md
-  codex:
-    dir: ./
-    agents_md: AGENTS.md
-    commands:
-      - .codex/commands/bmad-lens-work-onboard.md
-      - .codex/commands/bmad-lens-work-init-initiative.md
-      - .codex/commands/bmad-lens-work-preplan.md
-      - .codex/commands/bmad-lens-work-businessplan.md
-      - .codex/commands/bmad-lens-work-techplan.md
-      - .codex/commands/bmad-lens-work-devproposal.md
-      - .codex/commands/bmad-lens-work-sprintplan.md
-      - .codex/commands/bmad-lens-work-dev.md
-      - .codex/commands/bmad-lens-work-status.md
-      - .codex/commands/bmad-lens-work-next.md
-      - .codex/commands/bmad-lens-work-switch.md
-      - .codex/commands/bmad-lens-work-help.md
-      - .codex/commands/bmad-lens-work-promote.md
-      - .codex/commands/bmad-lens-work-constitution.md
-      - .codex/commands/bmad-lens-work-compliance.md
-      - .codex/commands/bmad-lens-work-sense.md
-      - .codex/commands/bmad-lens-work-module-management.md
-
+# Internal skills are not exposed as public commands or prompt stubs.
+# They are invoked programmatically by other skills only.
+internal_skills:
+  - name: lens-quickplan
+    classification: internal
+    invoked_by: lens-bmad-skill
+    description: "Internal express planning pipeline for ExpressPlan. Has no public prompt stub."
+  - name: bmad-lens-postflight
+    classification: internal
+    invoked_by: lens command wrappers
+    description: "Internal closeout flow that runs after each Lens command."

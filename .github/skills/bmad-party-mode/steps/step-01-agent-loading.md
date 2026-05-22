@@ -20,7 +20,7 @@
 ## CONTEXT BOUNDARIES:
 
 - Agent manifest CSV is available at `{project-root}/_bmad/_config/agent-manifest.csv`
-- User configuration from bmadconfig.yaml is loaded and resolved
+- User configuration from config.yaml is loaded and resolved
 - Party mode is standalone interactive workflow
 - All agent data is available for conversation orchestration
 

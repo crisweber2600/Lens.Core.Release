@@ -5,7 +5,41 @@
 
 ---
 
-## Test Cases
+## Test Cases — 2-Branch Topology
+
+### Parse Initiative Root
+
+| Input Branch | Expected Root | Expected Plan Branch |
+|-------------|---------------|---------------------|
+| `foo-bar-auth` | `foo-bar-auth` | `foo-bar-auth-plan` |
+| `foo-bar-auth-plan` | `foo-bar-auth` | (this is the plan branch) |
+| `a-b-c-d` | `a-b-c-d` | `a-b-c-d-plan` |
+| `a-b-c-d-plan` | `a-b-c-d` | (this is the plan branch) |
+| `payments` | `payments` | `payments-plan` |
+| `payments-plan` | `payments` | (this is the plan branch) |
+
+### Non-Initiative Branches
+
+| Input Branch | Expected Behavior |
+|-------------|-------------------|
+| `main` | Return null initiative |
+| `develop` | Return null initiative |
+| `feature/epic-1` | Return null initiative |
+
+### Edge Cases
+
+| Input Branch | Expected Root | Notes |
+|-------------|---------------|-------|
+| `a` | `a` | Single-char root |
+| `a-plan` | `a` | Single-char root plan branch |
+| `a-b-c-d` | `a-b-c-d` | Multi-segment root |
+| `a-b-c-d-plan` | `a-b-c-d` | Multi-segment root plan branch |
+
+---
+
+## Test Cases — Legacy Topology
+
+> ⚠️ Legacy audience-based topology. For new initiatives, use 2-branch topology above.
 
 ### Parse Initiative Root
 
@@ -17,14 +51,6 @@
 | `foo-bar-auth-medium-devproposal` | `foo-bar-auth` | `medium` | `devproposal` |
 | `foo-bar-auth-large-sprintplan` | `foo-bar-auth` | `large` | `sprintplan` |
 | `foo-bar-auth-base` | `foo-bar-auth` | `base` | null |
-
-### Non-Initiative Branches
-
-| Input Branch | Expected Behavior |
-|-------------|-------------------|
-| `main` | Return null initiative |
-| `develop` | Return null initiative |
-| `feature/epic-1` | Return null initiative |
 
 ### Edge Cases
 

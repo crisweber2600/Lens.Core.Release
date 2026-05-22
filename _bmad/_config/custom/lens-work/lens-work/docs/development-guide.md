@@ -1,6 +1,6 @@
 # Development Guide — LENS Workbench Module (lens-work)
 
-**Generated:** 2026-04-01 | **Scan Level:** Deep | **Module Version:** 3.2.0
+**Generated:** 2026-04-01 | **Scan Level:** Deep | **Module Version:** 4.0.0
 
 ---
 
@@ -9,12 +9,11 @@
 | Requirement | Version | Purpose |
 |-------------|---------|---------|
 | Git | 2.28+ | Branch operations, state derivation, commits |
-| Bash | 4+ | Unix script execution (install, create-pr, promote, setup, PAT) |
-| PowerShell | 5+ | Windows script execution (equivalent .ps1 scripts) |
+| Bash / uv | 4+ / any | Script execution (install, create-pr, setup, PAT) |
 | Node.js | 16+ | CI/CD installer only (`_module-installer/installer.js`) |
 | curl | any | REST API calls in scripts (GitHub/Azure DevOps) |
 | jq | any (optional) | JSON parsing in scripts |
-| Python | 3.8+ (optional) | Legacy setup merge utilities (`bmad-lens-work-setup/scripts/`) |
+| Python | 3.11+ (optional) | `uv run --script` entrypoints including `install.py` and legacy setup merge utilities |
 
 ---
 
@@ -24,32 +23,32 @@
 
 ```bash
 # From control repo root
-bash _bmad/lens-work/scripts/install.sh
+uv run lens.core/_bmad/lens-work/scripts/install.py
 ```
 
 ### Multi-IDE Installation
 
 ```bash
 # Install for specific IDE
-bash _bmad/lens-work/scripts/install.sh --ide cursor
+uv run lens.core/_bmad/lens-work/scripts/install.py --ide cursor
 
 # Install for all supported IDEs
-bash _bmad/lens-work/scripts/install.sh --all-ides
+uv run lens.core/_bmad/lens-work/scripts/install.py --all-ides
 ```
 
 ### Update Existing Installation
 
 ```bash
-bash _bmad/lens-work/scripts/install.sh --update
+uv run lens.core/_bmad/lens-work/scripts/install.py --update
 ```
 
 ### Dry Run (Preview)
 
 ```bash
-bash _bmad/lens-work/scripts/install.sh --dry-run
+uv run lens.core/_bmad/lens-work/scripts/install.py --dry-run
 ```
 
-**Supported IDEs:** `github-copilot` (default), `cursor`, `claude`, `codex`
+**Supported IDEs:** `github-copilot` (default), `cursor`, `claude`, `codex`, `opencode`
 
 **What install does:**
 1. Creates IDE adapter stubs in `.github/` (or IDE-specific config folder)
@@ -67,10 +66,10 @@ bash _bmad/lens-work/scripts/install.sh --dry-run
 
 ```bash
 # Unix
-bash _bmad/lens-work/scripts/store-github-pat.sh
+bash lens.core/_bmad/lens-work/scripts/store-github-pat.py
 
 # Windows
-powershell _bmad/lens-work/scripts/store-github-pat.ps1
+powershell lens.core/_bmad/lens-work/scripts/store-github-pat.py
 ```
 
 Sets `GITHUB_PAT`, `GH_TOKEN`, and `GH_ENTERPRISE_TOKEN` in environment + shell profile.
@@ -79,7 +78,7 @@ Sets `GITHUB_PAT`, `GH_TOKEN`, and `GH_ENTERPRISE_TOKEN` in environment + shell 
 
 ```bash
 # Clone governance and release repos into TargetProjects
-bash _bmad/lens-work/scripts/setup-control-repo.sh
+bash lens.core/_bmad/lens-work/scripts/setup-control-repo.py
 ```
 
 Options: `--org`, `--release-org`, `--release-repo`, `--release-branch`, `--base-url`, `--dry-run`
@@ -92,6 +91,7 @@ Edit `bmadconfig.yaml` at the module root:
 github_username: your-github-username    # Required: set to your GitHub username
 target_projects_path: "../TargetProjects" # Where target repos live
 default_git_remote: github                # git provider (github or azure-devops)
+governance_repo_path: "../TargetProjects/lens/lens-governance" # Canonical governance metadata repo
 ```
 
 ---
@@ -103,29 +103,21 @@ default_git_remote: github                # git provider (github or azure-devops
 | File | Purpose | When to Modify |
 |------|---------|----------------|
 | `lifecycle.yaml` | All lifecycle behavior definition | Adding phases, milestones, tracks, validation rules |
-| `module.yaml` | Module metadata and registry | Changing version, adding skills/workflows |
+| `module.yaml` | Module metadata and registry | Changing version, adding skills/prompts/adapters |
 | `module-help.csv` | Command index | Adding or modifying user commands |
-| `agents/lens.agent.md` | Agent persona and menu | Changing agent behavior, adding menu items |
-| `workflows/includes/preflight.md` | Shared preflight checks | Modifying common validation logic |
+| `agents/lens.agent.md` | Thin-shell agent persona and compact menu | Changing shell behavior or shell entry points |
+| `_module-installer/installer.js` | Canonical adapter generator | Updating published agent, prompt, or command stubs |
 
-### Adding a New Workflow
+### Adding or Updating a Skill Surface
 
-1. Create folder under appropriate category: `workflows/{core|router|utility|governance}/{name}/`
-2. Add `SKILL.md` — Skill definition with purpose, triggers, integration description
-3. Add `workflow.md` — Entry point with YAML frontmatter
-4. Add `steps/step-01-{purpose}.md`, `step-02-{purpose}.md`, etc.
-5. Add `resources/` if needed (templates, schemas)
-6. Register in `module.yaml` under `workflows`
-7. Add entry to `module-help.csv` if user-facing
-8. Add menu item to `agents/lens.agent.md` if user-facing
-9. Create prompt file `prompts/lens-work.{name}.prompt.md`
-
-### Adding a New Skill
-
-1. Create folder: `skills/{name}/`
-2. Add `SKILL.md` with operations, inputs/outputs, preconditions
-3. Register in `module.yaml` under `skills`
-4. Reference from workflows that need the skill
+1. Create or update the skill folder under `skills/bmad-lens-{name}/`
+2. Add or update `SKILL.md` with operations, inputs/outputs, and preconditions
+3. Register the skill in `module.yaml` under `skills`
+4. Add or update the prompt entry point in `prompts/lens-{name}.prompt.md` when the skill should be directly invocable
+5. Add an entry to `module-help.csv` when the surface should appear in command discovery
+6. Update `agents/lens.agent.md` only when the thin shell itself needs a new compact entry point
+7. Keep `_module-installer/installer.js` and `scripts/install.py` aligned whenever published prompts or agent stubs change
+8. Add focused tests and documentation updates for the new surface
 
 ### Modifying the Lifecycle Contract
 
@@ -141,11 +133,10 @@ default_git_remote: github                # git provider (github or azure-devops
 
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
-| `install.sh/.ps1` | Module installer | `--ide`, `--all-ides`, `--update`, `--dry-run` |
-| `create-pr.sh/.ps1` | Create PR via REST API | `-s/--source`, `-t/--target`, `-T/--title`, `-b/--body`, `--url-only` |
-| `promote-branch.sh/.ps1` | Branch promotion | `-s/--source`, `-t/--target`, `-C/--cleanup`, `--no-pr` |
-| `setup-control-repo.sh/.ps1` | Bootstrap repos | `--org`, `--release-branch`, `--dry-run` |
-| `store-github-pat.sh/.ps1` | PAT management | (interactive, run outside AI context) |
+| `install.py` | Module installer | `--ide`, `--all-ides`, `--update`, `--dry-run` |
+| `create-pr.py` | Create PR via REST API | `--source-branch`, `--target-branch`, `--title`, `--body`, `--url-only` |
+| `setup-control-repo.py` | Bootstrap repos | `--org`, `--release-branch`, `--dry-run` |
+| `store-github-pat.py` | PAT management | (interactive, run outside AI context) |
 
 ---
 
@@ -170,11 +161,11 @@ cat tests/contracts/sensing.md           # Overlap detection scenarios
 2. **Required files check:** `lifecycle.yaml`, `module.yaml`, `bmadconfig.yaml` must exist
 3. **Manifest validation:** `module.yaml` references all skills, workflows correctly
 4. **Help CSV alignment:** `module-help.csv` matches agent menu items
-5. **Installer smoke test:** Run `install.sh --dry-run` for all IDEs
+5. **Installer smoke test:** Run `install.py --dry-run` for all IDEs
 
 ### Development TODOs (from TODO.md)
 
-- ☐ Deep validation on representative workflows (router/dev, router/sprintplan)
+- ☐ Deep validation on representative workflows (router/dev, router/finalizeplan)
 - ☐ Smoke test installer output for all IDEs
 - ☐ Verify module-help.csv command ordering aligned with LENS agent menu
 - ☐ Confirm install-question naming consistency
@@ -187,15 +178,15 @@ cat tests/contracts/sensing.md           # Overlap detection scenarios
 ### Source → Release Pipeline
 
 ```
-bmad.lens.src/_bmad/lens-work/    (source)
-    ↓ push to master (changes in _bmad/lens-work/**)
+bmad.lens.src/lens.core/_bmad/lens-work/    (source)
+    ↓ push to master (changes in lens.core/_bmad/lens-work/**)
 CI/CD: promote-to-release.yml
     ↓ build → overlay → package
 _module-installer/installer.js    (called by pipeline)
     ↓ generate IDE adapter stubs
-bmad.lens.release (alpha branch)
+lens.core (alpha branch)
     ↓ auto PR
-bmad.lens.release (beta branch)
+lens.core (beta branch)
 ```
 
 See [pipeline-source-to-release.md](./pipeline-source-to-release.md) for details.
@@ -216,16 +207,10 @@ See [pipeline-source-to-release.md](./pipeline-source-to-release.md) for details
 @lens → /new-feature   (or /new-domain, /new-service)
 ```
 
-### Check Current Status
+### Review Portfolio State
 
 ```
-@lens → /status
-```
-
-### Promote to Next Milestone
-
-```
-@lens → /promote
+@lens → /dashboard
 ```
 
 ### Run Compliance Check

@@ -8,7 +8,7 @@ This checklist ensures the framework workflow completes successfully and all del
 
 Before starting the workflow:
 
-- [ ] Project root contains a valid project manifest (`package.json`, `pyproject.toml`, `pom.yaml`, `build.gradle`, `go.mod`, `*.csproj`, `Gemfile`, or `Cargo.toml`)
+- [ ] Project root contains a valid project manifest (`package.json`, `pyproject.toml`, `pom.xml`, `build.gradle`, `go.mod`, `*.csproj`, `Gemfile`, or `Cargo.toml`)
 - [ ] No existing test framework detected that conflicts with the target setup
 - [ ] Project type identifiable (React, Vue, Angular, Next.js, Node, Python, Java, Go, .NET, Ruby, Rust, etc.)
 - [ ] Bundler identifiable (Vite, Webpack, Rollup, esbuild) or not applicable (backend projects)
@@ -21,7 +21,7 @@ Before starting the workflow:
 ### Step 1: Preflight Checks
 
 - [ ] Stack type detected (`frontend`, `backend`, or `fullstack`)
-- [ ] Project manifest successfully read and parsed (`package.json`, `pyproject.toml`, `pom.yaml`, `go.mod`, etc.)
+- [ ] Project manifest successfully read and parsed (`package.json`, `pyproject.toml`, `pom.xml`, `go.mod`, etc.)
 - [ ] Project type extracted correctly
 - [ ] Bundler identified (or marked as N/A for backend projects)
 - [ ] No framework conflicts detected

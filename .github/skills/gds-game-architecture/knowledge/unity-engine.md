@@ -427,6 +427,19 @@ private IEnumerator LoadSceneAsync(string sceneName)
 | **R3 (Reactive Extensions)** | Reactive programming (successor to UniRx) | NuGet / GitHub |
 | **MessagePipe** | High-performance pub/sub messaging | NuGet / GitHub |
 
+## AI-Assisted Development
+
+Unity now ships its own AI tooling — the **Unity AI Assistant** — alongside an official **MCP (Model Context Protocol)** server that exposes the Editor to external AI clients such as Claude Code and Cursor. With Unity MCP connected, an agent can manage scenes, run asset operations, edit scripts, read the console, and automate in-editor tasks directly instead of working from chat descriptions.
+
+Enable it under `Edit > Project Settings > AI > Unity MCP`. The bridge starts with the Editor, and direct external connections require your approval. Overview docs: <https://docs.unity3d.com/Packages/com.unity.ai.assistant@2.8/manual/integration/unity-mcp-overview.html>.
+
+**Cost caveat:** Unity MCP is part of Unity AI, which needs a paid Unity AI subscription (around $10/month — verify current terms, since Unity's AI pricing has changed more than once). Prefer the free, MIT-licensed open-source servers unless you already pay for Unity AI:
+
+- **MCP Unity** (`CoderGamester/mcp-unity`) — 30+ tools for scenes, GameObjects, components, materials, and the Test Runner.
+- **Unity MCP** (`CoplayDev/unity-mcp`) — natural-language editor control with fast batch operations; supports Unity 2021.3 LTS and up.
+
+Both cover the same workflow as the official server at no cost. The engine MCP catalogue (`engine-mcps.yaml`) has full capability lists and install steps.
+
 ## Common Architectural Patterns
 
 ### Manager Singleton Pattern
@@ -550,7 +563,7 @@ Unity may be the wrong choice when:
 
 ## Platform-Specific Caveats
 
-- **iOS:** IL2CPP is mandatory for App Store submission. IL2CPP code stripping can remove code used via reflection — configure `link.yaml` to preserve types. Metal shader compilation adds to build time
+- **iOS:** IL2CPP is mandatory for App Store submission. IL2CPP code stripping can remove code used via reflection — configure `link.xml` to preserve types. Metal shader compilation adds to build time
 - **Android:** Minimum API level requirements change yearly. Vulkan support varies by device — always test on low-end Android hardware. App Bundle size limits (200MB AAB) may require Play Asset Delivery
 - **WebGL:** No threading support (no `Task.Run`). Memory is limited by browser tab. Many .NET APIs unavailable. Build sizes can be large — enable compression
 - **Consoles:** Require platform-specific SDK access (PlayStation Partners, Nintendo Developer, ID@Xbox). Built-in console export but certification testing is extensive. Each platform has unique TRC/TFR requirements

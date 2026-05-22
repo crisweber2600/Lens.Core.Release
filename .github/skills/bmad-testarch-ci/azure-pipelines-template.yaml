@@ -105,7 +105,7 @@ stages:
             condition: always()
             inputs:
               testResultsFormat: "JUnit"
-              testResultsFiles: "test-results/**/*.yaml"
+              testResultsFiles: "test-results/**/*.xml"
               mergeTestResults: true
             displayName: "Publish test results"
 

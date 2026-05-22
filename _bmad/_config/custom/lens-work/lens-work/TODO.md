@@ -10,19 +10,35 @@
 
 - [x] Core, router, utility, and governance workflows implemented
 - [x] Step-file scaffolding added for single-file workflows so packaging is consistent
-- [ ] Run deep workflow validation on representative workflows, starting with `router/dev` and `router/sprintplan`
+- [x] Run deep workflow validation on representative workflows, starting with `router/dev` and `router/sprintplan` — **Done: all 36 workflows validated, all step chains intact**
 - [x] Decide whether to fully migrate legacy single-file workflows to step-driven execution — **Decision: only `utility/dashboard` remains single-file (intentional thin wrapper)**
 
 ## Testing
 
-- [ ] Re-run BMAD module validation after each structural change
-- [ ] Smoke test installer output for GitHub Copilot, Cursor, Claude, and Codex stubs
-- [ ] Verify `module-help.csv` command ordering remains aligned with the LENS agent menu
+- [x] Re-run BMAD module validation after each structural change — **Done: full audit + dry-run of all 125 prompts, 160 path references validated**
+- [x] Smoke test installer output for GitHub Copilot, Cursor, Claude, and Codex stubs — **Done: 76 GitHub Copilot stubs synced, all validated**
+- [x] Verify `module-help.csv` command ordering remains aligned with the LENS agent menu — **Done: all 16 menu code collisions resolved, zero remaining**
 
 ## Next Steps
 
 - [ ] Confirm whether install-question naming remains intentionally snake_case because of installer compatibility
 - [ ] Document the dual agent representation (`.md` runtime source and `.yaml` structured companion) in release-facing docs if this pattern is retained
+
+---
+
+## v4.0 Module Audit (completed)
+
+- Fixed `module.yaml` schema_version 3.2 → 3.4
+- Created 21 missing Lens Next prompt files
+- Created 44 missing GitHub Copilot adapter stubs
+- Fixed 16 menu code collisions in `module-help.csv`
+- Created missing `utility/profile/SKILL.md`
+- Standardized 5 SKILL.md name prefixes to `lens-work-*`
+- Removed deprecated `includes/size-topology.md`
+- Fixed `promote-to-release.yml`: version extraction bug, IDE list mismatch, prompt overlay deletion bug, Output Folder sed bug, `.yaml` word-boundary fix, PR body wds omission
+- Dry-run validated all 125 prompts (0 broken references)
+- Added 3 missing prompts to `module.yaml` prompts section
+- Added 18 missing `stub_prompts` to `module.yaml` GitHub Copilot adapter
 
 ---
 
@@ -44,7 +60,7 @@ All workflow directories created with SKILL.md, workflow.md, step files, and pro
 
 ### Script Extraction — ✅ COMPLETED
 
-All scripts extracted to `scripts/` as paired `.sh` + `.ps1` files:
+All scripts extracted to `scripts/` as cross-platform Python (`.py`) files:
 
 **High (done):** `derive-initiative-status`, `scan-active-initiatives`, `load-command-registry`, `validate-phase-artifacts`, `plan-lifecycle-renames`
 

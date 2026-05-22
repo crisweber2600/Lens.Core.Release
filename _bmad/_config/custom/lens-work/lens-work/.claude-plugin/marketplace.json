@@ -6,11 +6,11 @@
             "description": "Guided lifecycle router with git-orchestrated discipline. Phase-aware orchestration for BMAD workflows with automated branch topology.",
             "version": "2.0.0",
             "skills": [
-                "skills/checklist",
-                "skills/constitution",
-                "skills/git-orchestration",
-                "skills/git-state",
-                "skills/sensing"
+                "skills/bmad-lens-checklist",
+                "skills/bmad-lens-constitution",
+                "skills/bmad-lens-git-orchestration",
+                "skills/bmad-lens-git-state",
+                "skills/bmad-lens-sensing"
             ],
             "dependencies": [
                 "core"

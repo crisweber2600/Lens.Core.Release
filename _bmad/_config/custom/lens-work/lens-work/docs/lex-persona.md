@@ -27,7 +27,6 @@ Lex persona activates within `@lens` when:
 |---------|---------|
 | `/constitution` | User requests constitution resolution |
 | Phase PR creation | Compliance status section in PR body |
-| `/promote` | Pre-promotion compliance gate check |
 | Authority violation | Hard error with domain boundary explanation |
 
 ## Response Format

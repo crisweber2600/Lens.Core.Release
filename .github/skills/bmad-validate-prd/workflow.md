@@ -1,5 +1,5 @@
 ---
-main_config: '{project-root}/_bmad/bmm/bmadconfig.yaml'
+main_config: '{project-root}/_bmad/bmm/config.yaml'
 validateWorkflow: './steps-v/step-v-01-discovery.md'
 ---
 

@@ -1,5 +1,5 @@
 ---
-main_config: '{project-root}/_bmad/bmm/bmadconfig.yaml'
+main_config: '{project-root}/_bmad/bmm/config.yaml'
 ---
 
 # Code Review Workflow
@@ -44,6 +44,7 @@ Load and read full config from `{main_config}` and resolve:
 - `project_name`, `planning_artifacts`, `implementation_artifacts`, `user_name`
 - `communication_language`, `document_output_language`, `user_skill_level`
 - `date` as system-generated current datetime
+- `sprint_status` = `{implementation_artifacts}/sprint-status.yaml`
 - `project_context` = `**/project-context.md` (load if exists)
 - CLAUDE.md / memory files (load if exist)
 

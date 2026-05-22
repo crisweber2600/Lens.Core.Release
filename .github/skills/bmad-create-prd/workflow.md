@@ -1,5 +1,5 @@
 ---
-main_config: '{project-root}/_bmad/bmm/bmadconfig.yaml'
+main_config: '{project-root}/_bmad/bmm/config.yaml'
 outputFile: '{planning_artifacts}/prd.md'
 ---
 

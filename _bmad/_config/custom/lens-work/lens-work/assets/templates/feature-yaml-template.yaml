@@ -1,0 +1,43 @@
+# feature.yaml Template
+#
+# Authoritative state for 2-branch topology features.
+# Lives on the {featureId} (root) branch.
+
+schema_version: "1.0"
+
+# Identity
+feature: "{featureId}"
+domain: "{domain}"
+service: "{service}"
+track: "{track}"
+
+# Topology
+topology: "2-branch"
+branches:
+  root: "{featureId}"
+  plan: "{featureId}-plan"
+
+# Lifecycle State
+status: "active"  # active | paused | complete | archived
+phase: "preplan"   # current lifecycle phase
+milestone: null    # current milestone (if applicable)
+
+# Metadata
+created: "{created_date}"
+owner: "{owner}"
+description: "{description}"
+
+# Artifact Paths (domain/service/feature scoped)
+docs:
+  path: "docs/{domain}/{service}/{featureId}"
+  governance_docs_path: "features/{domain}/{service}/{featureId}/docs"
+
+# Artifact Registry
+artifacts: []
+# - path: docs/prd.md
+#   phase: businessplan
+#   status: draft
+
+# Problem Summary (populated by /retrospective)
+problem_count: 0
+last_problem: null

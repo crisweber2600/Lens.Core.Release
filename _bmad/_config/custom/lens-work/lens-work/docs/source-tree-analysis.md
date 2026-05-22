@@ -1,6 +1,8 @@
 # Source Tree Analysis — LENS Workbench Module (lens-work)
 
-**Generated:** 2026-04-01 | **Scan Level:** Deep | **Module Version:** 3.2.0
+> ⚠️ **Historical Snapshot Notice (v4.0):** This document is a retained v3 workflow-tree snapshot for migration reference. The current Lens.Core.Src module is skills-first, does not ship the old `workflows/` execution tree, and no longer exposes `/promote`. Use `module.yaml` and `component-inventory.md` for the live manifest.
+
+**Generated:** 2026-04-01 | **Scan Level:** Deep | **Module Version:** 4.0.0
 
 ---
 
@@ -77,7 +79,7 @@ lens-work/                              # Module root
 │   │
 │   ├── utility/                        # [17] Operational support workflows
 │   │   ├── onboard/                    #   /onboard — bootstrap profile, auth, governance
-│   │   ├── status/                     #   /status — git-derived initiative state report
+│   │   ├── dashboard/                  #   /dashboard — cross-feature reporting
 │   │   ├── next/                       #   /next — recommend next action
 │   │   ├── switch/                     #   /switch — checkout different initiative
 │   │   ├── help/                       #   /help — command reference
@@ -138,21 +140,22 @@ lens-work/                              # Module root
 │   └── lens-work.audit-all-initiatives.prompt.md
 │
 ├── scripts/                            # Cross-platform operational scripts (15 pairs)
-│   ├── install.sh / install.ps1        #   ★ Module installer (IDE adapter bootstrap)
-│   ├── create-pr.sh / create-pr.ps1    #   PR creation via REST API (no gh CLI)
-│   ├── promote-branch.sh / promote-branch.ps1  #  Branch promotion helper
-│   ├── setup-control-repo.sh / setup-control-repo.ps1  #  Control repo bootstrap
-│   ├── store-github-pat.sh / store-github-pat.ps1  #  PAT management (outside AI context)
-│   ├── bootstrap-target-projects.sh / .ps1  #  Target project scaffolding
-│   ├── derive-initiative-status.sh / .ps1   #  Git-derived initiative state
-│   ├── derive-next-action.sh / .ps1         #  Next action recommendation
-│   ├── load-command-registry.sh / .ps1      #  Command registry loader
-│   ├── plan-lifecycle-renames.sh / .ps1     #  Lifecycle rename planning
-│   ├── preflight.sh / .ps1                  #  Preflight validation checks
-│   ├── run-preflight-cached.sh / .ps1       #  Cached preflight execution
-│   ├── scan-active-initiatives.sh / .ps1    #  Active initiative scanner
-│   ├── validate-feature-move.sh / .ps1      #  Feature move validation
-│   └── validate-phase-artifacts.sh / .ps1   #  Phase artifact validation
+├── scripts/                            # Cross-platform Python scripts
+│   ├── install.py                     #   ★ Module installer (IDE adapter bootstrap)
+│   ├── create-pr.py                   #   PR creation via REST API (no gh CLI)
+│   ├── setup-control-repo.py          #  Control repo bootstrap
+│   ├── store-github-pat.py            #  PAT management (outside AI context)
+│   ├── bootstrap-target-projects.py   #  Target project scaffolding
+│   ├── derive-initiative-status.py    #  Git-derived initiative state
+│   ├── derive-next-action.py          #  Next action recommendation
+│   ├── load-command-registry.py       #  Command registry loader
+│   ├── plan-lifecycle-renames.py      #  Lifecycle rename planning
+│   ├── preflight.py                   #  Preflight validation checks
+│   ├── run-preflight-cached.py        #  Cached preflight execution
+│   ├── scan-active-initiatives.py     #  Active initiative scanner
+│   ├── validate-feature-move.py       #  Feature move validation
+│   ├── validate-lens-bmad-registry.py #  BMAD registry validator
+│   └── validate-phase-artifacts.py    #  Phase artifact validation
 │
 ├── docs/                               # Reference documentation (22 files)
 │   ├── index.md                        #   Documentation index / table of contents
@@ -216,7 +219,7 @@ lens-work/                              # Module root
 | `workflows/utility/` | Operational commands | onboard, status, next, switch, help, promote, etc. (17 workflows) |
 | `workflows/governance/` | Compliance workflows | audit-all, compliance-check, cross-initiative, resolve-constitution |
 | `prompts/` | IDE prompt triggers | 32 `.prompt.md` files for VS Code/Copilot |
-| `scripts/` | Cross-platform scripts | 15 paired .sh/.ps1 files |
+| `scripts/` | Cross-platform scripts | Python scripts (.py) |
 | `docs/` | Reference documentation | 22 files: guides, references, release notes, scan report |
 | `tests/contracts/` | Contract test specs | 4 markdown-based specification files |
 
@@ -226,9 +229,9 @@ lens-work/                              # Module root
 
 | Entry | File | Type | Trigger |
 |-------|------|------|---------|
-| Module installer | `scripts/install.sh` / `install.ps1` | Script | First-time module installation |
-| Control repo setup | `scripts/setup-control-repo.sh` / `.ps1` | Script | Bootstrap governance clone |
-| PAT setup | `scripts/store-github-pat.sh` / `.ps1` | Script | Auth setup (outside AI context) |
+| Module installer | `scripts/install.py` | Script | First-time module installation |
+| Control repo setup | `scripts/setup-control-repo.py` | Script | Bootstrap governance clone |
+| PAT setup | `scripts/store-github-pat.py` | Script | Auth setup (outside AI context) |
 | Agent activation | `agents/lens.agent.md` | Agent def | `@lens` invocation in IDE |
 | CI/CD installer | `_module-installer/installer.js` | Node.js | Pipeline build step |
 | Any prompt | `prompts/lens-work.*.prompt.md` | Prompt | IDE prompt selection |

@@ -26,7 +26,7 @@
 
 ### Configuration Loading
 
-Load config from `{project-root}/_bmad/bmm/bmadconfig.yaml` and resolve:
+Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
 
 - `project_name`, `user_name`
 - `communication_language`, `document_output_language`

@@ -61,7 +61,7 @@ export const baseConfig = defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: [
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
-    ['junit', { outputFile: 'test-results/results.yaml' }],
+    ['junit', { outputFile: 'test-results/results.xml' }],
     ['list'],
   ],
   use: {
@@ -293,7 +293,7 @@ export default defineConfig({
     [
       'junit',
       {
-        outputFile: 'test-results/results.yaml',
+        outputFile: 'test-results/results.xml',
       },
     ],
 
@@ -403,7 +403,7 @@ test('capture screenshot on specific error', async ({ page }) => {
 - `trace: 'retain-on-failure-and-retries'` keeps enough history to compare failing retries against passing runs
 - `webServer.wait` is better than startup sleeps when local servers print readiness to stdout/stderr
 - HTML report at `playwright-report/` (visual debugging)
-- JUnit XML at `test-results/results.yaml` (CI integration)
+- JUnit XML at `test-results/results.xml` (CI integration)
 - CI uploads artifacts on failure with 30-day retention
 - Custom fixture can capture console logs, network logs, etc.
 

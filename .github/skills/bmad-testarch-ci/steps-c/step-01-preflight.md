@@ -1,7 +1,7 @@
 ---
 name: 'step-01-preflight'
 description: 'Verify prerequisites and detect CI platform'
-nextStepFile: './step-02-generate-pipeline.md'
+nextStepFile: '{skill-root}/steps-c/step-02-generate-pipeline.md'
 outputFile: '{test_artifacts}/ci-pipeline-progress.md'
 ---
 
@@ -52,7 +52,7 @@ Determine the project's test stack type (`test_stack_type`) using the following 
 1. If `test_stack_type` is explicitly set in config (not `"auto"`), use that value.
 2. Otherwise, auto-detect by scanning project manifests:
    - **Frontend indicators**: `playwright.config.*`, `cypress.config.*`, `vite.config.*`, `next.config.*`, `src/components/`, `src/pages/`, `src/app/`
-   - **Backend indicators**: `pyproject.toml`, `pom.yaml`/`build.gradle`, `go.mod`, `*.csproj`/`*.sln`, `Gemfile`, `Cargo.toml`, `jest.config.*`, `vitest.config.*`, `src/routes/`, `src/controllers/`, `src/api/`, `Dockerfile`, `serverless.yml`
+   - **Backend indicators**: `pyproject.toml`, `pom.xml`/`build.gradle`, `go.mod`, `*.csproj`/`*.sln`, `Gemfile`, `Cargo.toml`, `jest.config.*`, `vitest.config.*`, `src/routes/`, `src/controllers/`, `src/api/`, `Dockerfile`, `serverless.yml`
    - **Both present** → `fullstack`
    - **Only frontend** → `frontend`
    - **Only backend** → `backend`
@@ -68,7 +68,7 @@ Record detected `test_stack_type` in step output.
   - **Frontend/Fullstack**: `playwright.config.*` or `cypress.config.*` exists
   - **Backend (Node.js)**: `jest.config.*` or `vitest.config.*` or test scripts in `package.json`
   - **Backend (Python)**: `pyproject.toml` with `[tool.pytest]` or `pytest.ini` or `setup.cfg` with pytest config
-  - **Backend (Java/Kotlin)**: `pom.yaml` with surefire/failsafe plugins or `build.gradle` with test task
+  - **Backend (Java/Kotlin)**: `pom.xml` with surefire/failsafe plugins or `build.gradle` with test task
   - **Backend (Go)**: `*_test.go` files present (Go convention — no config file needed)
   - **Backend (C#/.NET)**: `*.csproj` with xUnit/NUnit/MSTest references
   - **Backend (Ruby)**: `Gemfile` with rspec or `.rspec` config file
@@ -115,7 +115,7 @@ Record detected `ci_platform` in step output.
 - Read environment context based on detected stack:
   - **Node.js**: Read `.nvmrc` if present (default to Node 24+ LTS if missing); read `package.json` for dependency caching strategy
   - **Python**: Read `.python-version` or `pyproject.toml` for Python version; note `pip`/`poetry`/`pipenv` for caching
-  - **Java**: Read `pom.yaml`/`build.gradle` for Java version; note Maven/Gradle for caching
+  - **Java**: Read `pom.xml`/`build.gradle` for Java version; note Maven/Gradle for caching
   - **Go**: Read `go.mod` for Go version; note Go module cache path
   - **C#/.NET**: Read `*.csproj`/`global.json` for .NET SDK version; note NuGet cache
   - **Ruby**: Read `.ruby-version` or `Gemfile` for Ruby version; note Bundler cache

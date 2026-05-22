@@ -1,14 +1,14 @@
 # Project Overview — LENS Workbench Module (lens-work)
 
-**Generated:** 2026-04-01 | **Scan Level:** Deep | **Module Version:** 3.2.0
+**Generated:** 2026-04-01 | **Scan Level:** Deep | **Module Version:** 4.0.0
 
 ---
 
 ## Executive Summary
 
-**lens-work** is the core lifecycle orchestration module for the BMAD (Build Measure Analyze Design) platform. It provides a declarative, git-native initiative management system that coordinates AI agents through structured planning phases — from initial brainstorming through sprint execution and closure.
+**lens-work** is the core lifecycle orchestration module for the BMAD (Build Measure Analyze Design) platform. It provides a declarative, git-native, feature-first lifecycle system that coordinates planning, governance, and delivery through published prompts and registered Lens skills.
 
-The module is a **CLI/Toolkit** — a command-driven BMAD module with 32 slash commands, cross-platform scripts, declarative YAML contracts, and IDE adapter integration. It is deployed into "control repos" (operational workspaces) and orchestrates work across multiple target project repositories.
+The module is a **CLI/Toolkit** — a command-driven BMAD module with published prompt entry points, cross-platform scripts, declarative YAML contracts, and IDE adapter integration. It is deployed into control repos and orchestrates work across governance and target project repositories.
 
 **Key Design Philosophy:** "Git is the only source of truth. PRs are the only gating mechanism. The control repo is an operational workspace, not a code repo."
 
@@ -34,9 +34,9 @@ The module is a **CLI/Toolkit** — a command-driven BMAD module with 32 slash c
 ## Architecture Type Classification
 
 - **Repository Type:** Monolith (single cohesive module)
-- **Architecture Pattern:** Declarative contract-driven with step-file workflow decomposition
-- **State Model:** Git-derived (branch existence + PR metadata + committed artifacts)
-- **Agent Model:** Single primary agent (`@lens`) with 5 delegated skills and 35 workflows
+- **Architecture Pattern:** Declarative contract-driven with skills-first prompt routing
+- **State Model:** Governance `feature.yaml` and `feature-index.yaml` plus git branch and PR state
+- **Agent Model:** Thin-shell `@lens` entry agent plus registered `bmad-lens-*` skills
 
 ---
 
@@ -44,20 +44,19 @@ The module is a **CLI/Toolkit** — a command-driven BMAD module with 32 slash c
 
 ```
 lens-work/
-├── agents/          # BMAD agent definitions (dual .md + .yaml)
-├── skills/          # 5 core skills (git-state, git-orchestration, constitution, sensing, checklist)
-├── workflows/       # 35 workflows across 4 categories (core/router/utility/governance)
-├── prompts/         # 32 user-facing prompt trigger files
-├── scripts/         # Cross-platform operational scripts (15 paired .sh/.ps1)
-├── docs/            # Reference documentation (22 files)
-├── tests/           # Contract test specifications (4 markdown files)
-├── assets/          # Template assets
-├── _module-installer/  # CI/CD installer (Node.js)
-├── bmad-lens-work-setup/  # Legacy setup workflow
-├── lifecycle.yaml   # THE CONTRACT — single source of truth
-├── module.yaml      # Module metadata and registry
-├── bmadconfig.yaml  # Runtime configuration template
-└── module-help.csv  # Command index (13-column, 32 entries)
+├── agents/             # Thin-shell Lens agent definitions (.md + .yaml)
+├── skills/             # Active bmad-lens-* skills for planning, governance, and reporting
+├── prompts/            # User-facing lens-*.prompt.md entry points
+├── scripts/            # Cross-platform Python operational scripts
+├── docs/               # Reference and source-project documentation
+├── tests/              # Focused script and contract tests
+├── assets/             # Template and registry assets
+├── _module-installer/  # CI/CD adapter generator (Node.js)
+├── bmad-lens-work-setup/ # Legacy setup compatibility assets
+├── lifecycle.yaml      # THE CONTRACT — single source of truth
+├── module.yaml         # Module metadata, skill registry, prompts, adapters
+├── bmadconfig.yaml     # Runtime configuration template
+└── module-help.csv     # Command/help registry
 ```
 
 ---
@@ -75,6 +74,7 @@ lens-work/
 ## Links to Detailed Documentation
 
 - [Architecture](./architecture.md)
+- [Understanding Your LENS Workspace](./understanding-your-workspace.md)
 - [Source Tree Analysis](./source-tree-analysis.md)
 - [Development Guide](./development-guide.md)
 - [Lifecycle Reference](./lifecycle-reference.md) (existing)

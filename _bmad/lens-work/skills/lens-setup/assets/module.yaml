@@ -1,0 +1,59 @@
+code: lens
+name: Lens
+description: Workflow suite for clean-room NextLens lifecycle planning, topology governance, living ledgers, Salmon impact analysis, and stakeholder reporting artifacts.
+module_version: 1.0.0
+default_selected: false
+module_greeting: >
+  Lens is configured. Use work intake to create durable feature archives,
+  then next, preplan, businessplan, techplan, expressplan, finalizePlan,
+  and dev to move work through the local NextLens lifecycle. After delivery,
+  use lens doctor, map audit, projection rebuild, ledger promotion, Salmon
+  impact, topology design, and reporting snapshot workflows to govern project
+  knowledge without confusing authored truth with generated projections.
+work_intake_path:
+  prompt: Where should Lens create durable work unit archives?
+  default: docs/features
+  result: "{project-root}/{value}"
+  user_setting: false
+feature_archive_path:
+  prompt: Where should Lens look for permanent feature archives?
+  default: docs/features
+  result: "{project-root}/{value}"
+  user_setting: false
+landscape_root:
+  prompt: Where should Lens look for living service/domain/program ledgers?
+  default: docs
+  result: "{project-root}/{value}"
+  user_setting: false
+reporting_output_path:
+  prompt: Where should Lens write reports and snapshots?
+  default: _bmad-output/lens
+  result: "{project-root}/{value}"
+  user_setting: false
+freshness_threshold_hours:
+  prompt: How old can reports be before Lens marks them stale?
+  default: "24"
+  user_setting: false
+lens_mode:
+  prompt: How should Lens handle Lens context? Use auto, disabled, or required.
+  default: auto
+  user_setting: false
+lens_constitution_root:
+  prompt: Optional Lens constitution root path for required Lens mode.
+  default: ""
+  result: "{project-root}/{value}"
+  user_setting: false
+lens_lifecycle_contract:
+  prompt: Optional NextLens lifecycle contract path.
+  default: skills/lens-lifecycle/assets/lifecycle.yaml
+  result: "{project-root}/{value}"
+  user_setting: false
+lens_context_path:
+  prompt: Optional Lens feature context path.
+  default: .lens/personal/context.yaml
+  result: "{project-root}/{value}"
+  user_setting: false
+directories:
+  - "{work_intake_path}"
+  - "{reporting_output_path}"
+

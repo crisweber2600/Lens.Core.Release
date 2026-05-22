@@ -12,7 +12,7 @@ outputFile: '{output_folder}/brainstorming-session-{date}.md'
 
 # Handoff References
 gameBriefWorkflow: 'skill:gds-create-game-brief'
-gddWorkflow: 'skill:gds-create-gdd'
+gddWorkflow: 'skill:gds-gdd'
 ---
 
 # Step 4: Complete Session
@@ -274,3 +274,9 @@ The Brainstorm Game workflow facilitates creative game ideation through 4 collab
 4. **Complete** - Summarize results and provide next steps
 
 This step-file architecture ensures consistent, creative brainstorming with user collaboration throughout.
+
+## On Complete
+
+Run: `python3 {project-root}/_bmad/scripts/resolve_customization.py --skill {skill-root} --key workflow.on_complete`
+
+If the resolved `workflow.on_complete` is non-empty, follow it as the final terminal instruction before exiting.

@@ -1,15 +1,16 @@
-# What's New in LENS Workbench — v2.0 to v3.2.1
+# What's New in LENS Workbench — v2.0 to v4.0
 
-**Date:** April 1, 2026
+**Date:** April 2, 2026
 **Audience:** New and existing LENS users, module developers
 
-This guide summarizes every significant change from the initial v2.0 release through the current v3.2, organized by version milestone. Use the table of contents to jump to the version you're upgrading from.
+This guide summarizes every significant change from the initial v2.0 release through the current v4.0, organized by version milestone. Use the table of contents to jump to the version you're upgrading from.
 
 ---
 
 ## Table of Contents
 
 - [Version Timeline](#version-timeline)
+- [v3.2.1 → v4.0 — Module Audit & Best-Practice Upgrade](#v321--v40--module-audit--best-practice-upgrade)
 - [v2.0 → v2.x — Foundation & Hardening](#v20--v2x--foundation--hardening-mar-9-23-2026)
 - [v2.x → v3.0 — Milestone Architecture](#v2x--v30--milestone-architecture-mar-31-2026)
 - [v3.0 → v3.1 — Lifecycle Improvements](#v30--v31--lifecycle-improvements-apr-1-2026)
@@ -30,6 +31,50 @@ This guide summarizes every significant change from the initial v2.0 release thr
 | **3.1** | 3.1 | Apr 1 | 10 lifecycle improvements — dashboard, templates, gate collapsing, sensing, branch cleanup | 1 (batch) |
 | **3.2** | 3.2 | Apr 1 | Express track, retrospective, feature mobility, onboarding docs | 2 |
 | **3.2.1** | 3.2 | Apr 1 | Quality scan remediation — i18n, efficiency, docs, path correctness | 1 |
+| **4.0** | 3.4 | Apr 2 | Module audit & best-practice upgrade — 125-prompt validation, 44 new stubs, CI/CD fixes | 1 |
+
+---
+
+## v3.2.1 → v4.0 — Module Audit & Best-Practice Upgrade
+
+A comprehensive audit and upgrade pass that brought the module manifest, prompt inventory, adapter stubs, help registry, and CI/CD pipeline into full alignment. Every prompt path was validated end-to-end with zero broken references.
+
+### Module Manifest
+
+- Bumped `module.yaml` `schema_version` from 3.2 to 3.4
+- Added 3 missing prompts to the `module.yaml` prompts section
+- Added 18 missing `stub_prompts` to the `module.yaml` GitHub Copilot adapter
+
+### Prompt Completeness
+
+- Created **21 missing Lens Next prompt files** to close gaps between declared and on-disk prompts
+- Created **44 missing GitHub Copilot adapter stubs** (76 total stubs now synced and validated)
+
+### Workflow Fixes
+
+- Standardized 5 `SKILL.md` name prefixes to `lens-work-*` for consistency
+- Created missing `utility/profile/SKILL.md`
+- Removed deprecated `includes/size-topology.md`
+- Added **OpenCode** as a fifth IDE adapter with `.opencode/commands/` Lens command stubs
+
+### Help Registry Fixes
+
+- Resolved **16 menu code collisions** in `module-help.csv` (zero remaining)
+
+### CI/CD Pipeline Fixes (`promote-to-release.yml`)
+
+- Fixed version extraction bug
+- Fixed IDE list mismatch between pipeline and module manifest
+- Fixed prompt overlay deletion bug
+- Fixed Output Folder `sed` bug
+- Fixed `.yaml` word-boundary match
+- Fixed PR body wds omission
+
+### Validation
+
+- Dry-run validated all **125 prompts** across the module
+- Validated all **160 path references** — 0 broken
+- Validated all **36 workflows** — all step chains intact
 
 ---
 
@@ -45,7 +90,7 @@ The initial v2.0 release established the core contract-driven architecture. The 
 - **6 utility workflows** — onboard, status, next, switch, help, module-management
 - **3 governance workflows** — compliance-check, cross-initiative, resolve-constitution
 - **13 prompts** — one per user-facing command
-- **5 cross-platform scripts** — install, create-pr, promote-branch, setup-control-repo, store-github-pat
+- **4 cross-platform scripts** — install, create-pr, setup-control-repo, store-github-pat
 - **4 IDE adapters** — github-copilot, cursor, claude, codex
 - **Audience-based promotion** — small → medium → large → base
 - **4 tracks** — full, feature, tech-change, hotfix
@@ -423,9 +468,10 @@ A comprehensive quality scan identified 379 issues (4 critical, 62 high, 293 med
 
 ### Critical & High Fixes
 
-- **Path convention enforcement** — `{project-root}` used for `_bmad/` paths; release module references now use `{release_repo_root}` variable (defined in `bmadconfig.yaml`, defaults to `bmad.lens.release`); `_bmad-output/` is workspace-relative
-- **Bare `_bmad` references** — Fixed 20+ documentation references that omitted the required repo prefix (`bmad.lens.release/` or `bmad.lens.src/`)
-- **Configurable release repo path** — Added `release_repo_root` to `bmadconfig.yaml`; all prompts, workflows, skills, and docs now reference `{release_repo_root}` instead of hardcoded `bmad.lens.release/`
+- **Path convention enforcement** — `{project-root}` used for `lens.core/_bmad/` paths; release module references now use `{release_repo_root}` variable (defined in `bmadconfig.yaml`, defaults to `lens.core`); `docs/` is workspace-relative
+- **Path convention enforcement** — `{project-root}` used for `lens.core/_bmad/` paths; release module references now use `{release_repo_root}` variable (defined in `bmadconfig.yaml`, defaults to `lens.core`); `docs/` is workspace-relative
+- **Bare `_bmad` references** — Fixed 20+ documentation references that omitted the required repo prefix (`lens.core/` or `bmad.lens.src/`)
+- **Configurable release repo path** — Added `release_repo_root` to `bmadconfig.yaml`; all prompts, workflows, skills, and docs now reference `{release_repo_root}` instead of hardcoded `lens.core/`
 - **Agent activation refactored** — Replaced defensive padding (caps, emoji, negation patterns) in `lens.agent.md` step 2 with direct outcome-focused language
 - **Shell lint** — Fixed SC2034 (`export SKIP_CONSTITUTION` for cross-script consumption), SC2043 (shellcheck directive for intentional single-item loop), SC2168 (`local` outside function scope)
 
@@ -461,7 +507,7 @@ A comprehensive quality scan identified 379 issues (4 critical, 62 high, 293 med
 
 ### Script Extraction
 
-Nine new paired `.sh` + `.ps1` scripts extracted from workflow markdown into standalone executables:
+Nine new Python scripts extracted from workflow markdown into standalone executables:
 
 | Script | Source Workflow | Purpose |
 |--------|---------------|---------|
@@ -473,7 +519,7 @@ Nine new paired `.sh` + `.ps1` scripts extracted from workflow markdown into sta
 | `validate-feature-move` | move-feature/step-01 | Validate move target, check conflicts, verify scope |
 | `bootstrap-target-projects` | onboard/step-03 | Clone/verify repos from governance repo-inventory.yaml |
 | `derive-next-action` | next/step-02 | Apply lifecycle decision rules, return next command or gate |
-| `run-preflight-cached` | preflight | Timestamp-cached wrapper around preflight.sh (TTL-based) |
+| `run-preflight-cached` | preflight | Timestamp-cached wrapper around preflight.py (TTL-based) |
 
 ### New Workflows
 
@@ -533,7 +579,7 @@ Five new workflow directories with full step-driven architecture, SKILL.md, and 
 | Workflows | 20+ updated (preflight, init-initiative, expressplan, sprintplan, discover, help, status, dashboard, move-feature, next, cross-initiative + step files); 5 router workflows updated (`inputs: []`); 6 new workflow directories (approval-status, rollback-phase, pause-epic, resume-epic, audit-all, profile) |
 | Documentation | 8 updated (architecture §12 governance requirements, configuration-examples, GETTING-STARTED, onboarding-checklist, pipeline-source-to-release, copilot-repo-instructions, README); 1 added (preflight-strategy.md) |
 | Agents | lens.agent.md, lens.agent.yaml updated (7 new menu items: AS, RB, PE, RE, AA, PF + config diagnostics) |
-| Scripts | preflight.sh, promote-branch.sh fixed; 18 new scripts (9 `.sh` + 9 `.ps1` pairs) |
+| Scripts | All scripts converted to cross-platform Python (`.py`); `promote-branch` removed (v3.4+) |
 | Meta | TODO.md updated — all enhancement roadmap items tracked; module-help.csv updated (6 new entries) |
 
 ---
@@ -605,7 +651,7 @@ No migration needed. All changes are additive documentation, i18n headers, and i
 | Phases | 5 | 6 |
 | Milestones | — | 5 |
 | Scripts | 5 | 15 |
-| IDE adapters | 4 | 4 |
+| IDE adapters | 4 | 5 |
 | Documentation files | 5 | 22 |
 | Template assets | 0 | 8 |
 | Constitution capabilities | 0 | 9 |
