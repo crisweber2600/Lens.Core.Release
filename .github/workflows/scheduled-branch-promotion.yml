@@ -14,13 +14,13 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RETRY_ATTEMPTS: '6'
-  RETRY_INTERVAL_SECONDS: '5'
+  RETRY_ATTEMPTS: '20'
+  RETRY_INTERVAL_SECONDS: '30'
 
 jobs:
   promote:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +31,8 @@ jobs:
           - cron: '0 3 * * 1'
             source_branch: alpha
             target_branch: beta
+            retry_attempts: '24'
+            retry_interval_seconds: '60'
 
     steps:
       - name: Open and merge promotion pull request
@@ -41,6 +43,8 @@ jobs:
           SCHEDULE_CRON: ${{ matrix.cron }}
           SOURCE_BRANCH: ${{ matrix.source_branch }}
           TARGET_BRANCH: ${{ matrix.target_branch }}
+          RETRY_ATTEMPTS: ${{ matrix.retry_attempts || env.RETRY_ATTEMPTS }}
+          RETRY_INTERVAL_SECONDS: ${{ matrix.retry_interval_seconds || env.RETRY_INTERVAL_SECONDS }}
         shell: bash
         run: |
           set -euo pipefail
@@ -136,16 +140,16 @@ jobs:
             fi
 
             if [[ "${mergeable}" == "false" && "${mergeable_state}" != "unknown" ]]; then
-              echo "PR #${pr_number} is not mergeable: ${mergeable_state}."
-              exit 1
+              echo "PR #${pr_number} is not mergeable (${mergeable_state}); leaving PR open for the next scheduled run."
+              exit 0
             fi
 
             sleep "${RETRY_INTERVAL_SECONDS}"
           done
 
           if [[ "${mergeable}" != "true" ]]; then
-            echo "PR #${pr_number} did not become mergeable. Last state: ${mergeable_state}."
-            exit 1
+            echo "PR #${pr_number} did not become mergeable after all retries (last state: ${mergeable_state}); leaving PR open for the next scheduled run."
+            exit 0
           fi
 
           merge_payload="$(jq -n \
