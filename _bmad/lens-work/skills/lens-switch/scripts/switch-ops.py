@@ -29,6 +29,7 @@ STALE_DAYS = 30
 NEW_FEATURE_COMMAND = "/new-feature"
 LIST_HIDDEN_PHASES = {"complete", "dev-complete", "archived", "abandoned"}
 LIST_HIDDEN_STATUSES = {"complete", "completed", "archived", "abandoned", "superseded"}
+CONTROL_TOPOLOGIES = ("3-branch", "flat")
 
 
 def fail(error: str, message: str) -> dict:
@@ -51,6 +52,44 @@ def read_yaml_mapping(path: Path) -> tuple[dict | None, str | None]:
     if not isinstance(data, dict):
         return None, f"{path} must contain a YAML mapping"
     return data, None
+
+
+def config_candidates_for_args(args: argparse.Namespace) -> list[Path]:
+    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd())
+    candidates: list[Path] = []
+    module_config = getattr(args, "module_config", None)
+    if module_config:
+        candidates.append(Path(module_config))
+    candidates.extend(
+        [
+            workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
+            workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
+        ]
+    )
+    return candidates
+
+
+def resolve_control_topology(args: argparse.Namespace) -> tuple[str | None, dict | None]:
+    explicit = getattr(args, "control_topology", None)
+    if explicit:
+        topology = str(explicit).strip()
+    else:
+        topology = ""
+        for config_path in config_candidates_for_args(args):
+            if not config_path.exists():
+                continue
+            data, error = read_yaml_mapping(config_path)
+            if error:
+                return None, fail("config_malformed", f"Could not read {config_path}: {error}")
+            topology = str(data.get("control_topology") or "").strip()
+            if topology:
+                break
+        if not topology:
+            topology = "3-branch"
+    if topology not in CONTROL_TOPOLOGIES:
+        expected = ", ".join(CONTROL_TOPOLOGIES)
+        return None, fail("invalid_control_topology", f"control_topology must be one of: {expected}")
+    return topology, None
 
 
 def resolve_governance_repo(args: argparse.Namespace) -> tuple[str | None, dict | None]:
@@ -77,18 +116,7 @@ def resolve_governance_repo(args: argparse.Namespace) -> tuple[str | None, dict 
         if value:
             return expand_config_value(value, workspace_root), None
 
-    config_candidates: list[Path] = []
-    module_config = getattr(args, "module_config", None)
-    if module_config:
-        config_candidates.append(Path(module_config))
-    config_candidates.extend(
-        [
-            workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
-            workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
-        ]
-    )
-
-    for config_path in config_candidates:
+    for config_path in config_candidates_for_args(args):
         if not config_path.exists():
             continue
         data, error = read_yaml_mapping(config_path)
@@ -515,8 +543,10 @@ def cmd_switch(args: argparse.Namespace) -> dict:
 
     explicit_control_repo = getattr(args, "control_repo", None)
     personal_folder = resolve_personal_folder(governance_repo, args.personal_folder, explicit_control_repo)
-    plan_branch = f"{args.feature_id}-plan"
     control_repo = explicit_control_repo or "."
+    control_topology, topology_error = resolve_control_topology(args)
+    if topology_error:
+        return topology_error
 
     index_data, err = load_feature_index(governance_repo)
     if err:
@@ -528,6 +558,11 @@ def cmd_switch(args: argparse.Namespace) -> dict:
     index_entry = index_by_id.get(args.feature_id)
     if not index_entry:
         return fail("feature_not_found", f"Feature '{args.feature_id}' not found in feature-index.yaml")
+    plan_branch = (
+        args.feature_id
+        if control_topology == "flat"
+        else str(index_entry.get("plan_branch") or f"{args.feature_id}-plan")
+    )
 
     feature_path = feature_yaml_path_for_index_entry(governance_repo, index_entry)
     if not feature_path:
@@ -573,6 +608,7 @@ def cmd_switch(args: argparse.Namespace) -> dict:
     feature_dir = str(feature_path.parent)
     out: dict = {
         "status": "pass",
+        "control_topology": control_topology,
         "plan_branch": plan_branch,
         "feature_id": args.feature_id,
         "domain": feature_data.get("domain", ""),
@@ -716,6 +752,7 @@ Examples:
     switch_p.add_argument("--governance-repo", required=False, help="Governance repo root path")
     switch_p.add_argument("--workspace-root", required=False, help="Workspace root for config resolution")
     switch_p.add_argument("--module-config", required=False, help="Explicit bmadconfig.yaml path")
+    switch_p.add_argument("--control-topology", choices=CONTROL_TOPOLOGIES, default=None)
     switch_p.add_argument("--feature-id", required=True, help="Target feature identifier")
     switch_p.add_argument(
         "--personal-folder",

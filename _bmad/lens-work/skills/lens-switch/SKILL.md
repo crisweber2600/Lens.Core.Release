@@ -117,7 +117,7 @@ uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-s
   --service identity
 ```
 
-The `switch` result always includes `plan_branch` (`{featureId}-plan`). It also includes `branch_switched: true|false`, `checked_out_branch`, and `branch_error`, using `.` as the default control-repo root when `--control-repo` is omitted.
+The `switch` result always includes `plan_branch`; in `flat` this aliases to `{featureId}`, while legacy `3-branch` uses `{featureId}-plan`. It also includes `control_topology`, `branch_switched: true|false`, `checked_out_branch`, and `branch_error`, using `.` as the default control-repo root when `--control-repo` is omitted.
 
 ## JSON Contracts
 
@@ -219,7 +219,7 @@ Semantics:
 - `context_path` points to the governance feature directory. `personal_context_path` points to the local context file written by switch.
 - `target_repo_state` is null when `target_repos` is empty.
 - `context_paths.*[].exists` tells callers whether to load the file. Missing paths remain in the response with `exists: false`.
-- `branch_switched` reports checkout success. `checked_out_branch` is null when checkout fails. `branch_error` is null on success, `branch_not_found` for a missing `{featureId}-plan` branch, or raw git stderr for other checkout errors.
+- `branch_switched` reports checkout success. `checked_out_branch` is null when checkout fails. `branch_error` is null on success, `branch_not_found` for a missing topology branch, or raw git stderr for other checkout errors.
 
 ### Switch Failure
 

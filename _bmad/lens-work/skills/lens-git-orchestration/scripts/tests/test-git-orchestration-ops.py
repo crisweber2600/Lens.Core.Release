@@ -345,6 +345,31 @@ class TestCreateFeatureBranches:
         assert ops.branch_exists(str(local), "develop-feat-plan")
         assert ops.branch_exists(str(local), "develop-feat-dev")
 
+    def test_flat_topology_creates_only_feature_branch_with_aliases(self, repo_pair):
+        local, remote = repo_pair
+        yaml_path = write_feature_yaml(local, "flat-feat")
+        subprocess.run(["git", "-C", str(local), "add", str(yaml_path)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "add feature.yaml"], check=True, capture_output=True)
+
+        result, code = ops.cmd_create_feature_branches(_no_args(
+            governance_repo=str(local),
+            feature_id="flat-feat",
+            repo=None,
+            default_branch=None,
+            dry_run=False,
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["base_branch"] == "flat-feat"
+        assert result["plan_branch"] == "flat-feat"
+        assert result["dev_branch"] == "flat-feat"
+        assert result["created_branches"] == ["flat-feat"]
+        assert ops.branch_exists(str(local), "flat-feat")
+        assert not ops.branch_exists(str(local), "flat-feat-plan")
+        assert not ops.branch_exists(str(local), "flat-feat-dev")
+
 
 # ---------------------------------------------------------------------------
 # cmd_commit_artifacts
@@ -453,6 +478,31 @@ class TestCommitArtifacts:
         # File should NOT be committed — git status should still show it
         status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True)
         assert "artifact-dry.md" in status.stdout
+
+    def test_flat_topology_commits_planning_artifacts_on_feature_branch(self, repo):
+        make_branch(repo, "flat-commit")
+        subprocess.run(["git", "-C", str(repo), "checkout", "flat-commit"], check=True, capture_output=True)
+        (repo / "business-plan.md").write_text("business")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="flat-commit",
+            files=["business-plan.md"],
+            description="flat planning artifact",
+            phase="expressplan",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["branch"] == "flat-commit"
+        assert result["routing"]["expected_branch"] == "flat-commit"
+        assert result["routing"]["routing_rule"] == "flat_feature_branch"
 
 
 # ---------------------------------------------------------------------------
@@ -711,6 +761,25 @@ class TestMergePlanDirect:
         ))
         assert code == 0
         assert result["plan_branch_deleted"] is False
+
+    def test_flat_topology_merge_plan_noops(self, repo):
+        make_branch(repo, "flat-merge")
+
+        result, code = ops.cmd_merge_plan(_no_args(
+            governance_repo=str(repo),
+            feature_id="flat-merge",
+            repo=None,
+            strategy="pr",
+            auto_merge=False,
+            delete_after_merge=False,
+            dry_run=False,
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["plan_branch"] == "flat-merge"
+        assert result["no_op"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -1413,6 +1482,11 @@ class TestTopologyAndRouting:
         assert branch == "route-feat"
         assert rule == "finalizeplan_step_3_to_feature"
 
+    def test_branch_for_phase_write_flat_routes_to_feature_branch(self):
+        branch, rule = ops.branch_for_phase_write("route-feat", "expressplan", None, "flat")
+        assert branch == "route-feat"
+        assert rule == "flat_feature_branch"
+
     def test_commit_requires_three_branch_topology(self, repo):
         make_branch(repo, "route-feat")
         make_branch(repo, "route-feat-plan")
@@ -1544,6 +1618,27 @@ class TestPhaseStartValidation:
         assert result["track"] == "express"
         assert result["track_canonical"] == "express"
         assert result["constitution_gate"] == "pass"
+
+    def test_phase_start_accepts_flat_topology_feature_branch(self, repo):
+        write_feature_yaml(repo, "phase-flat", phase="expressplan", status="active")
+        feature_yaml = repo / "features" / "platform" / "api" / "phase-flat" / "feature.yaml"
+        payload = yaml.safe_load(feature_yaml.read_text(encoding="utf-8"))
+        payload["track"] = "express"
+        feature_yaml.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+        make_branch(repo, "phase-flat")
+        subprocess.run(["git", "-C", str(repo), "checkout", "phase-flat"], check=True, capture_output=True)
+
+        result, code = ops.cmd_validate_phase_start(_no_args(
+            governance_repo=str(repo),
+            repo=str(repo),
+            feature_id="phase-flat",
+            expected_base_branch="phase-flat",
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["required_branches"] == ["phase-flat"]
 
 
 class TestCleanupBranch:

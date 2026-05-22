@@ -11,7 +11,7 @@ Use `vscode_askQuestions` for all follow-up questions instead of freeform chat p
 
 ## Overview
 
-Git write operations for the Lens feature branch model. This skill creates and manages `{featureId}`, `{featureId}-plan`, and `{featureId}-dev` branches in the control repo, commits planning artifacts with structured messages, prepares the target repo working branch used by Dev, handles merges, and creates or reuses PRs. This is the WRITE counterpart to `lens-git-state`.
+Git write operations for the Lens feature branch model. This skill creates and manages the configured control-repo topology (`flat` or legacy `3-branch`), commits planning artifacts with structured messages, prepares the target repo working branch used by Dev, handles merges, and creates or reuses PRs. This is the WRITE counterpart to `lens-git-state`.
 
 ## Identity
 
@@ -26,7 +26,7 @@ I am the Git Orchestration skill for Lens — I handle all git write operations 
 
 ## Principles
 
-- **Control-repo branch invariant**: Every active feature has `{featureId}` (base), `{featureId}-plan` (planning), and `{featureId}-dev` (normal dev-cycle delivery) branches in the control repo. Optional contributor branches (`{featureId}-dev-{username}`) remain separate from target-repo working branches.
+- **Control-repo branch invariant**: Flat topology uses one control branch, `{featureId}`, for planning and control docs. Legacy `3-branch` topology uses `{featureId}`, `{featureId}-plan`, and `{featureId}-dev`. Optional contributor branches (`{featureId}-dev-{username}`) remain legacy control-repo branches and are separate from target-repo working branches.
 - **Target-repo dev modes are separate**: `direct-default`, `feature-id`, and `feature-id-username` are target-repo working-branch modes only. They never change the control repo branch invariant, and they may use a short `featureSlug` even when the control repo uses a composite `featureId`.
 - **Governance main-only**: `feature.yaml` and all governance artifacts live on `main` in the governance repo. Branch topology only exists in the control repo and the selected target repo.
 - **Atomic commits**: State file updates and artifact commits are always staged and committed together — never separately.
@@ -35,7 +35,7 @@ I am the Git Orchestration skill for Lens — I handle all git write operations 
 
 ## On Activation
 
-I create and manage branches for Lens features — I enforce the control repo branch model (`featureId`, `featureId-plan`, and `featureId-dev`), prepare the target repo working branch for Dev, and commit planning artifacts. I do not modify `feature.yaml` (that is `lens-feature-yaml`'s job) and I do not query state (use `lens-git-state`).
+I create and manage branches for Lens features — I enforce the configured control repo branch model, prepare the target repo working branch for Dev, and commit planning artifacts. I do not modify `feature.yaml` (that is `lens-feature-yaml`'s job) and I do not query state (use `lens-git-state`).
 
 Load available config from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`. Resolve:
 - `{governance_repo}` — path to the governance repo (required)
@@ -47,17 +47,16 @@ Load available config from `{project-root}/lens.core/_bmad/config.yaml` and `{pr
 
 ### create-feature-branches
 
-**Outcome:** `{featureId}`, `{featureId}-plan`, and `{featureId}-dev` branches exist in the control repo and are pushed to remote with tracking set up.
+**Outcome:** Required control branches exist and are pushed to remote with tracking set up. In `flat`, only `{featureId}` is created and plan/dev response fields alias to `{featureId}`. In `3-branch`, `{featureId}`, `{featureId}-plan`, and `{featureId}-dev` are created.
 
 **Process:**
 1. Validate `{featureId}` — must be lowercase alphanumeric + hyphens, no slashes.
 2. Confirm `feature.yaml` exists for this feature in the governance repo.
-3. Confirm neither branch already exists (fail with a clear message if either does).
+3. Confirm required topology branches do not already exist.
 4. Resolve the control repo default branch, honoring `{default_branch}` when explicitly supplied.
 5. Create `{featureId}` from the resolved default branch, push with `--set-upstream`.
-6. Create `{featureId}-plan` from `{featureId}`, push with `--set-upstream`.
-7. Create `{featureId}-dev` from `{featureId}`, push with `--set-upstream`.
-8. Report branch names, parent, and remote tracking refs.
+6. For `3-branch`, create `{featureId}-plan` and `{featureId}-dev` from `{featureId}`, then push each with `--set-upstream`.
+7. Report branch names, topology, parent, and remote tracking refs.
 
 Load `./references/create-feature-branches.md` for full guidance.
 
@@ -66,7 +65,7 @@ Load `./references/create-feature-branches.md` for full guidance.
 **Outcome:** One or more files are staged and committed to the current branch with a structured commit message.
 
 **Process:**
-1. Verify the working directory is on the correct control-repo branch (`{featureId}` or `{featureId}-plan`).
+1. Verify the working directory is on the topology-correct control-repo branch (`{featureId}` in `flat`; routed phase branch in `3-branch`).
 2. Show files that will be staged — wait for confirmation.
 3. Stage specified files with `git add`.
 4. Commit with message format: `[{PHASE}] {featureId} — {description}`.
@@ -106,7 +105,7 @@ This capability is the target-repo counterpart to the Dev skill's repo-scoped br
 
 ### merge-plan
 
-**Outcome:** `{featureId}-plan` branch is merged into `{featureId}` via PR or direct merge in the control repo.
+**Outcome:** In `3-branch`, `{featureId}-plan` is merged into `{featureId}` via PR or direct merge in the control repo. In `flat`, this operation returns a structured no-op because planning artifacts already live on `{featureId}`.
 
 **Process:**
 1. Confirm both branches exist and are clean.

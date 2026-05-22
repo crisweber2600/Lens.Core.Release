@@ -784,6 +784,7 @@ class TestCreate:
             "--name", "Index Test",
             "--track", "full",
             "--control-repo", str(control),
+            "--control-topology", "3-branch",
         ])
 
         assert completed.returncode == 0
@@ -958,6 +959,7 @@ class TestCreate:
                 "--name", f"PR test {non_express_track}",
                 "--track", non_express_track,
                 "--control-repo", str(control),
+                "--control-topology", "3-branch",
             ])
 
             assert completed.returncode == 0, f"track={non_express_track}: {payload.get('error')}"
@@ -968,6 +970,37 @@ class TestCreate:
             assert "gh pr create" in cmd, f"track={non_express_track}"
             assert f"{fid}-plan" in cmd, f"track={non_express_track}"
             assert payload["planning_pr_deferred_reason"], f"track={non_express_track}"
+
+    def test_create_feature_flat_topology_uses_feature_branch_and_no_planning_pr(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        control = tmp_path / "control"
+        gov.mkdir()
+        control.mkdir()
+        (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
+        (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
+        (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-flat-init",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--name", "Flat Init",
+            "--track", "express",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ])
+
+        assert completed.returncode == 0
+        index_data = yaml.safe_load((gov / "feature-index.yaml").read_text(encoding="utf-8"))
+        entry = next(e for e in index_data["features"] if e.get("featureId") == "lens-dev-new-codebase-flat-init")
+        assert entry["plan_branch"] == "lens-dev-new-codebase-flat-init"
+        assert payload["control_topology"] == "flat"
+        assert payload["plan_branch"] == "lens-dev-new-codebase-flat-init"
+        assert payload["planning_pr_followup_commands"] == []
+        assert "not required" in payload["planning_pr_deferred_reason"]
+        assert "--control-topology flat" in payload["remaining_commands"][0]
 
     def test_create_feature_index_failure_rolls_back_files(self, tmp_path: Path):
         """If feature-index.yaml write fails, written feature.yaml/summary.md are removed."""

@@ -39,6 +39,7 @@ PLANNING_PHASES = {
     "techplan-complete", "businessplan-complete",
 }
 DONE_STORY_STATUSES = {"done", "complete", "completed"}
+CONTROL_TOPOLOGIES = ("3-branch", "flat")
 
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 
@@ -122,6 +123,37 @@ def _atomic_write_text(path: Path, content: str) -> None:
 # Governance path resolution
 # ---------------------------------------------------------------------------
 
+def _config_candidates(args: argparse.Namespace) -> list[Path]:
+    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd()).resolve()
+    return [
+        workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
+        workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
+    ]
+
+
+def _resolve_control_topology(args: argparse.Namespace) -> str:
+    explicit = getattr(args, "control_topology", None)
+    if explicit:
+        topology = str(explicit).strip()
+    else:
+        topology = ""
+        for candidate in _config_candidates(args):
+            if not candidate.exists():
+                continue
+            try:
+                data = _read_yaml(candidate)
+            except ValueError as exc:
+                raise _ConfigMalformedError(f"Could not parse {candidate}: {exc}") from exc
+            topology = str(data.get("control_topology") or "").strip()
+            if topology:
+                break
+        if not topology:
+            topology = "3-branch"
+    if topology not in CONTROL_TOPOLOGIES:
+        expected = ", ".join(CONTROL_TOPOLOGIES)
+        raise _ConfigMalformedError(f"control_topology must be one of: {expected}")
+    return topology
+
 def _resolve_governance_repo(args: argparse.Namespace) -> Path:
     explicit = getattr(args, "governance_repo", None)
     if explicit:
@@ -138,10 +170,7 @@ def _resolve_governance_repo(args: argparse.Namespace) -> Path:
         if val:
             return Path(val.replace("{project-root}", str(workspace_root))).resolve()
 
-    for candidate in [
-        workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
-        workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
-    ]:
+    for candidate in _config_candidates(args):
         if candidate.exists():
             try:
                 data = _read_yaml(candidate)
@@ -298,6 +327,7 @@ def _check_retrospective(feature_dir: Path) -> dict[str, Any] | None:
 def _check_control_repo_orphaned_branches(
     feature_id: str,
     control_repo: Path,
+    control_topology: str = "3-branch",
 ) -> dict[str, Any]:
     """Scan the control repo remote for surviving {featureId}, {featureId}-plan,
     and {featureId}-dev branches and surface them as warnings.
@@ -333,7 +363,7 @@ def _check_control_repo_orphaned_branches(
     # Refresh remote refs; ignore failure — this is a read-only advisory check
     _git("fetch", "--prune", "origin")
 
-    expected_branches = [feature_id, f"{feature_id}-plan", f"{feature_id}-dev"]
+    expected_branches = [feature_id] if control_topology == "flat" else [feature_id, f"{feature_id}-plan", f"{feature_id}-dev"]
     surviving: list[str] = []
 
     for branch in expected_branches:
@@ -546,6 +576,7 @@ def _gh_merge_to_main(
     dry_run: bool,
     head_branch: str | None = None,
     base_branch: str = "main",
+    control_topology: str = "3-branch",
 ) -> tuple[str | None, str | None]:
     """Validate, merge, and clean up normal control-repo completion branches.
 
@@ -555,10 +586,10 @@ def _gh_merge_to_main(
     if dry_run:
         return "dry_run", None
 
-    head_branch = head_branch or f"{feature_id}-dev"
+    head_branch = head_branch or (feature_id if control_topology == "flat" else f"{feature_id}-dev")
     feature_branch = feature_id
-    plan_branch = f"{feature_id}-plan"
-    cleanup_branches = [plan_branch, feature_branch, head_branch]
+    plan_branch = None if control_topology == "flat" else f"{feature_id}-plan"
+    cleanup_branches = [feature_branch] if control_topology == "flat" else [plan_branch, feature_branch, head_branch]
     cwd = str(control_repo)
 
     def _git(*cmd_args: str) -> tuple[int, str, str]:
@@ -632,15 +663,17 @@ def _gh_merge_to_main(
     feature_ref, ref_error = _branch_ref(feature_branch)
     if ref_error:
         return None, ref_error
-    plan_ref, ref_error = _branch_ref(plan_branch, required=False)
-    if ref_error:
-        return None, ref_error
+    plan_ref = None
+    if plan_branch:
+        plan_ref, ref_error = _branch_ref(plan_branch, required=False)
+        if ref_error:
+            return None, ref_error
 
-    if plan_ref and feature_ref:
+    if plan_branch and plan_ref and feature_ref:
         validation_error = _validate_merged(plan_branch, plan_ref, feature_branch, feature_ref)
         if validation_error:
             return None, validation_error
-    if feature_ref and head_ref:
+    if control_topology != "flat" and feature_ref and head_ref:
         validation_error = _validate_merged(feature_branch, feature_ref, head_branch, head_ref)
         if validation_error:
             return None, validation_error
@@ -770,6 +803,7 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
 
     try:
         governance_repo = _resolve_governance_repo(args)
+        control_topology = _resolve_control_topology(args)
     except _ConfigMalformedError as exc:
         _out(_fail("config_malformed", str(exc)))
         return 1
@@ -865,7 +899,7 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
     control_repo_arg = getattr(args, "control_repo", None)
     if control_repo_arg:
         control_repo_path = Path(control_repo_arg).expanduser().resolve()
-        orphan_check = _check_control_repo_orphaned_branches(feature_id, control_repo_path)
+        orphan_check = _check_control_repo_orphaned_branches(feature_id, control_repo_path, control_topology)
         checks.append(orphan_check)
         if orphan_check["status"] == "warn":
             warnings.append("orphaned_control_repo_branches")
@@ -892,6 +926,7 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
         {
             "status": overall,
             "feature_id": feature_id,
+            "control_topology": control_topology,
             "phase": phase,
             "retrospective_skipped": False,
             "document_project_skipped": bool(warnings),
@@ -928,6 +963,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
 
     try:
         governance_repo = _resolve_governance_repo(args)
+        control_topology = _resolve_control_topology(args)
     except _ConfigMalformedError as exc:
         _out(_fail("config_malformed", str(exc)))
         return 1
@@ -1022,7 +1058,11 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     if control_repo is not None:
         planned_changes.append({
             "repo": str(control_repo),
-            "change": f"validate branches and merge PR: {feature_id}-dev -> main; delete related branches",
+            "change": (
+                f"validate branches and merge PR: {feature_id} -> main; delete feature branch"
+                if control_topology == "flat"
+                else f"validate branches and merge PR: {feature_id}-dev -> main; delete related branches"
+            ),
         })
 
     doc_check = _check_document_project(feature_dir)
@@ -1034,6 +1074,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
             {
                 "status": "dry_run",
                 "feature_id": feature_id,
+                "control_topology": control_topology,
                 "planned_changes": planned_changes,
                 "warnings": warnings,
             }
@@ -1109,7 +1150,12 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     merge_pr_url: str | None = None
     merge_warning: str | None = None
     if control_repo is not None:
-        merge_pr_url, merge_error = _gh_merge_to_main(control_repo, feature_id, dry_run=False)
+        merge_pr_url, merge_error = _gh_merge_to_main(
+            control_repo,
+            feature_id,
+            dry_run=False,
+            control_topology=control_topology,
+        )
         if merge_error:
             # Non-fatal: governance writes succeeded; surface as warning
             merge_warning = merge_error
@@ -1117,7 +1163,11 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         else:
             changes_applied.append({
                 "repo": str(control_repo),
-                "change": f"PR merged and related branches deleted: {feature_id}-dev -> main",
+                "change": (
+                    f"PR merged and feature branch deleted: {feature_id} -> main"
+                    if control_topology == "flat"
+                    else f"PR merged and related branches deleted: {feature_id}-dev -> main"
+                ),
                 "pr_url": merge_pr_url or "",
             })
 
@@ -1125,6 +1175,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         {
             "status": "complete",
             "feature_id": feature_id,
+            "control_topology": control_topology,
             "archived_at": now_ts,
             "changes_applied": changes_applied,
             "retrospective_skipped": False,
@@ -1240,6 +1291,7 @@ def _build_parser() -> argparse.ArgumentParser:
     shared.add_argument("--governance-repo", dest="governance_repo", default=None)
     shared.add_argument("--feature-id", dest="feature_id", required=True)
     shared.add_argument("--workspace-root", dest="workspace_root", default=None)
+    shared.add_argument("--control-topology", dest="control_topology", choices=CONTROL_TOPOLOGIES, default=None)
 
     # check-preconditions
     p_chk = sub.add_parser("check-preconditions", parents=[shared],

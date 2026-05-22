@@ -430,10 +430,16 @@ def test_finalize_auto_resolves_control_repo_from_workspace_root(
     (control_repo / "TargetProjects").mkdir()
     seen: dict[str, Any] = {}
 
-    def fake_merge(path: Path, feature_id: str, dry_run: bool) -> tuple[str, None]:
+    def fake_merge(
+        path: Path,
+        feature_id: str,
+        dry_run: bool,
+        control_topology: str = "3-branch",
+    ) -> tuple[str, None]:
         seen["path"] = str(path)
         seen["feature_id"] = feature_id
         seen["dry_run"] = dry_run
+        seen["control_topology"] = control_topology
         return "https://github.com/example/control/pull/9", None
 
     monkeypatch.setattr(mod, "_gh_merge_to_main", fake_merge)
@@ -457,6 +463,7 @@ def test_finalize_auto_resolves_control_repo_from_workspace_root(
         "path": str(control_repo.resolve()),
         "feature_id": "lens-dev-test-feature",
         "dry_run": False,
+        "control_topology": "3-branch",
     }
     assert any(
         change.get("pr_url") == "https://github.com/example/control/pull/9"

@@ -29,7 +29,7 @@ You are the Lens git state reader. You inspect repository and governance state, 
 
 ### branch-state
 
-Reports the current branch, local and remote branches, all Lens-shaped feature branches, and which features have plan or dev branches open.
+Reports the current branch, local and remote branches, all Lens-shaped feature branches, and which features have legacy plan or dev branches open.
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py branch-state \
@@ -47,7 +47,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/s
 
 ### discrepancies
 
-Compares active feature phase to observed branch topology and returns field-level mismatch records. Example: `feature.yaml.phase=dev` with no `{featureId}-dev` or `{featureId}-dev-*` branch is reported against `branch_state.dev_branches`.
+Compares active feature phase to observed branch topology and returns field-level mismatch records. In `flat`, active phases require `{featureId}`. In legacy `3-branch`, planning phases require `{featureId}-plan` and dev phase requires `{featureId}-dev` or `{featureId}-dev-*`.
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-state/scripts/git-state-ops.py discrepancies \

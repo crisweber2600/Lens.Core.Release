@@ -104,7 +104,7 @@ Expected Step 1 outputs:
 - `tech-plan.md`
 - `sprint-plan.md`
 
-Immediately after QuickPlan returns, commit the Step 1 artifacts to the `{featureId}-plan` branch before any session boundary can invalidate the working tree. Run from the workspace root:
+Immediately after QuickPlan returns, commit the Step 1 artifacts to the topology-correct control branch (`{featureId}` in `flat`, `{featureId}-plan` in `3-branch`) before any session boundary can invalidate the working tree. Run from the workspace root:
 ```bash
 uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
   --repo {control_repo} \
@@ -140,7 +140,7 @@ No pre-verdict phase mutation: never update `feature.yaml.phase` before the cano
 
 If the review verdict is `fail`, stop, leave `feature.yaml.phase` unchanged, do not advertise `/finalizeplan` as available, and summarize the blocking findings. A `pass` or `pass-with-warnings` verdict applies the `lens-adversarial-review` Post-Review Command Contract and advances to Step 3.
 
-After review passes, commit `expressplan-adversarial-review.md` to the `{featureId}-plan` branch:
+After review passes, commit `expressplan-adversarial-review.md` to the topology-correct control branch:
 ```bash
 uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
   --repo {control_repo} \

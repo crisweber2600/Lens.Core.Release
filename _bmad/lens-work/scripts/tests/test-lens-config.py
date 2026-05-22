@@ -30,7 +30,7 @@ def test_committed_bmadconfig_has_required_fields_and_absolute_paths():
     loaded = load_lens_config(CONFIG_PATH)
     data = loaded.data
 
-    assert data["control_topology"] == "3-branch"
+    assert data["control_topology"] == "flat"
     for field in (
         "governance_repo_path",
         "target_projects_path",
@@ -89,6 +89,73 @@ def test_load_lens_config_merges_allowed_user_overrides(tmp_path: Path):
     assert loaded.data["control_topology"] == "3-branch"
     assert Path(loaded.data["target_projects_path"]) == target_projects.resolve()
     assert Path(loaded.data["lifecycle_contract"]) == (module_root / "lifecycle.yaml").resolve()
+
+
+def test_load_lens_config_accepts_flat_topology(tmp_path: Path):
+    project = tmp_path / "target-repo"
+    module_root = project / "_bmad" / "lens-work"
+    module_root.mkdir(parents=True)
+    lifecycle = module_root / "lifecycle.yaml"
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+    governance = tmp_path / "governance"
+    target_projects = tmp_path / "TargetProjects"
+    governance.mkdir()
+    target_projects.mkdir()
+
+    config = module_root / "bmadconfig.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "governance_repo_path": str(governance),
+                "control_topology": "flat",
+                "target_projects_path": str(target_projects),
+                "default_git_remote": "origin",
+                "lifecycle_contract": str(lifecycle),
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_lens_config(config)
+
+    assert loaded.data["control_topology"] == "flat"
+
+
+def test_load_lens_config_rejects_unknown_topology(tmp_path: Path):
+    project = tmp_path / "target-repo"
+    module_root = project / "_bmad" / "lens-work"
+    module_root.mkdir(parents=True)
+    lifecycle = module_root / "lifecycle.yaml"
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+    governance = tmp_path / "governance"
+    target_projects = tmp_path / "TargetProjects"
+    governance.mkdir()
+    target_projects.mkdir()
+
+    config = module_root / "bmadconfig.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "governance_repo_path": str(governance),
+                "control_topology": "single",
+                "target_projects_path": str(target_projects),
+                "default_git_remote": "origin",
+                "lifecycle_contract": str(lifecycle),
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_lens_config(config)
+    except ConfigError as exc:
+        assert "control_topology" in str(exc)
+        assert "flat" in str(exc)
+        assert "3-branch" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected ConfigError")
 
 
 def test_load_lens_config_rejects_missing_required_fields(tmp_path: Path):

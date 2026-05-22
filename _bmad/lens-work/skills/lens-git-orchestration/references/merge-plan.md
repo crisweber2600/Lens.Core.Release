@@ -2,7 +2,7 @@
 
 ## Outcome
 
-The planning artifacts from `{featureId}-plan` are integrated into `{featureId}` via PR or direct merge. The feature base branch now reflects the approved plan state.
+In legacy `3-branch`, planning artifacts from `{featureId}-plan` are integrated into `{featureId}` via PR or direct merge. In `flat`, this command returns a structured no-op because planning artifacts already live on `{featureId}`.
 
 ## Merge Strategies
 
@@ -10,16 +10,18 @@ The planning artifacts from `{featureId}-plan` are integrated into `{featureId}`
 |----------|-------------|-----------|
 | `pr` (default) | Team review required | Creates GitHub PR: `{featureId}-plan` → `{featureId}` |
 | `direct` | Solo or automated merge | `git merge --no-ff` locally, then push |
+| `flat` topology | Plan merge not required | Returns `no_op: true` |
 
 ## Preconditions
 
-- Both `{featureId}` and `{featureId}-plan` exist
+- In `3-branch`, both `{featureId}` and `{featureId}-plan` exist
+- In `flat`, `{featureId}` exists
 - Working directory is clean on the branch being merged from
 - For `pr` strategy: `gh` CLI is authenticated
 
 ## Process — PR strategy
 
-1. Confirm both branches exist
+1. Confirm required topology branches exist
 2. Reuse an existing open PR for `{featureId}-plan` → `{featureId}` when one already exists; otherwise run `gh pr create --base {featureId} --head {featureId}-plan --title "[plan] {featureId} — merge planning artifacts" --body "Auto-created by lens-git-orchestration"`
 3. If `--auto-merge` was requested, run `gh pr merge <pr-url> --auto --merge` and report whether GitHub accepted auto-merge
 4. Return PR URL
@@ -38,13 +40,12 @@ The planning artifacts from `{featureId}-plan` are integrated into `{featureId}`
 ```json
 {
   "feature_id": "payments-auth-oauth",
+  "control_topology": "flat",
   "strategy": "pr",
   "base_branch": "payments-auth-oauth",
-  "plan_branch": "payments-auth-oauth-plan",
-  "pr_url": "https://github.com/org/repo/pull/42",
-  "created": true,
+  "plan_branch": "payments-auth-oauth",
+  "no_op": true,
   "auto_merge_requested": true,
-  "auto_merge_enabled": true,
   "plan_branch_deleted": false
 }
 ```

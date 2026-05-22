@@ -214,6 +214,37 @@ def test_discrepancies_report_specific_phase_vs_branch_mismatches(tmp_path: Path
     assert beta_plan["branch_state_value"] == []
 
 
+def test_flat_discrepancies_require_feature_branch_not_plan_branch(tmp_path: Path):
+    repo = init_repo(tmp_path)
+    make_branch(repo, "alpha")
+
+    governance_repo = tmp_path / "governance"
+    write_feature_index(
+        governance_repo,
+        [
+            {"id": "alpha", "featureId": "alpha", "domain": "platform", "service": "identity", "status": "expressplan"},
+            {"id": "beta", "featureId": "beta", "domain": "platform", "service": "identity", "status": "expressplan"},
+        ],
+    )
+    write_feature_yaml(governance_repo, "alpha", phase="expressplan")
+    write_feature_yaml(governance_repo, "beta", phase="expressplan")
+
+    payload, code = run_git_state([
+        "discrepancies",
+        "--repo", str(repo),
+        "--governance-repo", str(governance_repo),
+        "--control-topology", "flat",
+    ])
+
+    assert code == 0
+    assert payload["control_topology"] == "flat"
+    mismatches = payload["discrepancies"]
+    assert not any(item["feature_id"] == "alpha" for item in mismatches)
+    beta_base = next(item for item in mismatches if item["feature_id"] == "beta")
+    assert beta_base["branch_state_field"] == "branch_state.base_branches"
+    assert beta_base["expected_state"] == "one of beta or a remote beta exists"
+
+
 def test_read_only_git_allowlist_rejects_write_operations():
     with pytest.raises(ops.GitStateError) as exc_info:
         ops.assert_git_args_read_only(["checkout", "main"])
