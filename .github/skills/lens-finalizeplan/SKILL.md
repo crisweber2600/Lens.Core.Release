@@ -48,7 +48,7 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 1. Load config from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
 2. Resolve `{governance_repo}`, `{control_repo}`, `{feature_id}`, and `{module_path}`.
 3. Load `feature.yaml` through `lens-feature-yaml` and resolve `domain`, `service`, `track`, `phase`, `docs.path`, and branch names.
-4. Validate the current branch model: `{featureId}` and `{featureId}-plan` must exist in the control repo before FinalizePlan proceeds.
+4. Validate the configured branch model before FinalizePlan proceeds: `flat` requires `{featureId}`; legacy `3-branch` requires `{featureId}` and `{featureId}-plan`.
 5. Resolve staged docs path from `feature.yaml.docs.path` with fallback `docs/{domain}/{service}/{featureId}` in `{control_repo}`.
 6. Validate the predecessor phase gate and capture `predecessor_phase`:
    - `techplan-complete` or active `techplan` -> `predecessor_phase=techplan`.
@@ -106,12 +106,12 @@ uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/sc
 ```
 
 9. If the feature arrived from ExpressPlan, use `--phase expressplan` and report any missing hyphenated express artifacts as a tracked publish gap. Do not compensate with direct governance authoring.
-10. Commit and push `{featureId}-plan` through `lens-git-orchestration commit-artifacts --push` or `lens-git-orchestration push` as appropriate for the current branch state.
+10. Commit and push the topology-correct control branch through `lens-git-orchestration commit-artifacts --push` or `lens-git-orchestration push` as appropriate for the current branch state.
 11. Report the pushed branch and commit SHA. Leave lifecycle phase unchanged.
 
 ### Step 2 - plan-pr-readiness
 
-1. Create or verify the planning PR from `{featureId}-plan` to `{featureId}` by executing this terminal command; do not narrate the operation or ask the user to create the PR:
+1. Run `merge-plan` to create or verify the planning PR for `3-branch` topology, or to receive the structured no-op result for `flat` topology:
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
@@ -122,8 +122,8 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchest
    --strategy pr
 ```
 
-2. Reuse an existing open PR for the same head/base pair when present; `merge-plan --strategy pr` owns that lookup.
-3. Capture `pr_url` from the JSON output as `planning_pr_url`, report it in the Step 2 result, and carry it forward to the FinalizePlan output.
+2. Reuse an existing open PR for the same head/base pair when present; `merge-plan --strategy pr` owns that lookup. In `flat`, treat `no_op: true` as planning-ready.
+3. Capture `pr_url` from the JSON output as `planning_pr_url` when present, report it in the Step 2 result, and carry it forward to the FinalizePlan output.
 4. Confirm PR readiness: review status, branch clean state, no fail-level review findings, and no missing required planning artifacts.
 5. If auto-merge is available and explicitly requested, add `--auto-merge` to the terminal command. Do not mark the phase complete in this step.
 6. If the command exits non-zero, surface the exact error and this fallback command verbatim, then stop without updating lifecycle state; do not ask the user to create the PR manually:
@@ -176,8 +176,8 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-
 ```
 
 4. Stop if strict validation fails. Surface missing artifacts or metadata errors and leave `feature.yaml` unchanged.
-5. Commit and push the downstream bundle on `{featureId}` through `lens-git-orchestration`.
-6. Open or verify the final PR from `{featureId}` to `{featureId}-dev` by executing this terminal command; do not narrate the operation or ask the user to create the PR:
+5. Commit and push the downstream bundle on the topology-correct control branch through `lens-git-orchestration`.
+6. In legacy `3-branch`, open or verify the final PR from `{featureId}` to `{featureId}-dev` by executing this terminal command; do not narrate the operation or ask the user to create the PR. In `flat`, skip this PR because Dev reads the same `{featureId}` control branch.
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \
@@ -190,14 +190,14 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchest
    --body "FinalizePlan downstream bundle is ready for dev implementation."
 ```
 
-7. Capture `pr_url` from the JSON output as `final_pr_url` and report it before any phase update.
+7. Capture `pr_url` from the JSON output as `final_pr_url` when a final PR is required and report it before any phase update.
 8. If the command exits non-zero, surface the exact error and this fallback command verbatim, then stop without updating lifecycle state; do not ask the user to create the PR manually:
 
 ```bash
 gh pr create --base {featureId}-dev --head {featureId} --title "[finalizeplan] {feature_id} ready for dev" --body "FinalizePlan downstream bundle is ready for dev implementation."
 ```
 
-9. Only after the downstream bundle is pushed and the final PR exists, update `feature.yaml` phase to `finalizeplan-complete` through `lens-feature-yaml`.
+9. Only after the downstream bundle is pushed and any required final PR exists, update `feature.yaml` phase to `finalizeplan-complete` through `lens-feature-yaml`.
 10. Signal `/dev` as the next action after the final PR is ready.
 
 ## Output Artifacts
@@ -218,13 +218,13 @@ gh pr create --base {featureId}-dev --head {featureId} --title "[finalizeplan] {
 | `lens-feature-yaml` | Load feature state and update phase to `finalizeplan-complete` in Step 3 only. |
 | `lens-constitution` | Load domain and service governance constraints for final review context. |
 | `lens-adversarial-review` | Run the phase-complete FinalizePlan review gate. |
-| `lens-git-orchestration` | Publish reviewed artifacts, push branches, create plan PR, and create final PR. |
+| `lens-git-orchestration` | Publish reviewed artifacts, push branches, create plan PR/no-op, and create final PR where required by topology. |
 | `lens-bmad-skill` | Generate downstream bundle artifacts through registered BMAD skills. |
 | `validate-phase-artifacts.py` | Validate review-ready predecessor resumes, bundle output presence, and strict FinalizePlan handoff metadata. |
 
 ## Completion Criteria
 
-- Step 1 produced or refreshed `finalizeplan-review.md`, did not fail the gate, and pushed `{featureId}-plan` when required.
-- Step 2 executed `git-orchestration-ops.py merge-plan --strategy pr`, captured `planning_pr_url`, and created or verified the `{featureId}-plan` -> `{featureId}` planning PR.
-- Step 3 generated the downstream bundle in the required wrapper order, applied post-bundle metadata reconciliation, passed `validate-phase-artifacts.py --strict-metadata`, pushed `{featureId}`, executed `git-orchestration-ops.py create-pr`, captured `final_pr_url`, opened or verified the `{featureId}` -> `{featureId}-dev` final PR, and only then updated `feature.yaml` to `finalizeplan-complete`.
+- Step 1 produced or refreshed `finalizeplan-review.md`, did not fail the gate, and pushed the topology-correct control branch.
+- Step 2 executed `git-orchestration-ops.py merge-plan --strategy pr`, captured `planning_pr_url` when present, and either created/verified the `{featureId}-plan` -> `{featureId}` planning PR or received the flat no-op result.
+- Step 3 generated the downstream bundle in the required wrapper order, applied post-bundle metadata reconciliation, passed `validate-phase-artifacts.py --strict-metadata`, pushed the topology-correct branch, created any required final PR, and only then updated `feature.yaml` to `finalizeplan-complete`.
 - No direct governance file creation occurred at any point.

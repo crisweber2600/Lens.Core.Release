@@ -7,7 +7,7 @@ The committed module defaults live in `{project-root}/lens.core/_bmad/lens-work/
 | Field | Purpose |
 | --- | --- |
 | `governance_repo_path` | Absolute or placeholder-based path to the Lens governance repo. |
-| `control_topology` | Fixed Lens control-repo topology. The target module uses `3-branch`. |
+| `control_topology` | Lens control-repo topology. Supported values are `flat` and `3-branch`; new work defaults to `flat`. |
 | `target_projects_path` | Absolute or placeholder-based path to the shared `TargetProjects` root. |
 | `default_git_remote` | Default remote name for git operations. |
 | `lifecycle_contract` | Path to the lifecycle contract used by module validation. |

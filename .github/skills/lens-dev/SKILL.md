@@ -37,7 +37,7 @@ Optional inputs:
 Preconditions:
 - FinalizePlan artifacts exist and are review-ready.
 - Governance feature state is readable.
-- Control repo can check out the feature dev branch before reading feature docs.
+- Control repo can check out the topology-correct feature docs branch before reading feature docs.
 - Target repo is reachable and has no unresolved merge state.
 
 ## Output Contract
@@ -55,7 +55,7 @@ Secondary outputs:
 
 Hard-stop errors:
 - Missing required inputs or unresolved feature context.
-- Control repo dev branch checkout failure.
+- Control repo feature docs branch checkout failure.
 - FinalizePlan gate not satisfied.
 - Target repo branch prep failure.
 - Commit/push failure for a completed story slice.
@@ -71,7 +71,7 @@ Never continue silently after a hard-stop error.
 Validate this contract with focused tests that assert:
 - Required input keys are named in this skill.
 - Output contract includes story commit references and dev-session updates.
-- Control repo `{feature_id}-dev` branch activation is required before phase entry story validation.
+- Topology-correct control branch activation is required before phase entry story validation.
 - Governance repo resolution prefers `.lens/governance-setup.yaml` and forbids sibling-probing fallbacks.
 - Hard-stop and recoverable error categories are explicitly documented.
 - Scope statement keeps this skill orchestration-only.
@@ -87,21 +87,21 @@ Before Control Dev Branch Activation or any Phase Entry Validation, the conducto
 
 The conductor MUST NOT probe sibling governance clone candidates such as `TargetProjects/lens/lens-governance` or choose a hardcoded default when `.lens/governance-setup.yaml` names a different governance repo. All `feature-yaml`, `lens-constitution`, `lens-git-orchestration`, and `lens-complete` calls in the dev flow MUST use the resolved `governance_repo`. Report the resolved path before reading `feature.yaml`.
 
-## Control Dev Branch Activation
+## Control Feature Docs Branch Activation
 
-Before any Phase Entry Validation that reads `sprint-status.yaml`, story files, or other feature docs, the conductor MUST ensure the control repo is on the feature dev branch for the active feature.
+Before any Phase Entry Validation that reads `sprint-status.yaml`, story files, or other feature docs, the conductor MUST ensure the control repo is on the feature docs branch for the active feature. In `flat`, this is `{feature_id}`. In legacy `3-branch`, this is `{feature_id}-dev`.
 
 1. Resolve `feature_id` from the explicit input, active session context, or governance feature selection before reading control-repo feature docs.
-2. Set `control_dev_branch = {feature_id}-dev`.
+2. Resolve `control_docs_branch` from `control_topology`: `{feature_id}` for `flat`, `{feature_id}-dev` for `3-branch`.
 3. Inspect the current control-repo branch with `git -C {control_repo} branch --show-current`.
-4. If the current branch is not `control_dev_branch`, attempt to check out the dev branch:
-   - Prefer an existing local `control_dev_branch` when present.
-   - Otherwise fetch and check out `origin/{control_dev_branch}` when present.
-   - Run `git -C {control_repo} pull --ff-only origin {control_dev_branch}` after checkout when the remote exists.
-5. If checkout or pull fails, emit `control_dev_branch_checkout_failed` hard-stop with the attempted branch and git error. Do not proceed to `sprint_status_missing`, `story_file_missing`, or story queue validation while still on the wrong branch.
-6. If checkout succeeds, use the docs on `control_dev_branch` as the source for all Phase Entry Validation and dev-cycle docs updates.
+4. If the current branch is not `control_docs_branch`, attempt to check out that branch:
+   - Prefer an existing local branch when present.
+   - Otherwise fetch and check out `origin/{control_docs_branch}` when present.
+   - Run `git -C {control_repo} pull --ff-only origin {control_docs_branch}` after checkout when the remote exists.
+5. If checkout or pull fails, emit `control_docs_branch_checkout_failed` hard-stop with the attempted branch and git error. Do not proceed to `sprint_status_missing`, `story_file_missing`, or story queue validation while still on the wrong branch.
+6. If checkout succeeds, use the docs on `control_docs_branch` as the source for all Phase Entry Validation and dev-cycle docs updates.
 
-This branch activation is mandatory for `/lens-dev` because finalized planning docs are delivered on `{feature_id}-dev`. A `story_file_missing` result from `main`, `{feature_id}`, `{feature_id}-plan`, or any unrelated branch is not authoritative until this dev-branch activation has succeeded.
+This branch activation is mandatory for `/lens-dev`. A `story_file_missing` result from `main`, an inactive legacy plan branch, or any unrelated branch is not authoritative until this activation has succeeded.
 
 ## Phase Entry Validation
 
@@ -213,8 +213,8 @@ All timestamps are ISO 8601. All writes emit this schema exactly. Read-time comp
 
 ## Execution Flow
 
-1. **Control dev branch activation**: Resolve the active feature and switch the control repo to `{feature_id}-dev` before reading `sprint-status.yaml` or story files.
-2. **Phase entry validation**: Validate feature.yaml phase, sprint-status.yaml, story files, target repo state, and dev-session.yaml integrity on `{feature_id}-dev`.
+1. **Control feature docs branch activation**: Resolve the active feature and switch the control repo to the topology-correct docs branch before reading `sprint-status.yaml` or story files.
+2. **Phase entry validation**: Validate feature.yaml phase, sprint-status.yaml, story files, target repo state, and dev-session.yaml integrity on that branch.
 3. **Constitution hard gate enforcement**: Load and enforce domain constitution; extract hard gates; stop if any violation would be introduced. Pass constitution constraints to all implementation delegates.
 4. **Story queue resolution**: Build ready queue from sprint-status.yaml and dev-session.yaml completed list.
 5. **Branch context**: Confirm or prepare target repo branch via `lens-git-orchestration`.
@@ -227,7 +227,7 @@ All timestamps are ISO 8601. All writes emit this schema exactly. Read-time comp
 When a dev invocation includes an explicit post-dev completion request, the conductor MUST:
 
 1. Finish all normal dev closing actions first: story statuses, target repo commits, target PR, and `feature.yaml` phase `dev-complete`.
-2. Check out or create the control repo `{feature_id}-dev` branch and keep it as the working branch for dev-cycle docs delivery.
+2. Check out or create the topology-correct control docs branch and keep it as the working branch for dev-cycle docs delivery (`{feature_id}` in `flat`, `{feature_id}-dev` in `3-branch`).
 3. Invoke the complete runtime from the installed module path:
 
 ```bash
@@ -239,7 +239,7 @@ uv run --script lens.core/_bmad/lens-work/skills/lens-complete/scripts/complete-
 ```
 
 4. Commit and push governance archive changes to `main` after a successful finalize response.
-5. The complete runtime validates `{feature_id}-plan` -> `{feature_id}` -> `{feature_id}-dev`, merges `{feature_id}-dev` into `main`, and deletes the related control branches after a successful merge. Surface any `control_repo_merge_failed` warning from the complete runtime; do not report completion as blocked if governance archival succeeded.
+5. The complete runtime performs the topology-specific control merge: in `flat`, `{feature_id}` is merged to `main` and then deleted; in `3-branch`, it validates `{feature_id}-plan` -> `{feature_id}` -> `{feature_id}-dev`, merges `{feature_id}-dev` into `main`, and deletes related control branches. Surface any `control_repo_merge_failed` warning from the complete runtime; do not report completion as blocked if governance archival succeeded.
 
 ## Integration Points
 

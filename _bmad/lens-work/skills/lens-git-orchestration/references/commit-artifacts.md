@@ -22,13 +22,13 @@ One or more files are staged and committed to the current branch with a structur
 
 ## Preconditions
 
-- Branch is `{featureId}` or `{featureId}-plan` (or `{featureId}-dev-{username}`)
+- Branch is valid for the configured topology: `{featureId}` in `flat`, or the routed phase branch in `3-branch`
 - All specified file paths exist relative to the repo root
 - At least one file is specified
 
 ## Process
 
-1. Verify current branch matches the expected branch for this feature
+1. Verify current branch matches the topology-aware expected branch for this feature and phase
 2. Resolve phase from `feature.yaml` if not explicitly provided
 3. Print the files that will be staged — request confirmation (unless `--no-confirm`)
 4. `git add {file_paths}`
@@ -41,12 +41,18 @@ One or more files are staged and committed to the current branch with a structur
 ```json
 {
   "feature_id": "payments-auth-oauth",
-  "branch": "payments-auth-oauth-plan",
+  "control_topology": "flat",
+  "branch": "payments-auth-oauth",
   "phase": "plan",
   "files_committed": ["docs/prd.md", "docs/arch.md"],
   "commit_sha": "abc1234",
   "commit_message": "[plan] payments-auth-oauth — architecture document complete",
-  "pushed": false
+  "pushed": false,
+  "routing": {
+    "control_topology": "flat",
+    "expected_branch": "payments-auth-oauth",
+    "routing_rule": "flat_feature_branch"
+  }
 }
 ```
 

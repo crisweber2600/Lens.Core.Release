@@ -36,6 +36,7 @@ DEFAULT_BRANCHES = {"main", "master", "develop", "trunk"}
 TERMINAL_STATUSES = {"archived", "complete", "completed", "abandoned", "superseded"}
 TERMINAL_PHASES = TERMINAL_STATUSES | {"dev-complete"}
 PLANNING_PHASES = {"preplan", "businessplan", "techplan", "finalizeplan", "expressplan"}
+CONTROL_TOPOLOGIES = {"3-branch", "flat"}
 
 READ_ONLY_GIT_COMMANDS: frozenset[tuple[str, ...]] = frozenset(
     {
@@ -301,6 +302,25 @@ def resolve_governance_repo(args: argparse.Namespace) -> Path:
     return Path(config.data["governance_repo_path"])
 
 
+def resolve_control_topology(args: argparse.Namespace) -> str:
+    explicit = getattr(args, "control_topology", None)
+    if explicit:
+        topology = str(explicit).strip()
+    else:
+        try:
+            config = load_lens_config(
+                getattr(args, "module_config", None),
+                start=getattr(args, "workspace_root", None) or getattr(args, "repo", None) or os.getcwd(),
+            )
+            topology = str(config.data.get("control_topology") or "").strip()
+        except ConfigError:
+            topology = "3-branch"
+    if topology not in CONTROL_TOPOLOGIES:
+        expected = ", ".join(sorted(CONTROL_TOPOLOGIES))
+        raise GitStateError("invalid_control_topology", f"control_topology must be one of: {expected}")
+    return topology
+
+
 def resolve_feature_yaml_path(governance_repo: Path, entry: dict[str, Any], feature_id: str) -> Path | None:
     domain = str(entry.get("domain") or "").strip()
     service = str(entry.get("service") or "").strip()
@@ -432,6 +452,7 @@ def discrepancy(
 def compare_features_to_branches(
     active_features: list[dict[str, Any]],
     branch_state: dict[str, Any],
+    control_topology: str = "3-branch",
 ) -> list[dict[str, Any]]:
     by_feature = branch_summary_by_feature(branch_state)
     discrepancies: list[dict[str, Any]] = []
@@ -464,6 +485,33 @@ def compare_features_to_branches(
                     f"{feature_id} has no feature.yaml.phase value to compare with branch state.",
                 )
             )
+            continue
+
+        if control_topology == "flat":
+            if root not in TERMINAL_PHASES and not branches.get("has_base_branch"):
+                discrepancies.append(
+                    discrepancy(
+                        feature_id,
+                        "feature.yaml.phase",
+                        phase,
+                        "branch_state.base_branches",
+                        branches.get("base_branches", []),
+                        f"one of {feature_id} or a remote {feature_id} exists",
+                        f"feature.yaml.phase={phase} indicates active work, but no flat feature branch is present.",
+                    )
+                )
+            if phase in TERMINAL_PHASES and branches.get("has_base_branch"):
+                discrepancies.append(
+                    discrepancy(
+                        feature_id,
+                        "feature.yaml.phase",
+                        phase,
+                        "branch_state.base_branches",
+                        branches.get("base_branches", []),
+                        "flat feature branch is merged or closed after completion",
+                        f"feature.yaml.phase={phase} but flat feature branch is still open for {feature_id}.",
+                    )
+                )
             continue
 
         if root in PLANNING_PHASES and not branches.get("has_plan_branch"):
@@ -558,11 +606,13 @@ def command_active_features(args: argparse.Namespace) -> tuple[dict[str, Any], i
 def command_discrepancies(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     branch_state = collect_branch_state(args.repo or os.getcwd())
     governance_repo = resolve_governance_repo(args)
+    control_topology = resolve_control_topology(args)
     features = collect_active_features(governance_repo, feature_id_filter=args.feature_id)
-    discrepancies = compare_features_to_branches(features["active_features"], branch_state)
+    discrepancies = compare_features_to_branches(features["active_features"], branch_state, control_topology)
     return {
         "status": "pass",
         "read_only": True,
+        "control_topology": control_topology,
         "branch_state": branch_state,
         "active_features": features["active_features"],
         "discrepancies": discrepancies,
@@ -573,11 +623,13 @@ def command_discrepancies(args: argparse.Namespace) -> tuple[dict[str, Any], int
 def command_feature_state(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     branch_state = collect_branch_state(args.repo or os.getcwd())
     governance_repo = resolve_governance_repo(args)
+    control_topology = resolve_control_topology(args)
     features = collect_active_features(governance_repo, feature_id_filter=args.feature_id)
-    discrepancies = compare_features_to_branches(features["active_features"], branch_state)
+    discrepancies = compare_features_to_branches(features["active_features"], branch_state, control_topology)
     return {
         "status": "pass",
         "read_only": True,
+        "control_topology": control_topology,
         "repo": branch_state["repo"],
         "governance_repo": features["governance_repo"],
         "feature_index": features["feature_index"],
@@ -594,6 +646,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--feature-id", help="Limit feature reporting to one feature ID.")
     parser.add_argument("--workspace-root", help="Workspace root used for config discovery.")
     parser.add_argument("--module-config", help="Explicit {project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml path.")
+    parser.add_argument("--control-topology", choices=sorted(CONTROL_TOPOLOGIES), help="Override control topology.")
 
 
 def build_parser() -> argparse.ArgumentParser:

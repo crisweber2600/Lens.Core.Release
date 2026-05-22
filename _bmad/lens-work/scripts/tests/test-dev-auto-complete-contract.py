@@ -31,12 +31,12 @@ def test_dev_completion_handoff_runs_lens_complete_finalize() -> None:
     assert "--confirm" in text
 
 
-def test_dev_completion_handoff_uses_feature_dev_branch() -> None:
-    """The automatic handoff must use the feature-specific control dev branch."""
+def test_dev_completion_handoff_describes_topology_specific_control_merge() -> None:
+    """The automatic handoff must describe topology-specific control branch merge behavior."""
     text = _dev_skill_text()
 
     assert "{feature_id}-dev" in text
-    assert "{feature_id}-plan" in text
-    assert "deletes the related control branches" in text
+    assert "flat" in text
+    assert "topology" in text
     assert "control_repo_merge_failed" in text
     assert "do not simulate completion" in text

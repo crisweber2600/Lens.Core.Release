@@ -44,7 +44,8 @@ Inputs:
 - `--governance-repo <path>`: governance repo root.
 - `--feature-id <id>`: feature identifier.
 - `--dry-run`: optional; accepted for callers that always pass dry-run flags. No writes are performed either way.
-- `--control-repo <path>` *(optional)*: path to the control repo. When provided, scans for surviving `{featureId}`, `{featureId}-plan`, and `{featureId}-dev` branches on the remote and surfaces them as `orphaned_control_repo_branches` warnings. This check is advisory, not a blocker.
+- `--control-repo <path>` *(optional)*: path to the control repo. When provided, scans for surviving topology-specific branches and surfaces them as `orphaned_control_repo_branches` warnings. This check is advisory, not a blocker.
+- `--control-topology flat|3-branch` *(optional)*: override module topology detection.
 
 Guards:
 
@@ -113,7 +114,8 @@ Inputs:
 - `--feature-id <id>`: feature identifier.
 - `--dry-run`: preview planned changes without writing.
 - `--confirm`: required for non-dry-run execution in non-interactive contexts.
-- `--control-repo <path>` *(optional)*: path to the control repo. When provided, switches to `{featureId}-dev`, validates that related branches are already merged (`{featureId}-plan` into `{featureId}`, then `{featureId}` into `{featureId}-dev`), creates and merges a PR from `{featureId}-dev` to `main`, and deletes `{featureId}-plan`, `{featureId}`, and `{featureId}-dev` after the merge. Requires `gh` CLI to be authenticated. If the merge or cleanup fails, governance writes are **not** rolled back — the failure is surfaced as a warning in the response.
+- `--control-repo <path>` *(optional)*: path to the control repo. In `flat`, creates and merges a PR from `{featureId}` to `main` and deletes `{featureId}` after merge. In `3-branch`, switches to `{featureId}-dev`, validates that related branches are already merged (`{featureId}-plan` into `{featureId}`, then `{featureId}` into `{featureId}-dev`), creates and merges a PR from `{featureId}-dev` to `main`, and deletes `{featureId}-plan`, `{featureId}`, and `{featureId}-dev` after the merge. Requires `gh` CLI to be authenticated. If the merge or cleanup fails, governance writes are **not** rolled back — the failure is surfaced as a warning in the response.
+- `--control-topology flat|3-branch` *(optional)*: override module topology detection.
 
 Confirmation gate:
 
@@ -125,10 +127,10 @@ Operations:
 2. Update `feature.yaml.phase` to `complete` and set `completed_at`.
 3. Update the matching `feature-index.yaml` entry to `status: archived` and set `updated_at`.
 4. Write `summary.md` if absent, or update only the generated archive section if a managed section exists.
-5. If `--control-repo` is given, switch to `{featureId}-dev`, validate related branch ancestry, push it, create and merge a PR from `{featureId}-dev` to `main`, validate the dev branch reached `main`, then delete `{featureId}-plan`, `{featureId}`, and `{featureId}-dev` locally and on origin. An existing merged PR is treated as success. A merge or cleanup failure is non-fatal (warning only).
+5. If `--control-repo` is given, perform the topology-specific control merge: in `flat`, push `{featureId}`, create and merge `{featureId}` -> `main`, validate it reached `main`, then delete `{featureId}`; in `3-branch`, switch to `{featureId}-dev`, validate related branch ancestry, push it, create and merge `{featureId}-dev` -> `main`, validate the dev branch reached `main`, then delete `{featureId}-plan`, `{featureId}`, and `{featureId}-dev`. An existing merged PR is treated as success. A merge or cleanup failure is non-fatal (warning only).
 6. Return all applied changes in structured JSON.
 
-> **3-branch topology requirement:** For any feature initialized with the standard Lens 3-branch control-repo topology (`{featureId}`, `{featureId}-plan`, `{featureId}-dev`), **always pass `--control-repo`** when invoking `finalize`. Without it, governance is archived but the control-repo branches are left orphaned. If `--control-repo` was omitted, run `check-preconditions --control-repo <path>` immediately after archiving to surface any surviving branches, then delete them manually.
+> **Control topology requirement:** For any feature with surviving control-repo branches, **always pass `--control-repo`** when invoking `finalize`. Without it, governance is archived but the control-repo branches are left orphaned. If `--control-repo` was omitted, run `check-preconditions --control-repo <path>` immediately after archiving to surface any surviving branches, then delete them through the approved git orchestration path.
 
 Dry-run return shape:
 

@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["pytest>=8.0", "pyyaml>=6.0"]
 # ///
-"""Integration tests for bmad-lens-dev SKILL.md conductor contract (E4-S1)."""
+"""Integration tests for lens-dev SKILL.md conductor contract (E4-S1)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import yaml
 
 TEST_FILE = Path(__file__).resolve()
 MODULE_ROOT = TEST_FILE.parents[2]
-DEV_SKILL_MD = MODULE_ROOT / "skills" / "bmad-lens-dev" / "SKILL.md"
+DEV_SKILL_MD = MODULE_ROOT / "skills" / "lens-dev" / "SKILL.md"
 
 
 def _skill_text() -> str:
@@ -31,7 +31,7 @@ def test_required_inputs_named():
     """The skill declares all three required inputs."""
     text = _skill_text()
     for field in ("feature_id", "governance_repo", "control_repo"):
-        assert field in text, f"Required input '{field}' missing from bmad-lens-dev SKILL.md"
+        assert field in text, f"Required input '{field}' missing from lens-dev SKILL.md"
 
 
 def test_output_contract_includes_story_commits():
@@ -84,31 +84,32 @@ def test_phase_entry_validates_finalizeplan_complete():
     )
 
 
-def test_control_dev_branch_activation_precedes_phase_entry_validation():
-    """Conductor switches to {feature_id}-dev before story validation reads feature docs."""
+def test_control_feature_docs_branch_activation_precedes_phase_entry_validation():
+    """Conductor switches to the topology-correct docs branch before story validation."""
     text = _skill_text()
-    activation_index = text.find("## Control Dev Branch Activation")
+    activation_index = text.find("## Control Feature Docs Branch Activation")
     validation_index = text.find("## Phase Entry Validation")
 
-    assert activation_index != -1, "SKILL.md must document Control Dev Branch Activation"
+    assert activation_index != -1, "SKILL.md must document Control Feature Docs Branch Activation"
     assert validation_index != -1, "SKILL.md must document Phase Entry Validation"
     assert activation_index < validation_index, (
-        "Control dev branch activation must be documented before phase entry validation"
+        "Control feature docs branch activation must be documented before phase entry validation"
     )
     assert "{feature_id}-dev" in text
-    assert "control_dev_branch_checkout_failed" in text
+    assert "{feature_id}`" in text
+    assert "control_docs_branch_checkout_failed" in text
     assert "Do not proceed to `sprint_status_missing`, `story_file_missing`" in text
 
 
-def test_control_dev_branch_pull_uses_ff_only_syntax():
-    """The pull step in Control Dev Branch Activation must use `--ff-only origin {branch}` form."""
+def test_control_docs_branch_pull_uses_ff_only_syntax():
+    """The pull step in branch activation must use `--ff-only origin {branch}` form."""
     text = _skill_text()
-    activation_start = text.find("## Control Dev Branch Activation")
+    activation_start = text.find("## Control Feature Docs Branch Activation")
     activation_end = text.find("##", activation_start + 1)
     section = text[activation_start:activation_end]
     assert "pull --ff-only origin" in section, (
-        "Control Dev Branch Activation pull step must use "
-        "`git pull --ff-only origin {control_dev_branch}` (not `origin/{branch}` ref form)"
+        "Control branch activation pull step must use "
+        "`git pull --ff-only origin {control_docs_branch}` (not `origin/{branch}` ref form)"
     )
 
 
@@ -243,10 +244,10 @@ def test_skill_is_orchestration_only():
 
 
 def test_integration_points_include_git_orchestration():
-    """Integration points reference bmad-lens-git-orchestration."""
+    """Integration points reference lens-git-orchestration."""
     text = _skill_text()
-    assert "bmad-lens-git-orchestration" in text, (
-        "SKILL.md must list bmad-lens-git-orchestration in integration points"
+    assert "lens-git-orchestration" in text, (
+        "SKILL.md must list lens-git-orchestration in integration points"
     )
 
 

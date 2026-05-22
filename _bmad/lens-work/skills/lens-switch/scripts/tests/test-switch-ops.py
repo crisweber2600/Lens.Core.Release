@@ -401,6 +401,8 @@ def test_switch_success_full_contract_context_paths_and_context_file(tmp_path: P
             "auth-login",
             "--control-repo",
             str(control),
+            "--control-topology",
+            "3-branch",
         ]
     )
 
@@ -465,7 +467,13 @@ def test_branch_missing_reports_new_feature_guidance(tmp_path: Path):
     write_feature(governance, "platform", "identity", "auth-login", FEATURE)
 
     payload, code = run_switch(
-        ["switch", "--governance-repo", str(governance), "--feature-id", "auth-login", "--control-repo", str(control)]
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "3-branch",
+        ]
     )
 
     assert code == 0
@@ -473,6 +481,34 @@ def test_branch_missing_reports_new_feature_guidance(tmp_path: Path):
     assert payload["checked_out_branch"] is None
     assert payload["branch_error"] == "branch_not_found"
     assert payload["message"] == "Run /new-feature to initialize branches."
+
+
+def test_flat_topology_switch_checks_out_feature_branch(tmp_path: Path):
+    governance = tmp_path / "governance"
+    control = tmp_path / "control"
+    governance.mkdir()
+    control.mkdir()
+    init_git_repo(control)
+    create_branch(control, "auth-login")
+    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "auth-login"}])
+    feature_dir = write_feature(governance, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ]
+    )
+
+    assert code == 0
+    assert payload["control_topology"] == "flat"
+    assert payload["plan_branch"] == "auth-login"
+    assert payload["branch_switched"] is True
+    assert payload["checked_out_branch"] == "auth-login"
+    assert Path(payload["context_path"]) == feature_dir
 
 
 def test_branch_dirty_tree_reports_raw_git_error(tmp_path: Path):
@@ -493,7 +529,13 @@ def test_branch_dirty_tree_reports_raw_git_error(tmp_path: Path):
     write_feature(governance, "platform", "identity", "auth-login", FEATURE)
 
     payload, code = run_switch(
-        ["switch", "--governance-repo", str(governance), "--feature-id", "auth-login", "--control-repo", str(control)]
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "3-branch",
+        ]
     )
 
     assert code == 0

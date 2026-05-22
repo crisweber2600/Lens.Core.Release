@@ -26,6 +26,7 @@ GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local change
 LIFECYCLE_PATH = Path(__file__).resolve().parents[3] / "lifecycle.yaml"
 CONTEXT_DOC_SUFFIXES = {".md", ".yaml", ".yml"}
 AMBIGUOUS_SERVICE_NAMES = {"api", "auth", "common", "core", "data", "identity"}
+CONTROL_TOPOLOGIES = ("3-branch", "flat")
 
 
 @lru_cache(maxsize=1)
@@ -54,6 +55,28 @@ def lifecycle_track_flow() -> str:
 
 def lifecycle_track_markdown() -> str:
     return ", ".join(f"`{track}`" for track in lifecycle_track_names())
+
+
+def _module_control_topology() -> str | None:
+    for parent in Path(__file__).resolve().parents:
+        config_path = parent / "bmadconfig.yaml"
+        if not config_path.is_file():
+            continue
+        try:
+            data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return None
+        if isinstance(data, dict) and data.get("control_topology"):
+            return str(data["control_topology"]).strip()
+    return None
+
+
+def resolve_control_topology(args: argparse.Namespace) -> str:
+    topology = str(getattr(args, "control_topology", None) or _module_control_topology() or "3-branch").strip()
+    if topology not in CONTROL_TOPOLOGIES:
+        expected = ", ".join(CONTROL_TOPOLOGIES)
+        raise ValueError(f"invalid control_topology '{topology}' — expected one of: {expected}")
+    return topology
 
 
 def now_iso() -> str:
@@ -1148,6 +1171,7 @@ def _make_index_entry(
     username: str,
     starting_phase: str,
     timestamp: str,
+    plan_branch: str,
 ) -> dict:
     return {
         "featureId": feature_id,
@@ -1159,7 +1183,7 @@ def _make_index_entry(
         "status": starting_phase,
         "track": track,
         "owner": username,
-        "plan_branch": f"{feature_id}-plan",
+        "plan_branch": plan_branch,
         "related_features": {"depends_on": [], "blocks": [], "related": []},
         "created": timestamp,
         "updated_at": timestamp,
@@ -1180,6 +1204,11 @@ def cmd_create(args: argparse.Namespace) -> dict:
     governance_repo = args.governance_repo
     control_repo = resolve_control_repo_for_feature(args.control_repo, governance_repo)
     description = args.description if args.description else ""
+    try:
+        control_topology = resolve_control_topology(args)
+    except ValueError as exc:
+        return {"status": "fail", "scope": "feature", "dry_run": bool(args.dry_run), "error": str(exc)}
+    plan_branch = feature_id if control_topology == "flat" else f"{feature_id}-plan"
 
     if not track:
         try:
@@ -1263,7 +1292,8 @@ def cmd_create(args: argparse.Namespace) -> dict:
             (
                 f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/"
                 f"scripts/git-orchestration-ops.py create-feature-branches "
-                f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} --feature-id {shlex.quote(feature_id)}"
+                f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} "
+                f"--feature-id {shlex.quote(feature_id)} --control-topology {shlex.quote(control_topology)}"
             ),
             (
                 f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-switch/"
@@ -1300,6 +1330,8 @@ def cmd_create(args: argparse.Namespace) -> dict:
             "scope": "feature",
             "feature_id": feature_id,
             "feature_slug": feature_slug,
+            "control_topology": control_topology,
+            "plan_branch": plan_branch,
             "domain": domain,
             "service": service,
             "track": track,
@@ -1369,7 +1401,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
     # Re-read index (timestamp may differ) and append entry
     index_data = _load_feature_index(gov_path)
     new_entry = _make_index_entry(
-        feature_id, feature_slug, domain, service, name, track, username, starting_phase, timestamp
+        feature_id, feature_slug, domain, service, name, track, username, starting_phase, timestamp, plan_branch
     )
     index_data["features"].append(new_entry)
     try:
@@ -1410,17 +1442,20 @@ def cmd_create(args: argparse.Namespace) -> dict:
     planning_pr_followup_commands: list[str] = []
     planning_pr_deferred_reason: str | None = None
     if control_repo:
-        planning_pr_followup_commands = [
-            (
-                f"gh pr create --repo {shlex.quote(control_repo)} "
-                f"--head {shlex.quote(f'{feature_id}-plan')} --base {shlex.quote(feature_id)} "
-                f"--title {shlex.quote(f'[plan] {feature_id} — planning artifacts')} "
-                f"--body {shlex.quote('Auto-created by lens-init-feature')}"
+        if control_topology == "flat":
+            planning_pr_deferred_reason = "Planning PR creation is not required for flat control topology."
+        else:
+            planning_pr_followup_commands = [
+                (
+                    f"gh pr create --repo {shlex.quote(control_repo)} "
+                    f"--head {shlex.quote(f'{feature_id}-plan')} --base {shlex.quote(feature_id)} "
+                    f"--title {shlex.quote(f'[plan] {feature_id} — planning artifacts')} "
+                    f"--body {shlex.quote('Auto-created by lens-init-feature')}"
+                )
+            ]
+            planning_pr_deferred_reason = (
+                "Planning PR creation is deferred until the plan branch contains planning commits."
             )
-        ]
-        planning_pr_deferred_reason = (
-            "Planning PR creation is deferred until the plan branch contains planning commits."
-        )
 
     return {
         "status": "pass",
@@ -1428,6 +1463,8 @@ def cmd_create(args: argparse.Namespace) -> dict:
         "scope": "feature",
         "feature_id": feature_id,
         "feature_slug": feature_slug,
+        "control_topology": control_topology,
+        "plan_branch": plan_branch,
         "domain": domain,
         "service": service,
         "track": track,
@@ -1631,6 +1668,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--description", default="")
     create.add_argument("--track")
     create.add_argument("--username", default="")
+    create.add_argument("--control-topology", choices=CONTROL_TOPOLOGIES, default=None)
     create.add_argument("--execute-governance-git", action="store_true")
     create.add_argument("--dry-run", action="store_true")
 

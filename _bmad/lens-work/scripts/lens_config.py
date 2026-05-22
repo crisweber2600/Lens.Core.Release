@@ -21,6 +21,8 @@ REQUIRED_CONFIG_FIELDS = {
     "lifecycle_contract",
 }
 
+SUPPORTED_CONTROL_TOPOLOGIES = {"3-branch", "flat"}
+
 USER_OVERRIDABLE_FIELDS = {
     "github_username",
     "default_branch",
@@ -258,8 +260,10 @@ def load_lens_config(
         missing = sorted(field for field in REQUIRED_CONFIG_FIELDS if not data.get(field))
         if missing:
             raise ConfigError(f"Missing required Lens config field(s): {', '.join(missing)}")
-        if str(data.get("control_topology")) != "3-branch":
-            raise ConfigError("control_topology must be 3-branch")
+        topology = str(data.get("control_topology") or "").strip()
+        if topology not in SUPPORTED_CONTROL_TOPOLOGIES:
+            supported = ", ".join(sorted(SUPPORTED_CONTROL_TOPOLOGIES))
+            raise ConfigError(f"control_topology must be one of: {supported}")
 
     normalized = dict(data)
     for field in PATH_FIELDS:
