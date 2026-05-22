@@ -13,6 +13,10 @@ concurrency:
   group: scheduled-branch-promotion
   cancel-in-progress: false
 
+env:
+  RETRY_ATTEMPTS: '6'
+  RETRY_INTERVAL_SECONDS: '5'
+
 jobs:
   promote:
     runs-on: ubuntu-latest
@@ -37,8 +41,6 @@ jobs:
           SCHEDULE_CRON: ${{ matrix.cron }}
           SOURCE_BRANCH: ${{ matrix.source_branch }}
           TARGET_BRANCH: ${{ matrix.target_branch }}
-          RETRY_ATTEMPTS: '6'
-          RETRY_INTERVAL_SECONDS: '5'
         shell: bash
         run: |
           set -euo pipefail
@@ -67,6 +69,19 @@ jobs:
             local payload="$2"
             curl --silent --show-error --fail \
               --request POST \
+              --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "Content-Type: application/json" \
+              --data "$payload" \
+              "$url"
+          }
+
+          api_put_with_status() {
+            local url="$1"
+            local payload="$2"
+            curl --silent --show-error \
+              --request PUT \
+              --write-out '\n%{http_code}' \
               --header "Authorization: Bearer ${GITHUB_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
               --header "Content-Type: application/json" \
@@ -104,6 +119,7 @@ jobs:
           mergeable_state="unknown"
 
           for ((attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++)); do
+            echo "Checking merge status for PR #${pr_number} (attempt ${attempt}/${RETRY_ATTEMPTS})."
             pr_details="$(api_get "${api_url}/pulls/${pr_number}")"
             merged="$(jq -r '.merged' <<< "${pr_details}")"
 
@@ -112,7 +128,7 @@ jobs:
               exit 0
             fi
 
-            mergeable="$(jq -r 'if .mergeable == null then "null" else (.mergeable | tostring) end' <<< "${pr_details}")"
+            mergeable="$(jq -r '.mergeable // "null" | tostring' <<< "${pr_details}")"
             mergeable_state="$(jq -r '.mergeable_state // "unknown"' <<< "${pr_details}")"
 
             if [[ "${mergeable}" == "true" ]]; then
@@ -136,16 +152,7 @@ jobs:
             --arg commit_title "${pr_title}" \
             '{commit_title: $commit_title, merge_method: "merge"}')"
 
-          merge_response="$(
-            curl --silent --show-error \
-              --request PUT \
-              --write-out '\n%{http_code}' \
-              --header "Authorization: Bearer ${GITHUB_TOKEN}" \
-              --header "Accept: application/vnd.github+json" \
-              --header "Content-Type: application/json" \
-              --data "${merge_payload}" \
-              "${api_url}/pulls/${pr_number}/merge"
-          )"
+          merge_response="$(api_put_with_status "${api_url}/pulls/${pr_number}/merge" "${merge_payload}")"
 
           merge_status="$(tail -n1 <<< "${merge_response}")"
           merge_body="$(sed '$d' <<< "${merge_response}")"
