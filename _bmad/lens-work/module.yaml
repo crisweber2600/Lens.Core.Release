@@ -13,14 +13,16 @@ prompts:
   - lens-nextlens-bugfix.prompt.md
   - lens-discover.prompt.md
   - lens-expressplan.prompt.md
-  - lens-auspex-start.prompt.md
-  - lens-auspex-setup.prompt.md
-  - lens-auspex-map-audit.prompt.md
-  - lens-auspex-ledger-promotion.prompt.md
-  - lens-auspex-salmon-impact.prompt.md
-  - lens-auspex-topology-design.prompt.md
-  - lens-auspex-reporting-snapshot.prompt.md
-  - lens-auspex-reporting-ui.prompt.md
+  - lens-setup.prompt.md
+  - lens-work-intake.prompt.md
+  - lens-doctor.prompt.md
+  - lens-ledger-promotion.prompt.md
+  - lens-lifecycle.prompt.md
+  - lens-map-audit.prompt.md
+  - lens-projection-rebuild.prompt.md
+  - lens-reporting-snapshot.prompt.md
+  - lens-salmon-impact.prompt.md
+  - lens-topology-design.prompt.md
   - lens-new-domain.prompt.md
   - lens-new-feature.prompt.md
   - lens-new-service.prompt.md
@@ -44,14 +46,16 @@ skills:
   - lens-quickdev
   - lens-discover
   - lens-expressplan
-  - lens-auspex-start
-  - lens-auspex-setup
-  - lens-auspex-map-audit
-  - lens-auspex-ledger-promotion
-  - lens-auspex-salmon-impact
-  - lens-auspex-topology-design
-  - lens-auspex-reporting-snapshot
-  - lens-auspex-reporting-ui
+  - lens-setup
+  - lens-work-intake
+  - lens-doctor
+  - lens-ledger-promotion
+  - lens-lifecycle
+  - lens-map-audit
+  - lens-projection-rebuild
+  - lens-reporting-snapshot
+  - lens-salmon-impact
+  - lens-topology-design
   - lens-feature-yaml
   - lens-finalizeplan
   - lens-git-orchestration

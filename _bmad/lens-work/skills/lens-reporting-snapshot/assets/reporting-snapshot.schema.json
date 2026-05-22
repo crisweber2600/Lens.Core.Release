@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/lens/reporting-snapshot.schema.json",
+  "title": "Lens Reporting Snapshot",
+  "type": "object",
+  "required": [
+    "module",
+    "report_type",
+    "created_at",
+    "scope",
+    "overall_status",
+    "summary_cards",
+    "blocking",
+    "advisory",
+    "features",
+    "ledgers",
+    "projection",
+    "salmon_impacts",
+    "artifact_index",
+    "facets",
+    "search_fields",
+    "freshness",
+    "refresh",
+    "access"
+  ],
+  "properties": {
+    "module": { "const": "lens" },
+    "report_type": { "const": "reporting_snapshot" },
+    "created_at": { "type": "string" },
+    "scope": { "type": "string" },
+    "overall_status": { "enum": ["GREEN", "YELLOW", "RED"] },
+    "summary_cards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/card" }
+    },
+    "blocking": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "advisory": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entity" }
+    },
+    "ledgers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entity" }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "salmon_impacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "preflight": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "constitution": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "governance_repo": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "lens_context": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "artifact_index": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "facets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "search_fields": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "refresh": {
+      "type": "object",
+      "required": ["mode", "generated_from"],
+      "properties": {
+        "mode": { "enum": ["manual", "scheduled", "ci"] },
+        "generated_from": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "access": {
+      "type": "object",
+      "required": ["model"],
+      "properties": {
+        "model": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "card": {
+      "type": "object",
+      "required": ["code", "label", "value", "status"],
+      "properties": {
+        "code": { "type": "string" },
+        "label": { "type": "string" },
+        "value": {},
+        "status": { "type": "string" },
+        "source": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "finding": {
+      "type": "object",
+      "required": ["severity", "code", "path", "problem"],
+      "properties": {
+        "severity": { "type": "string" },
+        "code": { "type": "string" },
+        "stable_id": { "type": "string" },
+        "path": { "type": "string" },
+        "problem": { "type": "string" },
+        "recommended_fix": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "entity": {
+      "type": "object",
+      "required": ["stable_id", "entity_type", "title", "path"],
+      "properties": {
+        "stable_id": { "type": "string" },
+        "entity_type": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string" },
+        "publication_state": { "type": "string" },
+        "belongs_to": { "type": "string" },
+        "lens_context": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "path": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["path", "artifact_type"],
+      "properties": {
+        "path": { "type": "string" },
+        "artifact_type": { "type": "string" },
+        "created_at": { "type": "string" },
+        "source": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

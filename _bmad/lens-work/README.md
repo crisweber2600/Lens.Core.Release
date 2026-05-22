@@ -1,18 +1,18 @@
 # Lens Workbench
 
-LENS lifecycle workbench for feature context switching, initialization, planning, governance, and Auspex topology/reporting workflows.
+LENS lifecycle workbench for feature context switching, initialization, planning, governance, topology, ledgers, Salmon impact, audits, and stakeholder reporting workflows.
 
-Auspex is the preferred Lens workflow for organic, multi-feature knowledge work: Two-Tree topology, derived maps, living ledgers, Salmon impact, audits, and stakeholder reporting. The legacy domain, service, and feature commands remain available for direct scaffold and lifecycle operations.
+Use the plain NextLens command surface for durable work intake and cumulative project knowledge. Domain, service, and feature commands remain available for direct scaffold and lifecycle operations.
 
 ## Commands
 
 | Command | Code | Description |
 |---------|------|-------------|
 | /switch | SW | Switch the active Lens feature context |
-| /lens-auspex-start | AX0 | Create an Auspex unit of work with durable memory, then hand off to Lens lifecycle |
-| /lens-auspex-map-audit | AXA | Audit topology, stable IDs, parent refs, ledgers, and projection readiness |
-| /lens-auspex-topology-design | AXT | Design or update Two-Tree program, domain, and service topology |
-| /lens-auspex-reporting-snapshot | AXR | Create read-only stakeholder status snapshots |
+| /lens-work-intake | WI | Create a durable feature archive, then hand off to Lens lifecycle |
+| /lens-map-audit | MA | Audit topology, stable IDs, parent refs, ledgers, and projection readiness |
+| /lens-topology-design | TD | Design or update Two-Tree program, domain, and service topology |
+| /lens-reporting-snapshot | RS | Create read-only stakeholder status snapshots |
 | /new-feature | NF | Create a new feature with the feature initializer skill |
 | /new-domain | ND | Create a new domain scaffold and register it with Lens |
 | /new-service | NS | Create a new service scaffold within a domain |
@@ -24,7 +24,7 @@ Auspex is the preferred Lens workflow for organic, multi-feature knowledge work:
 - `module-help.csv` — full command catalog with args, phases, and outputs
 - `module.yaml` — module registration and prompt list
 - `agents/lens.agent.md` — entry agent with compact menu
-- `docs/auspex-lens-integration-flow.md` — how to wire Auspex into the Lens workflow and run the new flow
+- `skills/lens-*/` — imported NextLens skill source mirror for local lifecycle and reporting workflows
 
 ## Configuration
 
