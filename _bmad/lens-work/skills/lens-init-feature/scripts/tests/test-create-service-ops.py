@@ -181,7 +181,8 @@ def test_create_service_scaffold_paths(tmp_path):
     )
     assert completed.returncode == 0, completed.stderr
     assert payload["status"] == "pass"
-    assert (target / "platform" / "auth" / ".gitkeep").exists()
+    assert (target / "platform" / "auth").is_dir()
+    assert not (target / "platform" / "auth" / ".gitkeep").exists()
     assert (docs / "platform" / "auth" / ".gitkeep").exists()
     assert payload["target_projects_path"] == str(target / "platform" / "auth")
     assert payload["docs_path"] == str(docs / "platform" / "auth")
@@ -225,10 +226,11 @@ def test_create_service_returns_clone_guidance(tmp_path):
         ]
     )
     assert completed.returncode == 0, completed.stderr
-    assert payload["related_service_clone_path"] == "TargetProjects/platform/auth"
+    assert payload["related_service_clone_path"] == "TargetProjects/platform/auth/<repo-name>"
     assert payload["related_service_clone_guidance"] == (
-        "Before running /new-feature, clone any related service repositories into "
-        "TargetProjects/platform/auth."
+        "Before running /new-feature, clone each related service repository into its own "
+        "repo-named subfolder under TargetProjects/platform/auth "
+        "(for example TargetProjects/platform/auth/<repo-name>)."
     )
 
 

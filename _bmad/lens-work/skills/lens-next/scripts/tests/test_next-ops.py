@@ -13,8 +13,11 @@ test_next_no_writes.py.
 import importlib.util
 from pathlib import Path
 
+import yaml
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "next-ops.py"
+LIFECYCLE = Path(__file__).resolve().parents[4] / "lifecycle.yaml"
 
 
 def load_next_ops():
@@ -49,3 +52,55 @@ def test_find_feature_yaml_returns_none_for_missing_feature(tmp_path):
     feature_yaml = next_ops._find_feature_yaml("missing-feature", governance_repo)
 
     assert feature_yaml is None
+
+
+def test_suggest_fails_with_alternate_governance_hint(tmp_path):
+    next_ops = load_next_ops()
+    feature_id = "nextlens-src-implement"
+
+    governance_root = tmp_path / "TargetProjects" / "lens"
+    primary_repo = governance_root / "Lens.Core.Governance"
+    alternate_repo = governance_root / "lens-governance"
+    (primary_repo / "features").mkdir(parents=True)
+    alternate_feature_dir = alternate_repo / "features" / "nextlens" / "src" / feature_id
+    alternate_feature_dir.mkdir(parents=True)
+    (alternate_feature_dir / "feature.yaml").write_text(
+        yaml.safe_dump({"track": "full", "phase": "techplan-complete"}, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    next_ops._FEATURE_YAML_INDEX_CACHE.clear()
+    result = next_ops.suggest(feature_id, str(primary_repo), None, str(LIFECYCLE))
+
+    assert result["status"] == "fail"
+    assert "alternate governance clone" in result["error"]
+    assert str(alternate_feature_dir) in result["error"]
+
+
+def test_suggest_fails_on_governance_phase_conflict(tmp_path):
+    next_ops = load_next_ops()
+    feature_id = "nextlens-src-implement"
+
+    governance_root = tmp_path / "TargetProjects" / "lens"
+    primary_repo = governance_root / "lens-governance"
+    alternate_repo = governance_root / "Lens.Core.Governance"
+    primary_feature_dir = primary_repo / "features" / "nextlens" / "src" / feature_id
+    alternate_feature_dir = alternate_repo / "features" / "nextlens" / "src" / feature_id
+    primary_feature_dir.mkdir(parents=True)
+    alternate_feature_dir.mkdir(parents=True)
+
+    (primary_feature_dir / "feature.yaml").write_text(
+        yaml.safe_dump({"track": "full", "phase": "techplan-complete"}, sort_keys=False),
+        encoding="utf-8",
+    )
+    (alternate_feature_dir / "feature.yaml").write_text(
+        yaml.safe_dump({"track": "full", "phase": "businessplan-complete"}, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    next_ops._FEATURE_YAML_INDEX_CACHE.clear()
+    result = next_ops.suggest(feature_id, str(primary_repo), None, str(LIFECYCLE))
+
+    assert result["status"] == "fail"
+    assert "governance_phase_conflict" in result["error"]
+    assert "businessplan-complete" in result["error"]

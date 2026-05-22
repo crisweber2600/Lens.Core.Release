@@ -3,6 +3,10 @@ name: lens-constitution
 description: Resolves applicable governance rules for a feature scope using a 4-level hierarchy with additive inheritance and progressive disclosure. Use when asked to resolve constitution, check compliance, or display governance rules.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens Constitution Skill
 
 ## Overview

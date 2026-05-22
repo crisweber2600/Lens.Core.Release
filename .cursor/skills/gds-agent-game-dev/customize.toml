@@ -59,11 +59,6 @@ description = "Clarify, plan, implement, review, and present any intent end-to-e
 skill = "gds-quick-dev"
 
 [[agent.menu]]
-code = "QP"
-description = "Rapid game prototyping — test mechanics and ideas quickly"
-skill = "gds-quick-prototype"
-
-[[agent.menu]]
 code = "CS"
 description = "Create a story with full context for developer implementation"
 skill = "gds-create-story"
@@ -122,6 +117,11 @@ skill = "gds-performance-test"
 code = "TR"
 description = "Review test quality and coverage"
 skill = "gds-test-review"
+
+[[agent.menu]]
+code = "IN"
+description = "Forensic case investigation — trace a bug, reconstruct an incident, or model unfamiliar code"
+skill = "gds-investigate"
 
 [[agent.menu]]
 code = "AE"

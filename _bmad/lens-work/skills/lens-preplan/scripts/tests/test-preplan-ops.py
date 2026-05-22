@@ -4,6 +4,7 @@
 # dependencies = ["pytest>=8.0"]
 # ///
 
+import json
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ RELEASE_PROMPT = MODULE_ROOT / "prompts" / "lens-preplan.prompt.md"
 STUB_PROMPT = REPO_ROOT / ".github" / "prompts" / "lens-preplan.prompt.md"
 MODULE_HELP = MODULE_ROOT / "module-help.csv"
 AGENT = MODULE_ROOT / "agents" / "lens.agent.md"
+SKILL_REGISTRY = MODULE_ROOT / "assets" / "lens-bmad-skill-registry.json"
 
 
 def read_text(path: Path) -> str:
@@ -72,6 +74,22 @@ def test_analyst_activation_precedes_brainstorm_mode_selection():
     assert_order(authoring, "bmad-agent-analyst", "brainstorm mode selection", "bmad-brainstorming")
 
 
+def test_analyst_activation_uses_noninteractive_bmad_core_defaults():
+    text = read_text(SKILL)
+    authoring = section(text, "## Authoring Flow")
+
+    assert "BMAD core setup defaults are noninteractive" in text
+    assert "Do not ask the user for `user_name`, `communication_language`, `document_output_language`, or `planning_artifacts`" in text
+    for phrase in (
+        "`user_name: BMad`",
+        "`communication_language: English`",
+        "`document_output_language: English`",
+        "`planning_artifacts: _bmad-output`",
+    ):
+        assert phrase in text
+    assert "Pass these defaults as pre-approved context when activating `bmad-agent-analyst`" in authoring
+
+
 def test_both_brainstorm_routes_and_brainstorm_first_gate():
     text = read_text(SKILL)
     authoring = section(text, "## Authoring Flow")
@@ -82,6 +100,18 @@ def test_both_brainstorm_routes_and_brainstorm_first_gate():
     assert "`brainstorm.md` must exist" in text
     assert_order(authoring, "brainstorm.md", "bmad-domain-research")
     assert_order(authoring, "brainstorm.md", "bmad-product-brief")
+
+
+def test_brainstorming_cannot_complete_without_canonical_artifact():
+    text = read_text(SKILL)
+    authoring = section(text, "## Authoring Flow")
+
+    assert "chat-only" in authoring
+    assert "post-delegation artifact check" in authoring
+    assert "If the user finishes brainstorming and `brainstorm.md` is missing" in authoring
+    assert "same selected brainstorm delegate" in authoring
+    assert "Do not answer the user with brainstorming completion" in authoring
+    assert_order(authoring, "Run the selected mode", "post-delegation artifact check", "Do not answer the user")
 
 
 def test_batch_pass_one_and_pass_two_contract():
@@ -100,7 +130,7 @@ def test_review_ready_delegates_to_shared_validator():
     assert "validate-phase-artifacts.py --phase preplan --contract review-ready" in text
     assert "--lifecycle-path {lifecycle_contract}" in text
     assert "--docs-root {docs_path}" in text
-    assert "uv run _bmad/lens-work/skills/lens-validate-phase-artifacts/scripts/validate-phase-artifacts.py" in text
+    assert "uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-artifacts.py" in text
     assert "--phase preplan" in text
     assert "--contract review-ready" in text
     assert "--lifecycle-path" in text
@@ -164,6 +194,16 @@ def test_integration_table_contains_required_delegations():
         "lens-git-orchestration",
     ):
         assert token in table
+
+
+def test_structured_bmad_cis_brainstorm_route_is_registered():
+    registry = json.loads(read_text(SKILL_REGISTRY))
+    bmad_cis = registry["skills"].get("bmad-cis")
+
+    assert bmad_cis is not None
+    assert bmad_cis["outputMode"] == "planning-docs"
+    assert "preplan" in bmad_cis["phaseHints"]
+    assert bmad_cis["entryPath"] == "skills/bmad-cis-agent-brainstorming-coach/SKILL.md"
 
 
 def test_module_help_and_shell_discovery_are_aligned_without_duplicates():

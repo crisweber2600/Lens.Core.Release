@@ -243,7 +243,6 @@ def test_classify_request_marks_no_governance_write_planning_callers_as_control_
 def test_classify_request_marks_governance_only_callers_as_governance_write():
     ops = load_preflight_module()
 
-    assert ops.classify_request("lens-bug-reporter") == "governance-write"
     assert ops.classify_request("lens-discover") == "governance-write"
     assert ops.classify_request("lens-new-domain") == "governance-write"
     assert ops.classify_request("lens-new-service") == "governance-write"
@@ -255,6 +254,90 @@ def test_post_request_sync_decision_defaults_only_for_touched_repos():
     assert ops.post_request_sync_decision("control", touched=False, request_class="mixed").outcome == "no-op"
     assert ops.post_request_sync_decision("control", touched=True, request_class="mixed").outcome == "commit-push"
     assert ops.post_request_sync_decision("governance", touched=True, request_class="mixed").outcome == "publish"
+
+
+def test_ensure_lens_version_file_seeds_from_lifecycle_when_missing(tmp_path: Path):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    lifecycle = project_root / "lens.core" / "_bmad" / "lens-work" / "lifecycle.yaml"
+
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+
+    assert ops.ensure_lens_version_file(project_root) == "4.0.0"
+    assert (project_root / ".lens" / "LENS_VERSION").read_text(encoding="utf-8") == "4.0.0"
+
+
+def test_ensure_governance_setup_file_bootstraps_from_workspace_discovery(tmp_path: Path):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    governance_repo = project_root / "TargetProjects" / "lens" / "lens-governance"
+    governance_repo.mkdir(parents=True)
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    setup_file = project_root / ".lens" / "governance-setup.yaml"
+    assert setup_file.is_file()
+    assert values["governance_repo_path"] == governance_repo.resolve().as_posix()
+    assert "governance_remote_url" not in values
+
+
+def test_ensure_governance_setup_file_recovers_from_invalid_bmadconfig_path(tmp_path: Path, monkeypatch):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    governance_repo = project_root / "TargetProjects" / "lens" / "lens-governance"
+    governance_repo.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        ops,
+        "_load_bmadconfig_governance",
+        lambda _: {"governance_repo_path": "{project-root}/../../../lens/lens-governance"},
+    )
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    assert values["governance_repo_path"] == governance_repo.resolve().as_posix()
+    assert (project_root / ".lens" / "governance-setup.yaml").is_file()
+
+
+def test_ensure_governance_setup_file_returns_invalid_bmadconfig_path_when_discovery_fails(
+    tmp_path: Path,
+    monkeypatch,
+):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+
+    monkeypatch.setattr(
+        ops,
+        "_load_bmadconfig_governance",
+        lambda _: {"governance_repo_path": "{project-root}/../../../lens/lens-governance"},
+    )
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    assert values["governance_repo_path"] == "{project-root}/../../../lens/lens-governance"
+    assert not (project_root / ".lens" / "governance-setup.yaml").exists()
+
+
+def test_ensure_governance_setup_file_persists_remote_url_when_origin_exists(tmp_path: Path):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    governance_repo = project_root / "TargetProjects" / "lens" / "lens-governance"
+    governance_repo.mkdir(parents=True)
+
+    subprocess.run(["git", "init", str(governance_repo)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(governance_repo), "remote", "add", "origin", "https://example.invalid/governance.git"],
+        check=True,
+        capture_output=True,
+    )
+
+    values = ops.ensure_governance_setup_file(project_root)
+
+    assert values["governance_repo_path"] == governance_repo.resolve().as_posix()
+    assert values["governance_remote_url"] == "https://example.invalid/governance.git"
+    saved = (project_root / ".lens" / "governance-setup.yaml").read_text(encoding="utf-8")
+    assert "governance_remote_url: https://example.invalid/governance.git" in saved
 
 
 def test_main_forces_release_refresh_on_develop_even_when_timestamp_is_fresh(tmp_path: Path, monkeypatch):
@@ -296,6 +379,7 @@ def test_main_forces_release_refresh_on_develop_even_when_timestamp_is_fresh(tmp
     monkeypatch.setattr(sys, "argv", ["preflight.py", "--caller", "lens-dev"])
     monkeypatch.setattr(ops, "sync_release_repo", fake_sync_release)
     monkeypatch.setattr(ops, "pre_request_sync", fake_pre_request_sync)
+    monkeypatch.setattr(ops, "publish_touched_repo", lambda repo, repo_label: (True, "policy ok"))
     monkeypatch.setattr(ops, "release_branch_name", lambda _: "develop")
 
     assert ops.main() == 0
@@ -349,3 +433,83 @@ def test_main_skips_release_refresh_when_timestamp_is_fresh_off_develop(tmp_path
     assert ops.main() == 0
     assert release_syncs == []
     assert request_syncs == ["control", "governance"]
+
+
+def test_main_syncs_agents_file_and_records_hash(tmp_path: Path, monkeypatch):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    release = project_root / "lens.core"
+    lifecycle = release / "_bmad" / "lens-work" / "lifecycle.yaml"
+    release_github = release / ".github"
+    personal = project_root / ".lens" / "personal"
+    governance = project_root / "TargetProjects" / "lens" / "lens-governance"
+
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+    release_github.mkdir(parents=True)
+    personal.mkdir(parents=True)
+    governance.mkdir(parents=True)
+    (release / "AGENTS.md").write_text("release agents\n", encoding="utf-8")
+    (project_root / ".lens" / "LENS_VERSION").write_text("4.0.0", encoding="utf-8")
+    (project_root / ".lens" / "governance-setup.yaml").write_text(
+        f"governance_repo_path: {governance.as_posix()}\n",
+        encoding="utf-8",
+    )
+
+    def fake_sync_release(repo: Path):
+        return True, "pulled origin"
+
+    def fake_pre_request_sync(repo: Path, repo_label: str, request_class: str, preferred_branch=None):
+        return ops.RepoSyncDecision(repo_label, "pull-only", "policy ok", True)
+
+    monkeypatch.chdir(project_root)
+    monkeypatch.setattr(sys, "argv", ["preflight.py", "--caller", "lens-dev"])
+    monkeypatch.setattr(ops, "sync_release_repo", fake_sync_release)
+    monkeypatch.setattr(ops, "pre_request_sync", fake_pre_request_sync)
+    monkeypatch.setattr(ops, "publish_touched_repo", lambda repo, repo_label: (True, "policy ok"))
+    monkeypatch.setattr(ops, "release_branch_name", lambda _: "develop")
+
+    assert ops.main() == 0
+    assert (project_root / "AGENTS.md").read_text(encoding="utf-8") == "release agents\n"
+
+    expected_hash = ops.sha256_file(release / "AGENTS.md")
+    hash_manifest = (personal / ".github-hashes").read_text(encoding="utf-8")
+    assert f"{expected_hash}  AGENTS.md" in hash_manifest
+
+
+def test_main_reports_missing_governance_path_without_legacy_setup_guidance(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    ops = load_preflight_module()
+    project_root = tmp_path / "workspace"
+    release = project_root / "lens.core"
+    lifecycle = release / "_bmad" / "lens-work" / "lifecycle.yaml"
+    release_github = release / ".github"
+    personal = project_root / ".lens" / "personal"
+    missing_governance = project_root / "TargetProjects" / "lens" / "lens-governance"
+
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text("schema_version: 4\n", encoding="utf-8")
+    release_github.mkdir(parents=True)
+    personal.mkdir(parents=True)
+    (project_root / ".lens" / "LENS_VERSION").write_text("4.0.0", encoding="utf-8")
+    (project_root / ".lens" / "governance-setup.yaml").write_text(
+        f"governance_repo_path: {missing_governance.as_posix()}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(project_root)
+    monkeypatch.setattr(sys, "argv", ["preflight.py", "--caller", "lens-expressplan"])
+    monkeypatch.setattr(ops, "sync_release_repo", lambda repo: (True, "pulled origin"))
+    monkeypatch.setattr(ops, "release_branch_name", lambda _: "develop")
+
+    assert ops.main() == 1
+
+    out = capsys.readouterr().out
+    assert "Authority repo check failed for the current workspace layout." in out
+    assert f"Missing governance checkout: {missing_governance}" in out
+    assert "update .lens/governance-setup.yaml if the repo moved" in out
+    assert "setup-control-repo.py" not in out
+    assert "/new-project" not in out

@@ -3,6 +3,10 @@ name: lens-quickdev
 description: Governed QuickDev wrapper for dev-ready Lens features. Assesses context, records versioned evidence, and delegates implementation to bmad-quick-dev.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens QuickDev Skill
 
 ## Overview
@@ -62,9 +66,10 @@ Every run creates exactly one quickdev evidence artifact before implementation d
 
 1. Resolve `evidence_dir = {docs.path}/quickdev` after the Feature Resolution Gate succeeds.
 2. Build `summaryofrequeststub` from the implementation ask by lowercasing, replacing non-alphanumeric runs with `-`, trimming leading/trailing separators, and keeping the result short enough for a readable filename.
-3. Find existing files matching `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` in `evidence_dir`.
+3. Find existing files matching `quickdev-[summaryofrequeststub]-vNNN.md` in `evidence_dir`.
 4. Select the next version by incrementing the highest existing `vNNN` suffix, starting at `v001` when no prior artifact exists.
-5. Create `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` and never overwrite an existing evidence file.
+5. Create `quickdev-[summaryofrequeststub]-vNNN.md` and never overwrite an existing evidence file.
+   - Canonical naming: within `evidence_dir` use filename `quickdev-[summaryofrequeststub]-vNNN.md`; relative to `{docs.path}` the artifact path is `quickdev/quickdev-[summaryofrequeststub]-vNNN.md`.
 6. Before delegating to `bmad-quick-dev`, write the artifact with these sections:
 	- `Request`
 	- `Context Assessment`
@@ -81,15 +86,27 @@ Every run creates exactly one quickdev evidence artifact before implementation d
 1. Confirm prompt-start preflight succeeded.
 2. Resolve feature context through the Feature Resolution Gate, honoring explicit `--feature-id` before active context.
 3. Block before target-repo assessment when the feature phase is not a dev-ready phase value or the target repo cannot be resolved.
-4. Assess the target codebase and feature-associated control docs for the request.
-5. Produce an implementation plan, assumptions, and validation plan for the ask.
-6. Create a new versioned evidence artifact at `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` under the feature docs path. Never update or replace a previous run's evidence artifact.
-7. Resolve Branch and PR Policy, recording `branch_context` or stopping on unsafe branch state before implementation.
-8. Build the Delegation Packet. Delegate implementation through the registered `bmad-quick-dev` skill with Lens context. Do not introduce alternate implementation behavior here.
-9. Capture the delegate outcome, including changed files, validation result, commit hash, branch, PR URL, and no-op state when present.
-10. Update the existing versioned quickdev artifact in place through Run Result Recording.
-11. Apply Validation Failure Handling when validation fails at any stage.
-12. Publish the versioned evidence artifact through Governance Publication when governance publication is required.
+4. **Constitution Hard Gate Enforcement:** Load and enforce the domain constitution before target-repo assessment or implementation delegation:
+
+   Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-constitution/SKILL.md` and invoke:
+   `lens-constitution resolve --governance-dir {governance_repo}`
+
+   If the constitution fails to resolve (missing required org level or parse error), stop immediately and report the failure. Do not proceed to target-repo assessment or implementation.
+
+   After resolving, extract all hard-gate requirements from the full resolved constitution — both structured fields (`gate_mode: hard`, `required_artifacts`, `enforce_stories`, `enforce_review`) and all prose articles. These requirements are **mandatory implementation constraints** for this quickdev run. Before delegating to `bmad-quick-dev`:
+   - Display the applicable hard-gate requirements to the operator.
+   - Pass the full resolved constitution prose as required context to the `bmad-quick-dev` delegate.
+   - If the ask or planned implementation would violate any hard-gate requirement, stop and report the violation list. Do not delegate until all violations are resolved.
+
+5. Assess the target codebase and feature-associated control docs for the request.
+6. Produce an implementation plan, assumptions, and validation plan for the ask.
+7. Create a new versioned evidence artifact at `quickdev/quickdev-[summaryofrequeststub]-vNNN.md` under the feature docs path. Never update or replace a previous run's evidence artifact.
+8. Resolve Branch and PR Policy, recording `branch_context` or stopping on unsafe branch state before implementation.
+9. Build the Delegation Packet. Delegate implementation through the registered `bmad-quick-dev` skill with Lens context. Do not introduce alternate implementation behavior here.
+10. Capture the delegate outcome, including changed files, validation result, commit hash, branch, PR URL, and no-op state when present.
+11. Update the existing versioned quickdev artifact in place through Run Result Recording.
+12. Apply Validation Failure Handling when validation fails at any stage.
+13. Publish the versioned evidence artifact through Governance Publication when governance publication is required.
 
 ## Delegation Boundary
 
@@ -186,7 +203,7 @@ Validation failures use explicit recovery paths and never rewrite shared history
 	- do not rewrite shared history;
 	- record fix-forward guidance when the branch can continue;
 	- record blocked PR recovery when the PR must remain open but blocked.
-4. This failure policy applies only to `lens-quickdev`. The existing `/lens-bug-quickdev` route remains separate and keeps its mandatory commit, push, PR, bug-artifact recording, and closeout behavior.
+4. This failure policy applies only to `lens-quickdev`. The `/lens-core-bugfix` route remains separate and keeps its mandatory fresh branch, commit, push, PR, bug-artifact recording, and closeout behavior.
 
 ## Governance Publication
 
@@ -219,7 +236,7 @@ Protect the wrapper from silently broadening beyond the approved source and feat
 3. Before broader non-source work proceeds, emit a `quickdev_scope_expansion_warning` that names the proposed paths, why they exceed approved scope, and the approval needed to continue.
 4. If the user approves the expansion, record `scope_expansion_override`, approved paths, approving instruction, timestamp, and rationale in the versioned quickdev artifact.
 5. If approval is not present, stop before editing broader non-source files and record `quickdev_scope_expansion_blocked`.
-6. Before completion, run a final audit readiness check covering command surface registration, dev-ready gate, target repo resolution, versioned evidence, delegation packet, branch policy, validation failure handling, governance publication, metadata reconciliation, scope guard, and `/lens-bug-quickdev` compatibility.
+6. Before completion, run a final audit readiness check covering command surface registration, dev-ready gate, target repo resolution, versioned evidence, delegation packet, branch policy, validation failure handling, governance publication, metadata reconciliation, scope guard, and `/lens-core-bugfix` compatibility.
 7. Record unresolved blockers or `audit_ready: true` in the versioned quickdev artifact and completion summary.
 
 ## Output Contract
@@ -240,6 +257,7 @@ Hard stops:
 - Feature context is missing.
 - Feature phase is not `finalizeplan-complete`, `dev-ready`, or `dev`.
 - `target_repos` is missing or unresolved.
+- Constitution resolution failed or any hard-gate requirement would be violated by the ask.
 - Target repo has unresolved merge conflicts.
 - Target repo branch state is dirty, detached, ambiguous, or unrelated to the active quickdev run.
 - The requested work exceeds the approved source/docs scope and no override is approved.
@@ -256,6 +274,9 @@ Validate this contract with focused tests or inspection that assert:
 - This skill names `bmad-quick-dev` as the only implementation engine.
 - Non-dev-ready features block before target-repo assessment.
 - Missing `target_repos` blocks without guessing a write target.
+- Constitution resolution failure stops before target-repo assessment or delegation.
+- Constitution hard-gate violations stop before delegation and report the violation list.
+- Constitution prose is passed as required context to the `bmad-quick-dev` delegate.
 - Versioned quickdev evidence paths use `quickdev/quickdev-[summaryofrequeststub]-vNNN.md`.
 - Reruns create the next available version and do not overwrite prior artifacts.
 - No separate `commit.md` or sidecar commit evidence file is created.
@@ -273,7 +294,7 @@ Validate this contract with focused tests or inspection that assert:
 - Pre-commit validation failures create no commit and mark the artifact `blocked`.
 - Local post-commit validation failures do not push or create PRs and record `validation-failed` guidance.
 - Pushed or PR validation failures do not rewrite shared history and record fix-forward or blocked PR recovery.
-- `/lens-bug-quickdev` remains separate with mandatory commit, push, PR, bug-artifact recording, and closeout behavior.
+- `/lens-core-bugfix` remains separate with mandatory fresh branch, commit, push, PR, bug-artifact recording, and closeout behavior.
 - Exact versioned artifacts publish to `feature.yaml.docs.governance_docs_path/quickdev/`.
 - Publication uses the sanctioned Lens publication helper instead of direct governance authoring.
 - Published reruns preserve unique `vNNN` suffixes.
@@ -285,4 +306,4 @@ Validate this contract with focused tests or inspection that assert:
 - Broader non-source work triggers `quickdev_scope_expansion_warning` before edits proceed.
 - Approved scope overrides record `scope_expansion_override`, approved paths, approving instruction, timestamp, and rationale.
 - Unapproved broader non-source work stops with `quickdev_scope_expansion_blocked` before editing files.
-- Final audit readiness covers command surface, evidence versioning, governance publication, metadata, scope, and bug quickdev compatibility, then records `audit_ready: true` or unresolved blockers.
+- Final audit readiness covers command surface, evidence versioning, governance publication, metadata, scope, and core bugfix compatibility, then records `audit_ready: true` or unresolved blockers.

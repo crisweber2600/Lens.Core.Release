@@ -195,6 +195,20 @@ def test_stub_preflight_then_release_prompt():
 def test_list_features_mode_numbering_and_target_repo(tmp_path: Path):
     write_index(tmp_path, INDEX_ENTRIES)
     write_feature(tmp_path, "platform", "identity", "auth-login", FEATURE)
+    write_feature(
+        tmp_path,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "businessplan", "target_repos": []},
+    )
+    write_feature(
+        tmp_path,
+        "platform",
+        "auth",
+        "oauth-provider",
+        {"featureId": "oauth-provider", "phase": "preplan", "target_repos": []},
+    )
 
     payload, code = run_switch(["list", "--governance-repo", str(tmp_path)])
 
@@ -206,8 +220,66 @@ def test_list_features_mode_numbering_and_target_repo(tmp_path: Path):
     assert "legacy-sso" not in {feature["id"] for feature in payload["features"]}
     first = payload["features"][0]
     assert {"num", "id", "domain", "service", "status", "owner", "summary", "target_repo"} <= first.keys()
+    assert first["status"] == "dev"
     assert first["target_repo"]["repo"] == "lens.core.src"
     assert first["target_repo"]["working_branch"] == "feature/auth-login"
+
+
+def test_list_hides_complete_and_missing_feature_yaml_by_default(tmp_path: Path):
+    write_index(tmp_path, INDEX_ENTRIES)
+    write_feature(tmp_path, "platform", "identity", "auth-login", FEATURE)
+    write_feature(
+        tmp_path,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "complete", "target_repos": []},
+    )
+
+    payload, code = run_switch(["list", "--governance-repo", str(tmp_path)])
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert [feature["id"] for feature in payload["features"]] == ["auth-login"]
+
+
+def test_list_archived_filter_includes_complete_feature_phase(tmp_path: Path):
+    write_index(tmp_path, INDEX_ENTRIES)
+    write_feature(
+        tmp_path,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "complete", "target_repos": []},
+    )
+
+    payload, code = run_switch(["list", "--governance-repo", str(tmp_path), "--status-filter", "archived"])
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert [feature["id"] for feature in payload["features"]] == ["user-profile", "legacy-sso"]
+    assert payload["features"][0]["status"] == "complete"
+
+
+def test_list_prefers_feature_yaml_over_index_archived_status(tmp_path: Path):
+    archived_index = [{**INDEX_ENTRIES[0], "status": "archived"}]
+    write_index(tmp_path, archived_index)
+    write_feature(tmp_path, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(["list", "--governance-repo", str(tmp_path)])
+
+    assert code == 0
+    assert payload["status"] == "pass"
+    assert [feature["id"] for feature in payload["features"]] == ["auth-login"]
+    assert payload["features"][0]["status"] == "dev"
+
+    archived_payload, archived_code = run_switch(
+        ["list", "--governance-repo", str(tmp_path), "--status-filter", "archived"]
+    )
+
+    assert archived_code == 0
+    assert archived_payload["status"] == "pass"
+    assert archived_payload["features"] == []
 
 
 def test_list_domains_mode_when_index_missing(tmp_path: Path):
@@ -238,6 +310,14 @@ def test_config_resolution_precedence_and_missing(tmp_path: Path):
     config_gov.mkdir()
     write_index(override_gov, [INDEX_ENTRIES[0]])
     write_index(config_gov, [INDEX_ENTRIES[1]])
+    write_feature(override_gov, "platform", "identity", "auth-login", FEATURE)
+    write_feature(
+        config_gov,
+        "platform",
+        "identity",
+        "user-profile",
+        {"featureId": "user-profile", "phase": "businessplan", "target_repos": []},
+    )
 
     (workspace / ".lens").mkdir()
     (workspace / ".lens" / "governance-setup.yaml").write_text(
@@ -321,6 +401,8 @@ def test_switch_success_full_contract_context_paths_and_context_file(tmp_path: P
             "auth-login",
             "--control-repo",
             str(control),
+            "--control-topology",
+            "3-branch",
         ]
     )
 
@@ -385,7 +467,13 @@ def test_branch_missing_reports_new_feature_guidance(tmp_path: Path):
     write_feature(governance, "platform", "identity", "auth-login", FEATURE)
 
     payload, code = run_switch(
-        ["switch", "--governance-repo", str(governance), "--feature-id", "auth-login", "--control-repo", str(control)]
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "3-branch",
+        ]
     )
 
     assert code == 0
@@ -393,6 +481,105 @@ def test_branch_missing_reports_new_feature_guidance(tmp_path: Path):
     assert payload["checked_out_branch"] is None
     assert payload["branch_error"] == "branch_not_found"
     assert payload["message"] == "Run /new-feature to initialize branches."
+
+
+def test_flat_topology_switch_checks_out_default_branch(tmp_path: Path):
+    governance = tmp_path / "governance"
+    control = tmp_path / "control"
+    governance.mkdir()
+    control.mkdir()
+    init_git_repo(control)
+    subprocess.run(["git", "-C", str(control), "branch", "-M", "main"], capture_output=True, check=True)
+    create_branch(control, "work-in-progress")
+    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "main"}])
+    feature_dir = write_feature(governance, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ]
+    )
+
+    assert code == 0
+    assert payload["control_topology"] == "flat"
+    assert payload["control_default_branch"] == "main"
+    assert payload["plan_branch"] == "main"
+    assert payload["branch_switched"] is True
+    assert payload["checked_out_branch"] == "main"
+    assert Path(payload["context_path"]) == feature_dir
+
+
+def test_flat_topology_switch_falls_back_to_current_branch_without_origin(tmp_path: Path):
+    governance = tmp_path / "governance"
+    control = tmp_path / "control"
+    governance.mkdir()
+    control.mkdir()
+    init_git_repo(control)
+    subprocess.run(["git", "-C", str(control), "branch", "-M", "release"], capture_output=True, check=True)
+    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "release"}])
+    write_feature(governance, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ]
+    )
+
+    assert code == 0
+    assert payload["control_topology"] == "flat"
+    assert payload["control_default_branch"] == "release"
+    assert payload["plan_branch"] == "release"
+    assert payload["branch_switched"] is True
+    assert payload["checked_out_branch"] == "release"
+
+
+def test_flat_topology_pull_failure_still_reports_checkout_success(tmp_path: Path):
+    governance = tmp_path / "governance"
+    control = tmp_path / "control"
+    governance.mkdir()
+    control.mkdir()
+    init_git_repo(control)
+    subprocess.run(["git", "-C", str(control), "branch", "-M", "main"], capture_output=True, check=True)
+    create_branch(control, "work-in-progress")
+    subprocess.run(["git", "-C", str(control), "checkout", "work-in-progress"], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", str(control), "remote", "add", "origin", str(tmp_path / "missing-remote.git")],
+        capture_output=True,
+        check=True,
+    )
+    write_index(governance, [{**INDEX_ENTRIES[0], "plan_branch": "main"}])
+    write_feature(governance, "platform", "identity", "auth-login", FEATURE)
+
+    payload, code = run_switch(
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ]
+    )
+
+    assert code == 0
+    assert payload["branch_switched"] is True
+    assert payload["checked_out_branch"] == "main"
+    assert payload["branch_error"]
+    assert payload["branch_error"] != "branch_not_found"
+    current = subprocess.run(
+        ["git", "-C", str(control), "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert current == "main"
 
 
 def test_branch_dirty_tree_reports_raw_git_error(tmp_path: Path):
@@ -413,7 +600,13 @@ def test_branch_dirty_tree_reports_raw_git_error(tmp_path: Path):
     write_feature(governance, "platform", "identity", "auth-login", FEATURE)
 
     payload, code = run_switch(
-        ["switch", "--governance-repo", str(governance), "--feature-id", "auth-login", "--control-repo", str(control)]
+        [
+            "switch",
+            "--governance-repo", str(governance),
+            "--feature-id", "auth-login",
+            "--control-repo", str(control),
+            "--control-topology", "3-branch",
+        ]
     )
 
     assert code == 0

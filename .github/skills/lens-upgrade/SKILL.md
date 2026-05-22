@@ -3,6 +3,10 @@ name: lens-upgrade
 description: Lens module upgrade conductor for schema/version migrations. Use when the user requests upgrade, migrate module version, or reconcile legacy topology.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens Upgrade Skill
 
 ## Overview

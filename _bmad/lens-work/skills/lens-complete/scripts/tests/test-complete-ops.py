@@ -14,6 +14,7 @@ Run: uv run --with pytest pytest _bmad/lens-work/skills/lens-complete/scripts/te
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -157,6 +158,65 @@ def gov_already_complete(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _write_completed_dev_docs(control_repo: Path, feature_id: str) -> Path:
+    """Create a completed dev-session/sprint-status pair under a control docs path."""
+    docs_root = control_repo / "docs" / "lens-dev" / "new-codebase" / feature_id
+    docs_root.mkdir(parents=True)
+    (docs_root / "dev-session.yaml").write_text(
+        f"feature_id: {feature_id}\n"
+        "total_stories: 2\n"
+        "stories_completed:\n"
+        "- LD-1\n"
+        "- LD-2\n"
+        "stories_failed: []\n"
+        "stories_blocked: []\n"
+        "status: complete\n",
+        encoding="utf-8",
+    )
+    (docs_root / "sprint-status.yaml").write_text(
+        "stories:\n"
+        "- story_id: LD-1\n"
+        "  status: done\n"
+        "- story_id: LD-2\n"
+        "  status: done\n",
+        encoding="utf-8",
+    )
+    return docs_root
+
+
+@pytest.fixture
+def gov_finalizeplan_with_completed_dev_docs(tmp_path: Path) -> tuple[Path, Path]:
+    """Governance feature still in finalizeplan-complete with completed control dev docs."""
+    gov_root = tmp_path / "governance"
+    control_repo = tmp_path / "control"
+    feature_id = "lens-dev-finished-feature"
+    feature_dir = gov_root / "features" / "lens-dev" / "new-codebase" / feature_id
+    feature_dir.mkdir(parents=True)
+    control_repo.mkdir()
+    _write_completed_dev_docs(control_repo, feature_id)
+
+    (feature_dir / "feature.yaml").write_text(
+        f"featureId: {feature_id}\n"
+        "domain: lens-dev\n"
+        "service: new-codebase\n"
+        "phase: finalizeplan-complete\n"
+        "name: Finished Feature\n"
+        "track: express\n"
+        "docs:\n"
+        f"  path: docs/lens-dev/new-codebase/{feature_id}\n",
+        encoding="utf-8",
+    )
+    (feature_dir / "retrospective.md").write_text(
+        "---\nstatus: approved\n---\n\n# Retrospective\n\nApproved.\n",
+        encoding="utf-8",
+    )
+    (gov_root / "feature-index.yaml").write_text(
+        f"features:\n- id: {feature_id}\n  status: active\n",
+        encoding="utf-8",
+    )
+    return gov_root, control_repo
+
+
 # ---------------------------------------------------------------------------
 # CP-1 / CP-4: check-preconditions — pass case
 # ---------------------------------------------------------------------------
@@ -188,6 +248,63 @@ def test_check_preconditions_fail_no_retrospective(capsys: pytest.CaptureFixture
     error_or_blocker = result.get("error") or result.get("blocker")
     assert error_or_blocker == "retrospective_missing"
     assert exit_code != 0
+
+
+def test_check_preconditions_accepts_completed_dev_docs_from_finalizeplan_phase(
+    capsys: pytest.CaptureFixture,
+    gov_finalizeplan_with_completed_dev_docs: tuple[Path, Path],
+) -> None:
+    """Completed dev-session docs let completion proceed even before governance phase is synced."""
+    gov_root, control_repo = gov_finalizeplan_with_completed_dev_docs
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo",
+            str(gov_root),
+            "--feature-id",
+            "lens-dev-finished-feature",
+            "--workspace-root",
+            str(control_repo),
+        ],
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert result["status"] == "warn"
+    assert result["blockers"] == []
+    assert "phase_inferred_from_dev_session" in result["warnings"]
+    phase_check = next(check for check in result["checks"] if check["name"] == "phase")
+    assert phase_check["status"] == "pass"
+    assert phase_check["effective_phase"] == "dev-complete"
+
+
+def test_finalize_archives_completed_dev_docs_from_finalizeplan_phase(
+    capsys: pytest.CaptureFixture,
+    gov_finalizeplan_with_completed_dev_docs: tuple[Path, Path],
+) -> None:
+    """Finalize can archive when completed dev docs bridge a stale finalizeplan-complete phase."""
+    gov_root, control_repo = gov_finalizeplan_with_completed_dev_docs
+
+    exit_code, result = _run(
+        [
+            "finalize",
+            "--governance-repo",
+            str(gov_root),
+            "--feature-id",
+            "lens-dev-finished-feature",
+            "--workspace-root",
+            str(control_repo),
+            "--confirm",
+        ],
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert result["status"] == "complete"
+    assert "phase_inferred_from_dev_session" in result["warnings"]
+    feature_yaml = gov_root / "features" / "lens-dev" / "new-codebase" / "lens-dev-finished-feature" / "feature.yaml"
+    assert yaml.safe_load(feature_yaml.read_text(encoding="utf-8"))["phase"] == "complete"
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +415,131 @@ def test_finalize_archives_feature(capsys: pytest.CaptureFixture, gov_pass: Path
     summary_path = fp.parent / "summary.md"
     assert summary_path.exists(), "summary.md must be written by finalize"
     assert "archived" in summary_path.read_text(encoding="utf-8").lower()
+
+
+def test_finalize_auto_resolves_control_repo_from_workspace_root(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """finalize infers the control repo from a control workspace root when the flag is omitted."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    (control_repo / ".lens").mkdir(parents=True)
+    (control_repo / "TargetProjects").mkdir()
+    seen: dict[str, Any] = {}
+
+    def fake_merge(
+        path: Path,
+        feature_id: str,
+        dry_run: bool,
+        control_topology: str = "3-branch",
+    ) -> tuple[str, None]:
+        seen["path"] = str(path)
+        seen["feature_id"] = feature_id
+        seen["dry_run"] = dry_run
+        seen["control_topology"] = control_topology
+        return "https://github.com/example/control/pull/9", None
+
+    monkeypatch.setattr(mod, "_gh_merge_to_main", fake_merge)
+
+    exit_code = mod.main(
+        [
+            "finalize",
+            "--governance-repo",
+            str(gov_pass),
+            "--feature-id",
+            "lens-dev-test-feature",
+            "--workspace-root",
+            str(control_repo),
+            "--confirm",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert seen == {
+        "path": str(control_repo.resolve()),
+        "feature_id": "lens-dev-test-feature",
+        "dry_run": False,
+        "control_topology": "3-branch",
+    }
+    assert any(
+        change.get("pr_url") == "https://github.com/example/control/pull/9"
+        for change in result["changes_applied"]
+    )
+
+
+def test_finalize_skips_control_repo_when_explicit_matches_governance(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+) -> None:
+    """finalize treats explicit --control-repo equal to governance repo as governance-only."""
+    mod = _script_module()
+    called = False
+
+    def fake_merge(path: Path, feature_id: str, dry_run: bool) -> tuple[str, None]:
+        nonlocal called
+        called = True
+        return "https://github.com/example/control/pull/9", None
+
+    monkeypatch.setattr(mod, "_gh_merge_to_main", fake_merge)
+
+    exit_code = mod.main(
+        [
+            "finalize",
+            "--governance-repo",
+            str(gov_pass),
+            "--control-repo",
+            str(gov_pass),
+            "--feature-id",
+            "lens-dev-test-feature",
+            "--confirm",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert called is False
+    assert not any(
+        {"repo", "pr_url"}.issubset(change.keys())
+        for change in result["changes_applied"]
+    )
+
+
+def test_resolve_control_repo_expands_tilde_for_explicit_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Explicit '~' control repo aliases governance repo after expansion and resolves to None."""
+    mod = _script_module()
+    home = tmp_path / "home"
+    governance_repo = home / "gov"
+    governance_repo.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    args = argparse.Namespace(control_repo="~/gov", workspace_root=None)
+    assert mod._resolve_control_repo_for_finalize(args, governance_repo) is None
+
+
+def test_resolve_control_repo_expands_tilde_for_workspace_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Workspace '~' path aliases governance repo after expansion and resolves to None."""
+    mod = _script_module()
+    home = tmp_path / "home"
+    governance_repo = home / "gov"
+    governance_repo.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    args = argparse.Namespace(control_repo=None, workspace_root="~/gov")
+    monkeypatch.chdir(tmp_path)
+    assert mod._resolve_control_repo_for_finalize(args, governance_repo) is None
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +723,53 @@ def test_prerequisite_missing_degradation(capsys: pytest.CaptureFixture, gov_pas
     )
 
 
+def test_flat_control_repo_completion_syncs_default_branch_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Flat control completion synchronizes the default branch without PR or branch cleanup."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+    calls: list[list[str]] = []
+
+    class Result:
+        def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        assert cwd == str(control_repo)
+        calls.append(cmd)
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return Result()
+        if cmd == ["git", "fetch", "--prune", "origin"]:
+            return Result()
+        if cmd == ["git", "checkout", "main"]:
+            return Result()
+        if cmd == ["git", "pull", "--ff-only", "origin", "main"]:
+            return Result()
+        if cmd == ["git", "push", "origin", "main"]:
+            return Result()
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    pr_url, error = mod._gh_merge_to_main(
+        control_repo,
+        "lens-dev-example",
+        dry_run=False,
+        control_topology="flat",
+    )
+
+    assert error is None
+    assert pr_url == "default_branch"
+    assert ["git", "checkout", "main"] in calls
+    assert ["git", "pull", "--ff-only", "origin", "main"] in calls
+    assert ["git", "push", "origin", "main"] in calls
+    assert not any(cmd[:2] == ["gh", "pr"] for cmd in calls)
+    assert not any(cmd[:3] == ["git", "branch", "-d"] for cmd in calls)
+
+
 def test_control_repo_merge_validates_and_cleans_feature_dev_branch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -646,3 +935,263 @@ def test_control_repo_cleanup_runs_for_already_merged_pr(
     assert ["git", "branch", "-d", "lens-dev-example-plan"] in calls
     assert ["git", "branch", "-d", "lens-dev-example"] in calls
     assert ["git", "branch", "-d", "lens-dev-example-dev"] in calls
+
+
+# ---------------------------------------------------------------------------
+# Orphaned branch hygiene check — check-preconditions --control-repo
+# ---------------------------------------------------------------------------
+
+def test_check_preconditions_warns_on_orphaned_control_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo warns when surviving feature branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        # fetch --prune: no-op
+        if "fetch" in cmd:
+            return R()
+        # rev-parse --verify refs/remotes/origin/... — simulate surviving branches
+        if "rev-parse" in cmd and any("refs/remotes/origin/" in a for a in cmd):
+            branch_ref = next(a for a in cmd if "refs/remotes/origin/" in a)
+            surviving = {
+                "refs/remotes/origin/lens-dev-test-feature",
+                "refs/remotes/origin/lens-dev-test-feature-dev",
+            }
+            return R(rc=0) if branch_ref in surviving else R(rc=1)
+        # branch --list: no local-only branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    # Should not fail — orphaned branches are advisory warnings
+    assert result["status"] in ("pass", "warn"), f"Expected pass or warn, got {result}"
+    assert "orphaned_control_repo_branches" in result.get("warnings", []), (
+        "Expected orphaned_control_repo_branches warning"
+    )
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None, "Expected orphaned_branches check in checks list"
+    assert orphan_check["status"] == "warn"
+    surviving = orphan_check.get("surviving_branches", [])
+    assert any("lens-dev-test-feature" in b for b in surviving)
+
+
+def test_check_preconditions_pass_no_orphaned_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo passes when no orphaned branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        if "fetch" in cmd:
+            return R()
+        if "rev-parse" in cmd:
+            return R(rc=1)  # no surviving remote branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")  # no local branches
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass", f"Expected pass, got {result}"
+    assert "orphaned_control_repo_branches" not in result.get("warnings", [])
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None
+    assert orphan_check["status"] == "pass"
+
+
+def test_check_preconditions_without_control_repo_skips_orphan_check(
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+) -> None:
+    """check-preconditions without --control-repo skips the orphaned branch check."""
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass"
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is None, "orphaned_branches check should not appear without --control-repo"
+
+
+# ---------------------------------------------------------------------------
+# Orphaned branch hygiene check — check-preconditions --control-repo
+# ---------------------------------------------------------------------------
+
+def test_check_preconditions_warns_on_orphaned_control_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo warns when surviving feature branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        # fetch --prune: no-op
+        if "fetch" in cmd:
+            return R()
+        # rev-parse --verify refs/remotes/origin/... — simulate surviving branches
+        if "rev-parse" in cmd and any("refs/remotes/origin/" in a for a in cmd):
+            branch_ref = next(a for a in cmd if "refs/remotes/origin/" in a)
+            surviving = {
+                "refs/remotes/origin/lens-dev-test-feature",
+                "refs/remotes/origin/lens-dev-test-feature-dev",
+            }
+            return R(rc=0) if branch_ref in surviving else R(rc=1)
+        # branch --list: no local-only branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    # Should not fail — orphaned branches are advisory warnings
+    assert result["status"] in ("pass", "warn"), f"Expected pass or warn, got {result}"
+    assert "orphaned_control_repo_branches" in result.get("warnings", []), (
+        "Expected orphaned_control_repo_branches warning"
+    )
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None, "Expected orphaned_branches check in checks list"
+    assert orphan_check["status"] == "warn"
+    surviving = orphan_check.get("surviving_branches", [])
+    assert any("lens-dev-test-feature" in b for b in surviving)
+
+
+def test_check_preconditions_pass_no_orphaned_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+    tmp_path: Path,
+) -> None:
+    """check-preconditions --control-repo passes when no orphaned branches are found."""
+    mod = _script_module()
+    control_repo = tmp_path / "control"
+    control_repo.mkdir()
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        class R:
+            def __init__(self, rc=0, out="", err=""):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+        if "fetch" in cmd:
+            return R()
+        if "rev-parse" in cmd:
+            return R(rc=1)  # no surviving remote branches
+        if "branch" in cmd and "--list" in cmd:
+            return R(rc=0, out="")  # no local branches
+        return R()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+            "--control-repo", str(control_repo),
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass", f"Expected pass, got {result}"
+    assert "orphaned_control_repo_branches" not in result.get("warnings", [])
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is not None
+    assert orphan_check["status"] == "pass"
+
+
+def test_check_preconditions_without_control_repo_skips_orphan_check(
+    capsys: pytest.CaptureFixture,
+    gov_pass: Path,
+) -> None:
+    """check-preconditions without --control-repo skips the orphaned branch check."""
+    exit_code, result = _run(
+        [
+            "check-preconditions",
+            "--governance-repo", str(gov_pass),
+            "--feature-id", "lens-dev-test-feature",
+        ],
+        capsys,
+    )
+    assert result["status"] == "pass"
+    orphan_check = next(
+        (c for c in result.get("checks", []) if c.get("name") == "orphaned_branches"),
+        None,
+    )
+    assert orphan_check is None, "orphaned_branches check should not appear without --control-repo"

@@ -38,6 +38,8 @@ PLANNING_PHASES = {
     "expressplan", "expressplan-complete", "finalizeplan-complete",
     "techplan-complete", "businessplan-complete",
 }
+DONE_STORY_STATUSES = {"done", "complete", "completed"}
+CONTROL_TOPOLOGIES = ("3-branch", "flat")
 
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 
@@ -121,6 +123,37 @@ def _atomic_write_text(path: Path, content: str) -> None:
 # Governance path resolution
 # ---------------------------------------------------------------------------
 
+def _config_candidates(args: argparse.Namespace) -> list[Path]:
+    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd()).resolve()
+    return [
+        workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
+        workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
+    ]
+
+
+def _resolve_control_topology(args: argparse.Namespace) -> str:
+    explicit = getattr(args, "control_topology", None)
+    if explicit:
+        topology = str(explicit).strip()
+    else:
+        topology = ""
+        for candidate in _config_candidates(args):
+            if not candidate.exists():
+                continue
+            try:
+                data = _read_yaml(candidate)
+            except ValueError as exc:
+                raise _ConfigMalformedError(f"Could not parse {candidate}: {exc}") from exc
+            topology = str(data.get("control_topology") or "").strip()
+            if topology:
+                break
+        if not topology:
+            topology = "3-branch"
+    if topology not in CONTROL_TOPOLOGIES:
+        expected = ", ".join(CONTROL_TOPOLOGIES)
+        raise _ConfigMalformedError(f"control_topology must be one of: {expected}")
+    return topology
+
 def _resolve_governance_repo(args: argparse.Namespace) -> Path:
     explicit = getattr(args, "governance_repo", None)
     if explicit:
@@ -137,10 +170,7 @@ def _resolve_governance_repo(args: argparse.Namespace) -> Path:
         if val:
             return Path(val.replace("{project-root}", str(workspace_root))).resolve()
 
-    for candidate in [
-        workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
-        workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
-    ]:
+    for candidate in _config_candidates(args):
         if candidate.exists():
             try:
                 data = _read_yaml(candidate)
@@ -151,6 +181,33 @@ def _resolve_governance_repo(args: argparse.Namespace) -> Path:
                 return Path(val.replace("{project-root}", str(workspace_root))).resolve()
 
     raise _ConfigMissingError("governance_repo_path not found in any config. Run /lens-onboard first.")
+
+
+def _path_key(path: Path) -> str:
+    """Return a normalized key for robust cross-platform path equality checks."""
+    return os.path.normcase(os.path.normpath(str(path.expanduser().resolve())))
+
+
+def _resolve_control_repo_for_finalize(args: argparse.Namespace, governance_repo: Path) -> Path | None:
+    """Resolve the control repo for finalize, defaulting to the control workspace root."""
+    governance_key = _path_key(governance_repo)
+    explicit = getattr(args, "control_repo", None)
+    if explicit:
+        explicit_path = Path(explicit).expanduser().resolve()
+        if _path_key(explicit_path) == governance_key:
+            return None
+        return explicit_path
+
+    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd()).expanduser().resolve()
+    if _path_key(workspace_root) == governance_key:
+        return None
+
+    has_target_projects = (workspace_root / "TargetProjects").is_dir()
+    has_control_markers = (workspace_root / ".lens").exists() or (workspace_root / "lens.core").is_dir()
+    if has_target_projects and has_control_markers:
+        return workspace_root
+
+    return None
 
 
 def _discover_feature_dir(governance_repo: Path, feature_id: str) -> Path | None:
@@ -267,6 +324,78 @@ def _check_retrospective(feature_dir: Path) -> dict[str, Any] | None:
     return None
 
 
+def _check_control_repo_orphaned_branches(
+    feature_id: str,
+    control_repo: Path,
+    control_topology: str = "3-branch",
+) -> dict[str, Any]:
+    """Scan the control repo remote for surviving {featureId}, {featureId}-plan,
+    and {featureId}-dev branches and surface them as warnings.
+
+    This check is advisory (not a blocker): callers should include its result in
+    the checks list and promote any surviving branches to the warnings list.
+    Returns a check dict with status 'pass' or 'warn'.
+    """
+    if not control_repo.is_dir():
+        return {
+            "name": "orphaned_branches",
+            "status": "warn",
+            "surviving_branches": [],
+            "message": (
+                f"Control repo path '{control_repo}' does not exist or is not a directory; "
+                "could not check for orphaned branches."
+            ),
+        }
+
+    cwd = str(control_repo)
+
+    def _git(*cmd_args: str) -> tuple[int, str, str]:
+        try:
+            r = subprocess.run(
+                ["git", *cmd_args], cwd=cwd, capture_output=True, text=True, timeout=30
+            )
+            return r.returncode, r.stdout.strip(), r.stderr.strip()
+        except FileNotFoundError:
+            return -1, "", "git not found on PATH"
+        except subprocess.TimeoutExpired:
+            return -1, "", "git command timed out"
+
+    # Refresh remote refs; ignore failure — this is a read-only advisory check
+    _git("fetch", "--prune", "origin")
+
+    expected_branches = [feature_id] if control_topology == "flat" else [feature_id, f"{feature_id}-plan", f"{feature_id}-dev"]
+    surviving: list[str] = []
+
+    for branch in expected_branches:
+        # Check remote ref first
+        code, _, _ = _git("rev-parse", "--verify", f"refs/remotes/origin/{branch}")
+        if code == 0:
+            surviving.append(f"origin/{branch}")
+            continue
+        # Also check local branch
+        code_local, out_local, _ = _git("branch", "--list", branch)
+        if code_local == 0 and out_local.strip():
+            surviving.append(branch)
+
+    if not surviving:
+        return {
+            "name": "orphaned_branches",
+            "status": "pass",
+            "surviving_branches": [],
+            "message": f"No orphaned control-repo branches found for '{feature_id}'.",
+        }
+
+    return {
+        "name": "orphaned_branches",
+        "status": "warn",
+        "surviving_branches": surviving,
+        "message": (
+            f"Orphaned control-repo branches found for '{feature_id}': {surviving}. "
+            "Delete them manually or re-run finalize with --control-repo to trigger automated cleanup."
+        ),
+    }
+
+
 def _check_document_project(feature_dir: Path) -> dict[str, Any]:
     """Check for document-project output (advisory, not a blocker)."""
     # Common document-project output patterns
@@ -288,6 +417,155 @@ def _check_document_project(feature_dir: Path) -> dict[str, Any]:
     }
 
 
+def _append_unique_path(paths: list[Path], value: Any, governance_repo: Path) -> None:
+    if value is None:
+        return
+    candidate = Path(str(value)).expanduser().resolve()
+    if _path_key(candidate) == _path_key(governance_repo):
+        return
+    if all(_path_key(candidate) != _path_key(existing) for existing in paths):
+        paths.append(candidate)
+
+
+def _feature_docs_dir(
+    feature_data: dict[str, Any],
+    args: argparse.Namespace,
+    governance_repo: Path,
+    control_repo: Path | None = None,
+) -> Path | None:
+    """Resolve feature docs.path against likely control workspace roots."""
+    docs = feature_data.get("docs")
+    if not isinstance(docs, dict):
+        return None
+
+    raw_path = str(docs.get("path") or "").strip()
+    if not raw_path:
+        return None
+
+    docs_path = Path(raw_path)
+    if docs_path.is_absolute():
+        return docs_path if docs_path.exists() else None
+
+    roots: list[Path] = []
+    _append_unique_path(roots, getattr(args, "control_repo", None), governance_repo)
+    _append_unique_path(roots, getattr(args, "workspace_root", None), governance_repo)
+    _append_unique_path(roots, control_repo, governance_repo)
+    _append_unique_path(roots, os.getcwd(), governance_repo)
+
+    for root in roots:
+        candidate = root / docs_path
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
+def _story_id_set(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    return {str(value).strip() for value in values if str(value).strip()}
+
+
+def _check_completed_dev_evidence(
+    feature_data: dict[str, Any],
+    args: argparse.Namespace,
+    governance_repo: Path,
+    control_repo: Path | None = None,
+) -> dict[str, Any] | None:
+    """Return a dev-session completion check when control docs evidence exists."""
+    docs_dir = _feature_docs_dir(feature_data, args, governance_repo, control_repo)
+    if docs_dir is None:
+        return None
+
+    dev_session_path = docs_dir / "dev-session.yaml"
+    sprint_status_path = docs_dir / "sprint-status.yaml"
+    if not dev_session_path.exists() and not sprint_status_path.exists():
+        return None
+    if not dev_session_path.exists() or not sprint_status_path.exists():
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_evidence_incomplete",
+            "message": "Dev completion evidence requires both dev-session.yaml and sprint-status.yaml.",
+            "docs_path": str(docs_dir),
+        }
+
+    try:
+        dev_session = _read_yaml(dev_session_path)
+        sprint_status = _read_yaml(sprint_status_path)
+    except ValueError as exc:
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_evidence_malformed",
+            "message": str(exc),
+            "docs_path": str(docs_dir),
+        }
+
+    stories = sprint_status.get("stories")
+    if not isinstance(stories, list) or not stories:
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_evidence_incomplete",
+            "message": "sprint-status.yaml must include at least one story entry.",
+            "docs_path": str(docs_dir),
+        }
+
+    story_ids: set[str] = set()
+    unfinished: list[str] = []
+    for story in stories:
+        if not isinstance(story, dict):
+            unfinished.append("<malformed-story>")
+            continue
+        story_id = str(story.get("story_id") or story.get("id") or "").strip()
+        status = str(story.get("status") or "").strip()
+        if story_id:
+            story_ids.add(story_id)
+        if status not in DONE_STORY_STATUSES:
+            unfinished.append(story_id or "<missing-story-id>")
+
+    completed_ids = _story_id_set(dev_session.get("stories_completed"))
+    missing_completed = sorted(story_ids - completed_ids)
+    failed_ids = _story_id_set(dev_session.get("stories_failed"))
+    blocked_ids = _story_id_set(dev_session.get("stories_blocked"))
+    session_status = str(dev_session.get("status") or "").strip()
+
+    problems: list[str] = []
+    if session_status != "complete":
+        problems.append(f"dev-session.yaml status is '{session_status}', not 'complete'.")
+    if failed_ids:
+        problems.append(f"dev-session.yaml lists failed stories: {sorted(failed_ids)}.")
+    if blocked_ids:
+        problems.append(f"dev-session.yaml lists blocked stories: {sorted(blocked_ids)}.")
+    if unfinished:
+        problems.append(f"sprint-status.yaml has unfinished stories: {sorted(unfinished)}.")
+    if missing_completed:
+        problems.append(f"dev-session.yaml is missing completed story ids: {missing_completed}.")
+
+    total_stories = dev_session.get("total_stories")
+    if isinstance(total_stories, int) and total_stories != len(story_ids):
+        problems.append(f"dev-session.yaml total_stories is {total_stories}, expected {len(story_ids)}.")
+
+    if problems:
+        return {
+            "name": "dev_session",
+            "status": "fail",
+            "blocker": "dev_session_incomplete",
+            "message": " ".join(problems),
+            "docs_path": str(docs_dir),
+        }
+
+    return {
+        "name": "dev_session",
+        "status": "pass",
+        "effective_phase": "dev-complete",
+        "message": "Control docs show dev-session complete and every sprint story done.",
+        "docs_path": str(docs_dir),
+        "stories_completed": sorted(story_ids),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Control repo merge helper
 # ---------------------------------------------------------------------------
@@ -298,6 +576,7 @@ def _gh_merge_to_main(
     dry_run: bool,
     head_branch: str | None = None,
     base_branch: str = "main",
+    control_topology: str = "3-branch",
 ) -> tuple[str | None, str | None]:
     """Validate, merge, and clean up normal control-repo completion branches.
 
@@ -307,10 +586,10 @@ def _gh_merge_to_main(
     if dry_run:
         return "dry_run", None
 
-    head_branch = head_branch or f"{feature_id}-dev"
+    head_branch = head_branch or (base_branch if control_topology == "flat" else f"{feature_id}-dev")
     feature_branch = feature_id
-    plan_branch = f"{feature_id}-plan"
-    cleanup_branches = [plan_branch, feature_branch, head_branch]
+    plan_branch = None if control_topology == "flat" else f"{feature_id}-plan"
+    cleanup_branches = [] if control_topology == "flat" else [plan_branch, feature_branch, head_branch]
     cwd = str(control_repo)
 
     def _git(*cmd_args: str) -> tuple[int, str, str]:
@@ -340,6 +619,21 @@ def _gh_merge_to_main(
         return None, f"control repo status failed: {err or out}"
     if out:
         return None, f"control repo has uncommitted changes; commit them on {head_branch} before finalizing."
+
+    if control_topology == "flat":
+        code, out, err = _git("fetch", "--prune", "origin")
+        if code != 0:
+            return None, f"control repo fetch failed: {err or out}"
+        code, out, err = _git("checkout", base_branch)
+        if code != 0:
+            return None, f"control repo checkout {base_branch} failed: {err or out}"
+        code, out, err = _git("pull", "--ff-only", "origin", base_branch)
+        if code != 0:
+            return None, f"control repo pull {base_branch} failed: {err or out}"
+        code, out, err = _git("push", "origin", base_branch)
+        if code != 0:
+            return None, f"control repo push {base_branch} failed: {err or out}"
+        return "default_branch", None
 
     def _branch_ref(branch: str, required: bool = True) -> tuple[str | None, str | None]:
         code, out, err = _git("rev-parse", "--verify", branch)
@@ -384,15 +678,17 @@ def _gh_merge_to_main(
     feature_ref, ref_error = _branch_ref(feature_branch)
     if ref_error:
         return None, ref_error
-    plan_ref, ref_error = _branch_ref(plan_branch, required=False)
-    if ref_error:
-        return None, ref_error
+    plan_ref = None
+    if plan_branch:
+        plan_ref, ref_error = _branch_ref(plan_branch, required=False)
+        if ref_error:
+            return None, ref_error
 
-    if plan_ref and feature_ref:
+    if plan_branch and plan_ref and feature_ref:
         validation_error = _validate_merged(plan_branch, plan_ref, feature_branch, feature_ref)
         if validation_error:
             return None, validation_error
-    if feature_ref and head_ref:
+    if control_topology != "flat" and feature_ref and head_ref:
         validation_error = _validate_merged(feature_branch, feature_ref, head_branch, head_ref)
         if validation_error:
             return None, validation_error
@@ -522,6 +818,7 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
 
     try:
         governance_repo = _resolve_governance_repo(args)
+        control_topology = _resolve_control_topology(args)
     except _ConfigMalformedError as exc:
         _out(_fail("config_malformed", str(exc)))
         return 1
@@ -549,6 +846,8 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
     blockers: list[str] = []
     warnings: list[str] = []
 
+    dev_completion_check = _check_completed_dev_evidence(feature_data, args, governance_repo)
+
     # Phase check
     if phase in TERMINAL_PHASES:
         phase_check = {
@@ -559,16 +858,28 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
         }
         blockers.append("already_terminal")
     elif phase in PLANNING_PHASES:
-        phase_check = {
-            "name": "phase",
-            "status": "fail",
-            "blocker": "wrong_phase",
-            "message": (
-                f"Feature phase is '{phase}'; expected dev or dev-complete to complete. "
-                "Advance through all planning phases first."
-            ),
-        }
-        blockers.append("wrong_phase")
+        if phase == "finalizeplan-complete" and dev_completion_check and dev_completion_check["status"] == "pass":
+            phase_check = {
+                "name": "phase",
+                "status": "pass",
+                "effective_phase": "dev-complete",
+                "message": (
+                    "Feature phase is 'finalizeplan-complete', but completed dev-session evidence "
+                    "is present; treating the feature as completion-ready."
+                ),
+            }
+            warnings.append("phase_inferred_from_dev_session")
+        else:
+            phase_check = {
+                "name": "phase",
+                "status": "fail",
+                "blocker": "wrong_phase",
+                "message": (
+                    f"Feature phase is '{phase}'; expected dev or dev-complete to complete. "
+                    "Advance through all planning phases first."
+                ),
+            }
+            blockers.append("wrong_phase")
     elif phase in COMPLETABLE_PHASES:
         phase_check = {"name": "phase", "status": "pass", "message": f"Feature phase '{phase}' is completable."}
     else:
@@ -580,6 +891,10 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
         }
         blockers.append("phase_unrecognized")
     checks.append(phase_check)
+    if dev_completion_check is not None:
+        checks.append(dev_completion_check)
+        if dev_completion_check["status"] == "fail" and phase == "finalizeplan-complete":
+            blockers.append(dev_completion_check["blocker"])
 
     # Retrospective check (blocking)
     retro_result = _check_retrospective(feature_dir)
@@ -594,6 +909,15 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
     checks.append(doc_check)
     if doc_check["status"] == "warn":
         warnings.append("document_project_skipped")
+
+    # Orphaned control-repo branch check (advisory)
+    control_repo_arg = getattr(args, "control_repo", None)
+    if control_repo_arg:
+        control_repo_path = Path(control_repo_arg).expanduser().resolve()
+        orphan_check = _check_control_repo_orphaned_branches(feature_id, control_repo_path, control_topology)
+        checks.append(orphan_check)
+        if orphan_check["status"] == "warn":
+            warnings.append("orphaned_control_repo_branches")
 
     # Aggregate result
     if blockers:
@@ -617,6 +941,7 @@ def cmd_check_preconditions(args: argparse.Namespace) -> int:
         {
             "status": overall,
             "feature_id": feature_id,
+            "control_topology": control_topology,
             "phase": phase,
             "retrospective_skipped": False,
             "document_project_skipped": bool(warnings),
@@ -636,8 +961,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     feature_id = str(getattr(args, "feature_id", "") or "").strip()
     dry_run: bool = bool(getattr(args, "dry_run", False))
     confirm: bool = bool(getattr(args, "confirm", False))
-    control_repo_str: str | None = getattr(args, "control_repo", None) or None
-    control_repo: Path | None = Path(control_repo_str).resolve() if control_repo_str else None
+    control_repo: Path | None = None
 
     if not feature_id:
         _out(_fail("feature_id_missing", "Provide --feature-id."))
@@ -654,12 +978,15 @@ def cmd_finalize(args: argparse.Namespace) -> int:
 
     try:
         governance_repo = _resolve_governance_repo(args)
+        control_topology = _resolve_control_topology(args)
     except _ConfigMalformedError as exc:
         _out(_fail("config_malformed", str(exc)))
         return 1
     except ValueError as exc:
         _out(_fail("config_missing", str(exc)))
         return 1
+
+    control_repo = _resolve_control_repo_for_finalize(args, governance_repo)
 
     feature_yaml_path, lookup_error = _find_feature_yaml(governance_repo, feature_id)
     if feature_yaml_path is None:
@@ -679,15 +1006,25 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     phase = str(feature_data.get("phase") or "").strip()
     feature_dir = feature_yaml_path.parent
 
+    warnings: list[str] = []
+
     # Inline precondition check for finalize (mirrors check-preconditions logic)
     retro_result = _check_retrospective(feature_dir)
-    if phase not in COMPLETABLE_PHASES:
+    dev_completion_check = _check_completed_dev_evidence(feature_data, args, governance_repo, control_repo)
+    effective_phase_is_completable = phase in COMPLETABLE_PHASES
+    if not effective_phase_is_completable and phase == "finalizeplan-complete" and dev_completion_check:
+        effective_phase_is_completable = dev_completion_check["status"] == "pass"
+        if effective_phase_is_completable:
+            warnings.append("phase_inferred_from_dev_session")
+
+    if not effective_phase_is_completable:
         _out(
             _fail(
                 "wrong_phase",
                 f"Feature phase is '{phase}'; expected dev or dev-complete. check-preconditions failed.",
                 feature_id=feature_id,
                 phase=phase,
+                checks=[dev_completion_check] if dev_completion_check is not None else [],
             )
         )
         return 1
@@ -736,11 +1073,14 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     if control_repo is not None:
         planned_changes.append({
             "repo": str(control_repo),
-            "change": f"validate branches and merge PR: {feature_id}-dev -> main; delete related branches",
+            "change": (
+                "validate clean control default branch and push/pull it"
+                if control_topology == "flat"
+                else f"validate branches and merge PR: {feature_id}-dev -> main; delete related branches"
+            ),
         })
 
     doc_check = _check_document_project(feature_dir)
-    warnings = []
     if doc_check["status"] == "warn":
         warnings.append("document_project_skipped")
 
@@ -749,6 +1089,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
             {
                 "status": "dry_run",
                 "feature_id": feature_id,
+                "control_topology": control_topology,
                 "planned_changes": planned_changes,
                 "warnings": warnings,
             }
@@ -824,7 +1165,12 @@ def cmd_finalize(args: argparse.Namespace) -> int:
     merge_pr_url: str | None = None
     merge_warning: str | None = None
     if control_repo is not None:
-        merge_pr_url, merge_error = _gh_merge_to_main(control_repo, feature_id, dry_run=False)
+        merge_pr_url, merge_error = _gh_merge_to_main(
+            control_repo,
+            feature_id,
+            dry_run=False,
+            control_topology=control_topology,
+        )
         if merge_error:
             # Non-fatal: governance writes succeeded; surface as warning
             merge_warning = merge_error
@@ -832,7 +1178,11 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         else:
             changes_applied.append({
                 "repo": str(control_repo),
-                "change": f"PR merged and related branches deleted: {feature_id}-dev -> main",
+                "change": (
+                    "control default branch verified and synchronized"
+                    if control_topology == "flat"
+                    else f"PR merged and related branches deleted: {feature_id}-dev -> main"
+                ),
                 "pr_url": merge_pr_url or "",
             })
 
@@ -840,6 +1190,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         {
             "status": "complete",
             "feature_id": feature_id,
+            "control_topology": control_topology,
             "archived_at": now_ts,
             "changes_applied": changes_applied,
             "retrospective_skipped": False,
@@ -955,10 +1306,19 @@ def _build_parser() -> argparse.ArgumentParser:
     shared.add_argument("--governance-repo", dest="governance_repo", default=None)
     shared.add_argument("--feature-id", dest="feature_id", required=True)
     shared.add_argument("--workspace-root", dest="workspace_root", default=None)
+    shared.add_argument("--control-topology", dest="control_topology", choices=CONTROL_TOPOLOGIES, default=None)
 
     # check-preconditions
-    sub.add_parser("check-preconditions", parents=[shared],
-                   help="Validate a feature is ready to be finalized (read-only)")
+    p_chk = sub.add_parser("check-preconditions", parents=[shared],
+                           help="Validate a feature is ready to be finalized (read-only)")
+    p_chk.add_argument(
+        "--control-repo",
+        dest="control_repo",
+        default=None,
+        help="Path to the control repo. When provided, scans for orphaned "
+             "{featureId}, {featureId}-plan, and {featureId}-dev branches and "
+             "surfaces them as warnings.",
+    )
 
     # finalize
     p_fin = sub.add_parser("finalize", parents=[shared],

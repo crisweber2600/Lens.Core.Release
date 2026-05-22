@@ -12,7 +12,7 @@ outputFile: '{output_folder}/brainstorming-session-{date}.md'
 
 # Handoff References
 gameBriefWorkflow: 'skill:gds-create-game-brief'
-gddWorkflow: 'skill:gds-create-gdd'
+gddWorkflow: 'skill:gds-gdd'
 ---
 
 # Step 4: Complete Session

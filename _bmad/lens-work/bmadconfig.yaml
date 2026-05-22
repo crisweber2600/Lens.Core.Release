@@ -4,7 +4,7 @@ module_code: lens
 
 # Governance and topology defaults
 governance_repo_path: "{project-root}/../../../lens/lens-governance"
-control_topology: 3-branch
+control_topology: flat
 target_projects_path: "{project-root}/../../.."
 default_git_remote: origin
 lifecycle_contract: "{module-root}/lifecycle.yaml"

@@ -27,6 +27,10 @@ SAFE_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
 MAX_INDEX_BYTES = 1_000_000  # 1 MB sanity cap on feature-index.yaml
 STALE_DAYS = 30
 NEW_FEATURE_COMMAND = "/new-feature"
+LIST_HIDDEN_PHASES = {"complete", "dev-complete", "archived", "abandoned"}
+LIST_HIDDEN_STATUSES = {"complete", "completed", "archived", "abandoned", "superseded"}
+CONTROL_TOPOLOGIES = ("3-branch", "flat")
+DEFAULT_BRANCH_CANDIDATES = ("main", "master", "develop", "trunk")
 
 
 def fail(error: str, message: str) -> dict:
@@ -42,13 +46,116 @@ def expand_config_value(value: str, workspace_root: Path) -> str:
 def read_yaml_mapping(path: Path) -> tuple[dict | None, str | None]:
     """Read a YAML mapping from path, returning a message on failure."""
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as exc:
         return None, str(exc)
     if not isinstance(data, dict):
         return None, f"{path} must contain a YAML mapping"
     return data, None
+
+
+def config_candidates_for_args(args: argparse.Namespace) -> list[Path]:
+    workspace_root = Path(getattr(args, "workspace_root", None) or os.getcwd())
+    candidates: list[Path] = []
+    module_config = getattr(args, "module_config", None)
+    if module_config:
+        candidates.append(Path(module_config))
+    candidates.extend(
+        [
+            workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
+            workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
+        ]
+    )
+    return candidates
+
+
+def resolve_control_topology(args: argparse.Namespace) -> tuple[str | None, dict | None]:
+    explicit = getattr(args, "control_topology", None)
+    if explicit:
+        topology = str(explicit).strip()
+    else:
+        topology = ""
+        for config_path in config_candidates_for_args(args):
+            if not config_path.exists():
+                continue
+            data, error = read_yaml_mapping(config_path)
+            if error:
+                return None, fail("config_malformed", f"Could not read {config_path}: {error}")
+            topology = str(data.get("control_topology") or "").strip()
+            if topology:
+                break
+        if not topology:
+            topology = "3-branch"
+    if topology not in CONTROL_TOPOLOGIES:
+        expected = ", ".join(CONTROL_TOPOLOGIES)
+        return None, fail("invalid_control_topology", f"control_topology must be one of: {expected}")
+    return topology, None
+
+
+def git_branch_exists(repo: str, branch: str, *, include_remote: bool = False) -> bool:
+    """Return True when branch exists locally or on origin when requested."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo, "branch", "--list", branch],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.stdout.strip():
+        return True
+    if not include_remote:
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo, "branch", "-r", "--list", f"origin/{branch}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return bool(result.stdout.strip())
+
+
+def git_current_branch(repo: str) -> str | None:
+    """Return the current branch name when available."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    branch = result.stdout.strip()
+    return branch or None
+
+
+def resolve_default_branch(repo: str) -> str:
+    """Resolve the control repo default branch, falling back to known/current branches."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
+    if result and result.returncode == 0:
+        remote_ref = result.stdout.strip()
+        if remote_ref.startswith("origin/"):
+            return remote_ref.removeprefix("origin/")
+    for candidate in DEFAULT_BRANCH_CANDIDATES:
+        if git_branch_exists(repo, candidate, include_remote=True):
+            return candidate
+    return git_current_branch(repo) or "main"
 
 
 def resolve_governance_repo(args: argparse.Namespace) -> tuple[str | None, dict | None]:
@@ -75,18 +182,7 @@ def resolve_governance_repo(args: argparse.Namespace) -> tuple[str | None, dict 
         if value:
             return expand_config_value(value, workspace_root), None
 
-    config_candidates: list[Path] = []
-    module_config = getattr(args, "module_config", None)
-    if module_config:
-        config_candidates.append(Path(module_config))
-    config_candidates.extend(
-        [
-            workspace_root / "_bmad" / "lens-work" / "bmadconfig.yaml",
-            workspace_root / "lens.core" / "_bmad" / "lens-work" / "bmadconfig.yaml",
-        ]
-    )
-
-    for config_path in config_candidates:
+    for config_path in config_candidates_for_args(args):
         if not config_path.exists():
             continue
         data, error = read_yaml_mapping(config_path)
@@ -150,11 +246,28 @@ def load_feature_yaml_for_index_entry(governance_repo: str, entry: dict) -> dict
         return None
 
     try:
-        with open(feature_path) as f:
+        with open(feature_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def summarize_list_entry_state(index_entry: dict, feature_data: dict | None) -> dict:
+    """Summarize authoritative lifecycle state for feature-list filtering."""
+    has_feature_yaml = feature_data is not None
+    phase = str((feature_data or {}).get("phase") or "").strip().lower()
+    status = str((feature_data or {}).get("status") or "").strip().lower()
+    index_status = str(index_entry.get("status") or "").strip().lower()
+    is_index_archived = index_status == "archived"
+    is_hidden_by_authoritative_state = phase in LIST_HIDDEN_PHASES or status in LIST_HIDDEN_STATUSES
+
+    return {
+        "effective_status": phase or status or index_status or "active",
+        "is_missing": not has_feature_yaml,
+        "is_index_archived": is_index_archived,
+        "is_hidden_by_state": is_hidden_by_authoritative_state or (not has_feature_yaml and is_index_archived),
+    }
 
 
 def feature_yaml_path_for_index_entry(governance_repo: str, entry: dict) -> Path | None:
@@ -192,7 +305,7 @@ def load_feature_index(governance_repo: str) -> tuple[dict | None, dict | None]:
         return None, fail("index_malformed", f"feature-index.yaml exceeds size limit ({MAX_INDEX_BYTES} bytes)")
 
     try:
-        with open(index_path) as f:
+        with open(index_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         return None, fail("index_malformed", f"Failed to parse feature-index.yaml: {e}")
@@ -226,7 +339,7 @@ def find_feature_yaml(governance_repo: str, feature_id: str) -> Path | None:
         return None
     for yaml_file in sorted(features_dir.rglob("feature.yaml")):
         try:
-            with open(yaml_file) as f:
+            with open(yaml_file, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if data and data.get("featureId") == feature_id:
                 return yaml_file
@@ -256,7 +369,7 @@ def write_context_yaml(
 
     fd, tmp_path = tempfile.mkstemp(dir=str(context_path.parent), suffix=".yaml.tmp")
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             yaml.safe_dump(context_data, f, default_flow_style=False, sort_keys=False)
         os.replace(tmp_path, str(context_path))
     except Exception:
@@ -364,7 +477,7 @@ def scan_domain_inventory(governance_repo: str) -> dict:
             if not domain_yaml.exists():
                 continue
             try:
-                with open(domain_yaml) as f:
+                with open(domain_yaml, encoding="utf-8") as f:
                     domain_data = yaml.safe_load(f)
             except (yaml.YAMLError, OSError):
                 continue
@@ -377,7 +490,7 @@ def scan_domain_inventory(governance_repo: str) -> dict:
                 if not service_yaml.exists():
                     continue
                 try:
-                    with open(service_yaml) as f:
+                    with open(service_yaml, encoding="utf-8") as f:
                         service_data = yaml.safe_load(f)
                 except (yaml.YAMLError, OSError):
                     continue
@@ -435,24 +548,28 @@ def cmd_list(args: argparse.Namespace) -> dict:
             return scan_domain_inventory(governance_repo)
         return err
 
-    raw_features: list[dict] = index_data.get("features") or []
-
-    status_filter: str = args.status_filter
-    if status_filter == "archived":
-        raw_features = [f for f in raw_features if f.get("status") == "archived"]
-    elif status_filter != "all":
-        raw_features = [f for f in raw_features if f.get("status") != "archived"]
-
     features = []
-    for i, f in enumerate(raw_features):
+    for f in index_data.get("features") or []:
         feature_data = load_feature_yaml_for_index_entry(governance_repo, f)
+        entry_state = summarize_list_entry_state(f, feature_data)
+
+        status_filter: str = args.status_filter
+        if status_filter == "archived":
+            if not entry_state["is_hidden_by_state"]:
+                continue
+            if entry_state["is_missing"] and not entry_state["is_index_archived"]:
+                continue
+        elif status_filter != "all":
+            if entry_state["is_missing"] or entry_state["is_hidden_by_state"]:
+                continue
+
         features.append(
             {
-                "num": i + 1,
+                "num": len(features) + 1,
                 "id": f.get("id", ""),
                 "domain": f.get("domain", ""),
                 "service": f.get("service", ""),
-                "status": f.get("status", "active"),
+                "status": entry_state["effective_status"],
                 "owner": f.get("owner", ""),
                 "summary": f.get("summary", ""),
                 "target_repo": normalize_target_repo_state(feature_data or {}),
@@ -462,7 +579,7 @@ def cmd_list(args: argparse.Namespace) -> dict:
     return {"status": "pass", "mode": "features", "features": features, "total": len(features)}
 
 
-def try_git_checkout(control_repo: str, branch: str) -> tuple[bool, str | None]:
+def try_git_checkout(control_repo: str, branch: str, *, pull: bool = False) -> tuple[bool, str | None]:
     """Attempt git checkout of branch in control_repo. Returns (switched, error_code_or_msg)."""
     try:
         result = subprocess.run(
@@ -470,14 +587,33 @@ def try_git_checkout(control_repo: str, branch: str) -> tuple[bool, str | None]:
             capture_output=True,
             text=True,
         )
-        if result.returncode == 0:
-            return True, None
-        output = result.stderr.strip() or result.stdout.strip() or f"git checkout {branch} failed"
-        if "pathspec" in output and "did not match any file" in output:
-            return False, "branch_not_found"
-        return False, output
+        if result.returncode != 0:
+            output = result.stderr.strip() or result.stdout.strip() or f"git checkout {branch} failed"
+            if "pathspec" in output and "did not match any file" in output:
+                return False, "branch_not_found"
+            return False, output
     except OSError as e:
         return False, f"git not available: {e}"
+    if pull:
+        try:
+            remote_result = subprocess.run(
+                ["git", "-C", control_repo, "remote", "get-url", "origin"],
+                capture_output=True,
+                text=True,
+            )
+            if remote_result.returncode != 0:
+                return True, None
+            pull_result = subprocess.run(
+                ["git", "-C", control_repo, "pull", "--ff-only", "origin", branch],
+                capture_output=True,
+                text=True,
+            )
+        except OSError as e:
+            return True, f"git not available: {e}"
+        if pull_result.returncode != 0:
+            output = pull_result.stderr.strip() or pull_result.stdout.strip() or f"git pull {branch} failed"
+            return True, output
+    return True, None
 
 
 def cmd_switch(args: argparse.Namespace) -> dict:
@@ -492,8 +628,10 @@ def cmd_switch(args: argparse.Namespace) -> dict:
 
     explicit_control_repo = getattr(args, "control_repo", None)
     personal_folder = resolve_personal_folder(governance_repo, args.personal_folder, explicit_control_repo)
-    plan_branch = f"{args.feature_id}-plan"
     control_repo = explicit_control_repo or "."
+    control_topology, topology_error = resolve_control_topology(args)
+    if topology_error:
+        return topology_error
 
     index_data, err = load_feature_index(governance_repo)
     if err:
@@ -505,13 +643,19 @@ def cmd_switch(args: argparse.Namespace) -> dict:
     index_entry = index_by_id.get(args.feature_id)
     if not index_entry:
         return fail("feature_not_found", f"Feature '{args.feature_id}' not found in feature-index.yaml")
+    control_default_branch = resolve_default_branch(control_repo) if control_topology == "flat" else None
+    plan_branch = (
+        control_default_branch or "main"
+        if control_topology == "flat"
+        else str(index_entry.get("plan_branch") or f"{args.feature_id}-plan")
+    )
 
     feature_path = feature_yaml_path_for_index_entry(governance_repo, index_entry)
     if not feature_path:
         return fail("feature_yaml_not_found", f"feature.yaml not found for '{args.feature_id}'")
 
     try:
-        with open(feature_path) as f:
+        with open(feature_path, encoding="utf-8") as f:
             feature_data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as e:
         return fail("feature_yaml_malformed", f"Failed to read feature.yaml: {e}")
@@ -538,7 +682,11 @@ def cmd_switch(args: argparse.Namespace) -> dict:
     branch_switched2: bool | None = None
     branch_error2: str | None = None
     if control_repo:
-        branch_switched2, branch_error2 = try_git_checkout(control_repo, plan_branch)
+        branch_switched2, branch_error2 = try_git_checkout(
+            control_repo,
+            plan_branch,
+            pull=control_topology == "flat",
+        )
 
     owner = index_entry.get("owner", "")
     if not owner and isinstance(feature_data.get("team"), list) and feature_data["team"]:
@@ -550,6 +698,8 @@ def cmd_switch(args: argparse.Namespace) -> dict:
     feature_dir = str(feature_path.parent)
     out: dict = {
         "status": "pass",
+        "control_topology": control_topology,
+        "control_default_branch": control_default_branch,
         "plan_branch": plan_branch,
         "feature_id": args.feature_id,
         "domain": feature_data.get("domain", ""),
@@ -630,7 +780,7 @@ def cmd_context_paths(args: argparse.Namespace) -> dict:
         return fail("feature_not_found", f"Feature '{args.feature_id}' not found")
 
     try:
-        with open(feature_path) as f:
+        with open(feature_path, encoding="utf-8") as f:
             feature_data = yaml.safe_load(f)
     except (yaml.YAMLError, OSError) as e:
         return fail("feature_yaml_malformed", f"Failed to read feature.yaml: {e}")
@@ -693,6 +843,7 @@ Examples:
     switch_p.add_argument("--governance-repo", required=False, help="Governance repo root path")
     switch_p.add_argument("--workspace-root", required=False, help="Workspace root for config resolution")
     switch_p.add_argument("--module-config", required=False, help="Explicit bmadconfig.yaml path")
+    switch_p.add_argument("--control-topology", choices=CONTROL_TOPOLOGIES, default=None)
     switch_p.add_argument("--feature-id", required=True, help="Target feature identifier")
     switch_p.add_argument(
         "--personal-folder",

@@ -2,6 +2,10 @@
 description: 'Feature completion entry controller'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-complete
 
 Use this prompt as the entry controller for `/lens-complete`. It must delegate lifecycle completion behavior to `lens-complete` and must not implement archive or governance writes inline.
@@ -47,6 +51,8 @@ runtime_missing: `/lens-complete` requires `complete-ops.py`, but the script is 
 ```
 
 5. When `complete-ops.py` is available, invoke the operation exactly as described by `lens-complete/SKILL.md` and surface its structured JSON result.
+   - For `finalize`, if `{control_repo}` resolves and is not the same path as `{governance_repo}`, pass `--control-repo {control_repo}`. Treat the control-repo merge as part of the default completion flow when running from the control repo.
+   - Only omit `--control-repo` when the caller explicitly requested governance-only archival or no control repo could be resolved.
 
 ## Scope Boundaries
 

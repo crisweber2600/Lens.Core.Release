@@ -2,6 +2,10 @@
 description: 'Domain initializer entry controller'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-new-domain
 
 Use this prompt as the entry controller for `/lens-new-domain`. It must delegate to the `lens-new-domain` skill and must not create governance files or inspect candidate repo paths inline.

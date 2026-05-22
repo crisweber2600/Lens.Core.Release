@@ -22,18 +22,18 @@ One or more files are staged and committed to the current branch with a structur
 
 ## Preconditions
 
-- Branch is `{featureId}` or `{featureId}-plan` (or `{featureId}-dev-{username}`)
+- Branch is valid for the configured topology: the control repo default branch in `flat`, or the routed phase branch in `3-branch`
 - All specified file paths exist relative to the repo root
 - At least one file is specified
 
 ## Process
 
-1. Verify current branch matches the expected branch for this feature
+1. Verify current branch matches the topology-aware expected branch for this feature and phase
 2. Resolve phase from `feature.yaml` if not explicitly provided
 3. Print the files that will be staged — request confirmation (unless `--no-confirm`)
 4. `git add {file_paths}`
 5. `git commit -m "[{phase}] {featureId} — {description}"`
-6. If `--push`: immediately `git push`
+6. If `--push`: immediately push the current branch; in `flat`, push `origin {default_branch}`
 7. Return commit SHA and message
 
 ## Output
@@ -41,12 +41,19 @@ One or more files are staged and committed to the current branch with a structur
 ```json
 {
   "feature_id": "payments-auth-oauth",
-  "branch": "payments-auth-oauth-plan",
+  "control_topology": "flat",
+  "default_branch": "main",
+  "branch": "main",
   "phase": "plan",
   "files_committed": ["docs/prd.md", "docs/arch.md"],
   "commit_sha": "abc1234",
   "commit_message": "[plan] payments-auth-oauth — architecture document complete",
-  "pushed": false
+  "pushed": false,
+  "routing": {
+    "control_topology": "flat",
+    "expected_branch": "main",
+    "routing_rule": "flat_default_branch"
+  }
 }
 ```
 

@@ -80,6 +80,7 @@ def legacy_personal_dir(project_root: Path) -> Path:
 
 
 PERSONAL_ARTIFACT_NAMES = (".github-hashes", ".preflight-timestamp", "context.yaml", "profile.yaml")
+TRACKED_SYNC_ROOT_FILES = ("AGENTS.md",)
 
 
 def relocate_root_personal_files(project_root: Path, active_dir: Path) -> None:
@@ -160,14 +161,31 @@ def migrate_legacy_personal_dir(project_root: Path) -> Path:
 def ensure_lens_version_file(project_root: Path) -> str:
     active_file = lens_version_file(project_root)
     legacy_file = legacy_lens_version_file(project_root)
+    lifecycle_file = project_root / "lens.core" / "_bmad" / "lens-work" / "lifecycle.yaml"
 
     if active_file.is_file():
         return active_file.read_text(encoding="utf-8").strip()
 
-    if not legacy_file.is_file():
-        return ""
-
     lens_dir(project_root).mkdir(parents=True, exist_ok=True)
+
+    if not legacy_file.is_file():
+        if not lifecycle_file.is_file():
+            return ""
+
+        module_schema = ""
+        for line in lifecycle_file.read_text(encoding="utf-8").splitlines():
+            if line.startswith("schema_version:"):
+                module_schema = line.split(":", 1)[1].strip()
+                break
+
+        if not module_schema:
+            return ""
+
+        version = f"{module_schema}.0.0"
+        active_file.write_text(version, encoding="utf-8")
+        echo("[preflight] Seeded .lens/LENS_VERSION from lifecycle.yaml")
+        return version
+
     version = legacy_file.read_text(encoding="utf-8").strip()
     active_file.write_text(version, encoding="utf-8")
     echo("[preflight] Seeded .lens/LENS_VERSION from the legacy root LENS_VERSION file")
@@ -214,6 +232,50 @@ def load_governance_setup(path: Path) -> dict[str, str]:
     return values
 
 
+def detect_git_remote(repo_path: Path, remote_name: str = "origin") -> str:
+    if not repo_path.is_dir():
+        return ""
+
+    result = subprocess.run(
+        ["git", "remote", "get-url", remote_name],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def write_governance_setup(path: Path, governance_repo_path: Path) -> dict[str, str]:
+    resolved = governance_repo_path.resolve()
+    values: dict[str, str] = {"governance_repo_path": resolved.as_posix()}
+    remote_url = detect_git_remote(resolved)
+    if remote_url:
+        values["governance_remote_url"] = remote_url
+
+    lines = [f"governance_repo_path: {values['governance_repo_path']}"]
+    if values.get("governance_remote_url"):
+        lines.append(f"governance_remote_url: {values['governance_remote_url']}")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return values
+
+
+def discover_governance_repo_path(project_root: Path) -> Path | None:
+    candidates = (
+        project_root / "TargetProjects" / "lens" / "lens-governance",
+        project_root / "TargetProjects" / "lens" / "Lens.Core.Governance",
+        project_root / "TargetProjects" / "lens" / "Lens.Core.governance",
+        project_root / "lens-governance",
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 def ensure_governance_setup_file(project_root: Path) -> dict[str, str]:
     active_file = governance_setup_file(project_root)
     legacy_personal_file = legacy_personal_governance_setup_file(project_root)
@@ -253,6 +315,33 @@ def ensure_governance_setup_file(project_root: Path) -> dict[str, str]:
         return load_governance_setup(active_file)
 
     bmadconfig_values = _load_bmadconfig_governance(project_root)
+    if bmadconfig_values:
+        configured_path_raw = bmadconfig_values.get("governance_repo_path", "")
+        configured_path = resolve_workspace_path(project_root, configured_path_raw) if configured_path_raw else None
+        if configured_path and configured_path.is_dir():
+            try:
+                write_governance_setup(active_file, configured_path)
+                echo("[preflight] Seeded .lens/governance-setup.yaml from bmadconfig fallback")
+                return load_governance_setup(active_file)
+            except OSError as exc:
+                echo(f"  ⚠ Unable to write .lens/governance-setup.yaml from bmadconfig fallback: {exc}")
+                return bmadconfig_values
+
+        if configured_path:
+            echo(
+                "[preflight] bmadconfig governance path does not exist: "
+                f"{configured_path}; attempting workspace governance discovery"
+            )
+
+    discovered_path = discover_governance_repo_path(project_root)
+    if discovered_path:
+        try:
+            values = write_governance_setup(active_file, discovered_path)
+            echo("[preflight] Created .lens/governance-setup.yaml from discovered workspace governance repo")
+            return values
+        except OSError as exc:
+            echo(f"  ⚠ Unable to create .lens/governance-setup.yaml from discovered governance repo: {exc}")
+
     if bmadconfig_values:
         return bmadconfig_values
 
@@ -329,25 +418,30 @@ def resolve_project_root(script_dir: Path) -> Path:
     )
 
 
-def prune_stale_synced_github_files(
+def prune_stale_synced_managed_files(
     project_root: Path,
     stored_hashes: dict[str, str],
     new_hashes: dict[str, str],
 ) -> int:
     github_root = project_root / ".github"
+    tracked_root_files = set(TRACKED_SYNC_ROOT_FILES)
     removed = 0
 
     for rel_path in sorted(set(stored_hashes) - set(new_hashes)):
-        if not rel_path.startswith(".github/"):
-            continue
-
         local_file = project_root / rel_path
         if not local_file.is_file():
             continue
 
-        local_file.unlink()
-        removed += 1
-        remove_empty_parent_dirs(local_file.parent, github_root)
+        if rel_path.startswith(".github/"):
+            local_file.unlink()
+            removed += 1
+            remove_empty_parent_dirs(local_file.parent, github_root)
+            continue
+
+        if rel_path in tracked_root_files:
+            local_file.unlink()
+            removed += 1
+            continue
 
     return removed
 
@@ -384,6 +478,7 @@ _PROMPT_METADATA: dict[str, tuple[str, str | None]] = {
     "lens-move-feature":                  ("full",  "plan"),
     "lens-new-domain":                    ("any",   "plan"),
     "lens-new-feature":                   ("both",  "any"),
+    "lens-nextlens-bugfix":               ("both",  "dev"),
     "lens-new-project":                   ("both",  "any"),
     "lens-new-service":                   ("both",  "any"),
     "lens-next":                          ("both",  "any"),
@@ -451,6 +546,31 @@ def emit_onboard_next_steps(project_root: Path) -> None:
         echo("  Use /switch to continue existing work.")
         echo("  Use /new-* to create new work.")
     echo("  Use /next anytime to get the recommended next command for the current context.")
+
+
+def emit_missing_authority_repo_guidance(
+    *,
+    release_dir: Path,
+    governance_path: Path | None,
+) -> None:
+    """Report concrete authority-path repair steps for the active workspace layout."""
+    echo("")
+    echo("⚠️  Authority repo check failed for the current workspace layout.")
+    echo("")
+
+    if not release_dir.is_dir():
+        echo(f"  Missing release checkout: {release_dir}")
+        echo("  Restore or clone the Lens release repo into that workspace path.")
+
+    if governance_path is None:
+        echo("  Governance repo path is not configured in .lens/governance-setup.yaml.")
+        echo("  Set governance_repo_path to the correct local governance clone and retry this command.")
+    elif not governance_path.is_dir():
+        echo(f"  Missing governance checkout: {governance_path}")
+        echo("  Clone the governance repo into that path or update .lens/governance-setup.yaml if the repo moved.")
+
+    echo("")
+    echo("  Fix the missing authority path or repo mapping, then retry this command.")
 
 
 def parse_timestamp(raw: str) -> datetime | None:
@@ -618,23 +738,32 @@ CONTROL_WRITE_CALLERS = {
     "lens-preplan",
 }
 GOVERNANCE_WRITE_CALLERS = {
-    "lens-bug-reporter",
     "lens-discover",
     "lens-new-domain",
     "lens-new-service",
 }
 MIXED_CALLERS = {
-    "lens-bug-fixer",
-    "lens-bug-quickdev",
-    "lens-bugbash",
     "lens-businessplan",
     "lens-complete",
+    "lens-core-bugfix",
     "lens-dev",
+    "lens-doctor",
     "lens-finalizeplan",
+    "lens-ledger-promotion",
+    "lens-lifecycle",
+    "lens-map-audit",
     "lens-new-feature",
+    "lens-nextlens-bugfix",
+    "lens-projection-rebuild",
+    "lens-quickdev",
+    "lens-reporting-snapshot",
+    "lens-salmon-impact",
+    "lens-setup",
     "lens-split-feature",
     "lens-techplan",
+    "lens-topology-design",
     "lens-upgrade",
+    "lens-work-intake",
 }
 
 
@@ -1153,11 +1282,16 @@ def main() -> int:
                     f"(experience={experience}, role={role})"
                 )
 
-        for entry in ["CLAUDE.md"]:
+        for entry in ["CLAUDE.md", *TRACKED_SYNC_ROOT_FILES]:
             src = release_dir / entry
             if src.is_file():
+                r_hash = sha256_file(src)
+                new_hashes[entry] = r_hash
+                s_hash = stored_hashes.get(entry, "")
                 local = project_root / entry
-                if not local.is_file():
+                l_hash = sha256_file(local) if local.is_file() else ""
+
+                if r_hash != s_hash or l_hash != r_hash:
                     import shutil
                     shutil.copy2(src, local)
                     synced_entry_points += 1
@@ -1180,9 +1314,9 @@ def main() -> int:
     # prevents deleted release files from accumulating in the local .github/
     # directory between weekly runs.
     if release_refresh_required:
-        stale_removed = prune_stale_synced_github_files(project_root, stored_hashes, new_hashes)
+        stale_removed = prune_stale_synced_managed_files(project_root, stored_hashes, new_hashes)
         if stale_removed:
-            echo(f"  ✓ Removed {stale_removed} stale synced .github file(s)")
+            echo(f"  ✓ Removed {stale_removed} stale synced managed file(s)")
         hash_file.parent.mkdir(parents=True, exist_ok=True)
         hash_file.write_text(
             "\n".join(f"{v}  {k}" for k, v in sorted(new_hashes.items())) + "\n",
@@ -1228,25 +1362,13 @@ def main() -> int:
     if missing_release or governance_missing:
         if args.caller == "onboard":
             echo("[preflight] Authority repos incomplete — continuing so /onboard can show next steps")
-        elif missing_release:
-            echo("")
-            echo("⚠️  Missing authority repos — this workspace needs onboarding first.")
-            echo("")
-            echo("  Re-run setup-control-repo.py if the governance clone is missing.")
-            echo("  It takes about 2 minutes and only needs to run once.")
-            echo("")
-            echo("  Then run /new-project (or /new-domain for step-by-step setup) and retry this command.")
-            return 1
         elif request_class == "read-only":
             echo("⚠ Governance repo not found; freshness deferred for read-only request")
         else:
-            echo("")
-            echo("⚠️  Missing authority repos — this workspace needs onboarding first.")
-            echo("")
-            echo("  Re-run setup-control-repo.py if the governance clone is missing.")
-            echo("  It takes about 2 minutes and only needs to run once.")
-            echo("")
-            echo("  Then run /new-project (or /new-domain for step-by-step setup) and retry this command.")
+            emit_missing_authority_repo_guidance(
+                release_dir=release_dir,
+                governance_path=governance_path,
+            )
             return 1
 
     if control_repo_touched:

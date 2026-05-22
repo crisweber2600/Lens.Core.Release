@@ -112,6 +112,86 @@ def _find_feature_yaml(feature_id: str, governance_repo: Path) -> Path | None:
     return _FEATURE_YAML_INDEX_CACHE[features_root].get(feature_id)
 
 
+def _load_feature_phase(feature_yaml_path: Path) -> str | None:
+    try:
+        with open(feature_yaml_path, encoding="utf-8") as fh:
+            feature_data = yaml.safe_load(fh) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(feature_data, dict):
+        return None
+    phase = feature_data.get("phase")
+    if isinstance(phase, str) and phase:
+        return phase
+    return None
+
+
+def _governance_clone_candidates(workspace_root: Path, governance_repo: Path) -> list[Path]:
+    """Return governance clone candidates to compare for split-brain state."""
+    normalized_primary = governance_repo.resolve()
+    candidates: dict[str, Path] = {str(normalized_primary): normalized_primary}
+
+    sibling_root = normalized_primary.parent
+    for sibling_name in ("lens-governance", "Lens.Core.Governance", "Lens.Core.governance"):
+        sibling = (sibling_root / sibling_name).resolve()
+        if sibling.is_dir():
+            candidates[str(sibling)] = sibling
+
+    raw = _load_bmadconfig(workspace_root).get("governance_repo_path")
+    if raw and isinstance(raw, str):
+        configured = Path(raw.replace("{project-root}", str(workspace_root))).resolve()
+        if configured.is_dir():
+            candidates[str(configured)] = configured
+
+    return list(candidates.values())
+
+
+def _find_feature_yaml_outside_primary(
+    feature_id: str,
+    governance_repo: Path,
+    workspace_root: Path,
+) -> Path | None:
+    for candidate_repo in _governance_clone_candidates(workspace_root, governance_repo):
+        if candidate_repo == governance_repo.resolve():
+            continue
+        feature_yaml = _find_feature_yaml(feature_id, candidate_repo)
+        if feature_yaml and feature_yaml.exists():
+            return feature_yaml
+    return None
+
+
+def _governance_phase_conflict(
+    feature_id: str,
+    governance_repo: Path,
+    primary_phase: str,
+    workspace_root: Path,
+) -> str | None:
+    primary = governance_repo.resolve()
+    conflicts: list[tuple[Path, str]] = []
+    for candidate_repo in _governance_clone_candidates(workspace_root, governance_repo):
+        if candidate_repo == primary:
+            continue
+        candidate_feature = _find_feature_yaml(feature_id, candidate_repo)
+        if not candidate_feature or not candidate_feature.exists():
+            continue
+        candidate_phase = _load_feature_phase(candidate_feature)
+        if candidate_phase and candidate_phase != primary_phase:
+            conflicts.append((candidate_repo, candidate_phase))
+
+    if not conflicts:
+        return None
+
+    conflict_detail = ", ".join(
+        f"{repo} phase={phase}" for repo, phase in conflicts
+    )
+    return (
+        "governance_phase_conflict: feature "
+        f"'{feature_id}' has conflicting phase state across governance clones. "
+        f"primary={primary} phase={primary_phase}; conflicts: {conflict_detail}. "
+        "Use the canonical governance repo and re-run /lens-next."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Routing logic
 # ---------------------------------------------------------------------------
@@ -187,6 +267,14 @@ def suggest(feature_id: str, governance_repo_override: str | None,
     # --- Find feature.yaml ---
     feature_yaml_path = _find_feature_yaml(feature_id, governance_repo)
     if not feature_yaml_path or not feature_yaml_path.exists():
+        alternate = _find_feature_yaml_outside_primary(feature_id, governance_repo, workspace_root)
+        if alternate:
+            return _fail_result(
+                "feature.yaml not found for feature: "
+                f"{feature_id} in governance repo {governance_repo}. "
+                f"Found feature in alternate governance clone: {alternate.parent}. "
+                "Re-run with --governance-repo pointing to the canonical clone."
+            )
         return _fail_result(f"feature.yaml not found for feature: {feature_id}")
 
     try:
@@ -205,6 +293,10 @@ def suggest(feature_id: str, governance_repo_override: str | None,
 
     if not phase:
         return _fail_result(f"feature.yaml for {feature_id} has no 'phase' field", phase, track)
+
+    conflict_error = _governance_phase_conflict(feature_id, governance_repo, phase, workspace_root)
+    if conflict_error:
+        return _fail_result(conflict_error, phase, track)
 
     # --- Handle paused state (M1 decision: Option A — blocker report) ---
     if phase == "paused":

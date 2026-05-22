@@ -77,6 +77,41 @@ def assert_iso8601(value: str) -> None:
     datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
 
 
+def write_feature(
+    gov: Path,
+    *,
+    domain: str,
+    service: str,
+    feature_id: str,
+    summary: bool = True,
+    docs: dict[str, str] | None = None,
+    depends_on: list[str] | None = None,
+    blocks: list[str] | None = None,
+) -> None:
+    feature_dir = gov / "features" / domain / service / feature_id
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    feature_yaml = {
+        "featureId": feature_id,
+        "domain": domain,
+        "service": service,
+        "dependencies": {
+            "depends_on": depends_on or [],
+            "blocks": blocks or [],
+        },
+    }
+    (feature_dir / "feature.yaml").write_text(yaml.safe_dump(feature_yaml), encoding="utf-8")
+    if summary:
+        (feature_dir / "summary.md").write_text(f"# {feature_id}\n", encoding="utf-8")
+    for relative_path, content in (docs or {}).items():
+        path = feature_dir / "docs" / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def write_feature_index(gov: Path, entries: list[dict]) -> None:
+    (gov / "feature-index.yaml").write_text(yaml.safe_dump({"features": entries}), encoding="utf-8")
+
+
 @pytest.mark.parametrize("slug", ["lens-dev", "platform", "my-domain-1", "a", "x" * 64])
 def test_validate_safe_id_valid(tmp_path: Path, slug: str):
     gov = tmp_path / "gov"
@@ -122,6 +157,105 @@ def test_create_domain_dry_run(tmp_path: Path):
     assert not Path(payload["path"]).exists()
     assert not Path(payload["constitution_path"]).exists()
     assert not Path(payload["context_path"]).exists()
+
+
+def test_read_context_returns_personal_domain_service(tmp_path: Path):
+    personal = tmp_path / "personal"
+    personal.mkdir()
+    (personal / "context.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "domain": "commerce",
+                "service": "payments",
+                "updated_at": "2026-05-14T00:00:00Z",
+                "updated_by": "new-service",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed, payload = run_script(["read-context", "--personal-folder", str(personal)])
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert payload["domain"] == "commerce"
+    assert payload["service"] == "payments"
+
+
+def test_read_context_missing_returns_context_missing(tmp_path: Path):
+    completed, payload = run_script(["read-context", "--personal-folder", str(tmp_path / "personal")])
+
+    assert completed.returncode == 1
+    assert payload["status"] == "fail"
+    assert payload["error"] == "context_missing"
+
+
+def test_fetch_context_returns_related_dependencies_and_service_refs(tmp_path: Path):
+    gov = tmp_path / "gov"
+    gov.mkdir()
+    write_feature_index(
+        gov,
+        [
+            {"featureId": "platform-identity-target", "id": "platform-identity-target", "domain": "platform", "service": "identity"},
+            {"featureId": "platform-identity-related", "id": "platform-identity-related", "domain": "platform", "service": "identity"},
+            {"featureId": "platform-billing-dep", "id": "platform-billing-dep", "domain": "platform", "service": "billing"},
+        ],
+    )
+    write_feature(
+        gov,
+        domain="platform",
+        service="identity",
+        feature_id="platform-identity-target",
+        depends_on=["platform-billing-dep"],
+    )
+    write_feature(gov, domain="platform", service="identity", feature_id="platform-identity-related")
+    write_feature(
+        gov,
+        domain="platform",
+        service="billing",
+        feature_id="platform-billing-dep",
+        docs={"architecture.md": "# Billing Architecture\n"},
+    )
+    billing_service = gov / "features" / "platform" / "billing" / "service.yaml"
+    billing_service.parent.mkdir(parents=True, exist_ok=True)
+    billing_service.write_text("service: billing\n", encoding="utf-8")
+
+    completed, payload = run_script(
+        [
+            "fetch-context",
+            "--governance-repo",
+            str(gov),
+            "--feature-id",
+            "platform-identity-target",
+            "--service-ref-text",
+            "Coordinate with the billing service before planning.",
+        ]
+    )
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert "platform-identity-related" in payload["related"]
+    assert payload["depends_on"] == ["platform-billing-dep"]
+    assert payload["detected_service_refs"] == ["billing"]
+    summaries = [path.replace("\\", "/") for path in payload["summaries"]]
+    full_docs = [path.replace("\\", "/") for path in payload["full_docs"]]
+    service_context_paths = [path.replace("\\", "/") for path in payload["service_context_paths"]]
+    assert any(path.endswith("platform-identity-related/summary.md") for path in summaries)
+    assert any(path.endswith("platform-billing-dep/feature.yaml") for path in full_docs)
+    assert any(path.endswith("billing/service.yaml") for path in service_context_paths)
+
+
+def test_fetch_context_fails_when_feature_index_missing(tmp_path: Path):
+    gov = tmp_path / "gov"
+    gov.mkdir()
+
+    completed, payload = run_script(
+        ["fetch-context", "--governance-repo", str(gov), "--feature-id", "missing-feature"]
+    )
+
+    assert completed.returncode == 1
+    assert payload["status"] == "fail"
+    assert payload["error"] == "feature-index.yaml not found"
 
 
 def test_create_domain_basic(tmp_path: Path):
@@ -257,6 +391,64 @@ def test_create_domain_execute_governance_git_auto_publishes_workspace_scaffold(
     assert any(command.endswith("push") for command in payload["workspace_git_commands"])
     assert (workspace / "TargetProjects" / "finance" / ".gitkeep").exists()
     assert (workspace / "docs" / "finance" / ".gitkeep").exists()
+
+    workspace_status = subprocess.run(
+        ["git", "-C", str(workspace), "status", "--short"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert workspace_status.stdout.strip() == ""
+
+    pushed_target = subprocess.run(
+        ["git", "--git-dir", str(workspace_remote), "show", "main:TargetProjects/finance/.gitkeep"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    pushed_docs = subprocess.run(
+        ["git", "--git-dir", str(workspace_remote), "show", "main:docs/finance/.gitkeep"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert pushed_target.stdout == ""
+    assert pushed_docs.stdout == ""
+
+
+def test_create_domain_execute_governance_git_force_adds_ignored_targetprojects_scaffold(tmp_path: Path):
+    _, gov = init_main_repo_with_remote(tmp_path, "gov")
+    workspace_remote, workspace = init_main_repo_with_remote(tmp_path, "workspace")
+    target = workspace / "TargetProjects"
+    docs = workspace / "docs"
+    personal = tmp_path / "personal"
+
+    (workspace / ".gitignore").write_text("TargetProjects/\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(workspace), "add", ".gitignore"], check=True)
+    subprocess.run(["git", "-C", str(workspace), "commit", "-m", "chore: ignore targetprojects scaffold"], check=True)
+    subprocess.run(["git", "-C", str(workspace), "push"], check=True)
+
+    completed, payload = run_script(
+        [
+            "create-domain",
+            "--governance-repo",
+            str(gov),
+            "--domain",
+            "finance",
+            "--target-projects-root",
+            str(target),
+            "--docs-root",
+            str(docs),
+            "--personal-folder",
+            str(personal),
+            "--execute-governance-git",
+        ]
+    )
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert payload["workspace_git_executed"] is True
+    assert any("add --force" in command for command in payload["workspace_git_commands"])
 
     workspace_status = subprocess.run(
         ["git", "-C", str(workspace), "status", "--short"],
@@ -592,6 +784,7 @@ class TestCreate:
             "--name", "Index Test",
             "--track", "full",
             "--control-repo", str(control),
+            "--control-topology", "3-branch",
         ])
 
         assert completed.returncode == 0
@@ -604,11 +797,13 @@ class TestCreate:
         assert entry["status"] == "preplan"  # full track starts at preplan
         assert entry["plan_branch"] == "lens-dev-new-codebase-index-test-plan"
 
-        # non-express track creates an immediate planning PR
-        assert payload["planning_pr_created"] is True
-        assert len(payload["gh_commands"]) == 1
-        assert "gh pr create" in payload["gh_commands"][0]
-        assert "lens-dev-new-codebase-index-test-plan" in payload["gh_commands"][0]
+        # planning PR is deferred until planning commits exist on the plan branch
+        assert payload["planning_pr_created"] is False
+        assert payload["gh_commands"] == []
+        assert len(payload["planning_pr_followup_commands"]) == 1
+        assert "gh pr create" in payload["planning_pr_followup_commands"][0]
+        assert "lens-dev-new-codebase-index-test-plan" in payload["planning_pr_followup_commands"][0]
+        assert payload["planning_pr_deferred_reason"]
 
     def test_create_feature_dry_run_no_files_written(self, tmp_path: Path):
         gov = tmp_path / "gov"
@@ -744,7 +939,7 @@ class TestCreate:
         assert payload["planning_pr_created"] is False
         assert payload["gh_commands"] == []
 
-    def test_create_feature_non_express_emits_planning_pr_command(self, tmp_path: Path):
+    def test_create_feature_non_express_defers_planning_pr_command(self, tmp_path: Path):
         gov = tmp_path / "gov"
         control = tmp_path / "control"
         gov.mkdir()
@@ -764,14 +959,84 @@ class TestCreate:
                 "--name", f"PR test {non_express_track}",
                 "--track", non_express_track,
                 "--control-repo", str(control),
+                "--control-topology", "3-branch",
             ])
 
             assert completed.returncode == 0, f"track={non_express_track}: {payload.get('error')}"
-            assert payload["planning_pr_created"] is True, f"track={non_express_track}"
-            assert len(payload["gh_commands"]) == 1, f"track={non_express_track}"
-            cmd = payload["gh_commands"][0]
+            assert payload["planning_pr_created"] is False, f"track={non_express_track}"
+            assert payload["gh_commands"] == [], f"track={non_express_track}"
+            assert len(payload["planning_pr_followup_commands"]) == 1, f"track={non_express_track}"
+            cmd = payload["planning_pr_followup_commands"][0]
             assert "gh pr create" in cmd, f"track={non_express_track}"
             assert f"{fid}-plan" in cmd, f"track={non_express_track}"
+            assert payload["planning_pr_deferred_reason"], f"track={non_express_track}"
+
+    def test_create_feature_flat_topology_uses_default_branch_and_no_planning_pr(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        control = tmp_path / "control"
+        gov.mkdir()
+        control.mkdir()
+        (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
+        (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
+        (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-flat-init",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--name", "Flat Init",
+            "--track", "express",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ])
+
+        assert completed.returncode == 0
+        index_data = yaml.safe_load((gov / "feature-index.yaml").read_text(encoding="utf-8"))
+        entry = next(e for e in index_data["features"] if e.get("featureId") == "lens-dev-new-codebase-flat-init")
+        assert entry["plan_branch"] == "main"
+        assert payload["control_topology"] == "flat"
+        assert payload["control_default_branch"] == "main"
+        assert payload["plan_branch"] == "main"
+        assert payload["planning_pr_followup_commands"] == []
+        assert "not required" in payload["planning_pr_deferred_reason"]
+        assert "--control-topology flat" in payload["remaining_commands"][0]
+
+    def test_create_feature_flat_topology_uses_master_when_origin_is_missing(self, tmp_path: Path):
+        gov = tmp_path / "gov"
+        control = tmp_path / "control"
+        gov.mkdir()
+        control.mkdir()
+        (gov / "features" / "lens-dev" / "new-codebase").mkdir(parents=True)
+        (gov / "features" / "lens-dev" / "domain.yaml").write_text("{}", encoding="utf-8")
+        (gov / "features" / "lens-dev" / "new-codebase" / "service.yaml").write_text("{}", encoding="utf-8")
+        subprocess.run(["git", "init", str(control)], check=True)
+        subprocess.run(["git", "-C", str(control), "config", "user.email", "test@example.com"], check=True)
+        subprocess.run(["git", "-C", str(control), "config", "user.name", "Test User"], check=True)
+        subprocess.run(["git", "-C", str(control), "commit", "--allow-empty", "-m", "init"], check=True)
+        subprocess.run(["git", "-C", str(control), "branch", "-M", "master"], check=True)
+
+        completed, payload = run_script([
+            "create",
+            "--governance-repo", str(gov),
+            "--feature-id", "lens-dev-new-codebase-flat-master",
+            "--domain", "lens-dev",
+            "--service", "new-codebase",
+            "--name", "Flat Master",
+            "--track", "express",
+            "--control-repo", str(control),
+            "--control-topology", "flat",
+        ])
+
+        assert completed.returncode == 0
+        index_data = yaml.safe_load((gov / "feature-index.yaml").read_text(encoding="utf-8"))
+        entry = next(e for e in index_data["features"] if e.get("featureId") == "lens-dev-new-codebase-flat-master")
+        assert entry["plan_branch"] == "master"
+        assert payload["control_topology"] == "flat"
+        assert payload["control_default_branch"] == "master"
+        assert payload["plan_branch"] == "master"
+        assert payload["planning_pr_followup_commands"] == []
 
     def test_create_feature_index_failure_rolls_back_files(self, tmp_path: Path):
         """If feature-index.yaml write fails, written feature.yaml/summary.md are removed."""

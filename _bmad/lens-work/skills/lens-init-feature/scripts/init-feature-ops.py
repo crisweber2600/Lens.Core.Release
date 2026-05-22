@@ -3,10 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["pyyaml>=6.0"]
 # ///
-"""Init feature operations (new-codebase implementation).
-
-This implementation currently exposes create-domain for the new-domain command.
-"""
+"""Init feature operations for Lens feature and container governance."""
 
 from __future__ import annotations
 
@@ -27,6 +24,10 @@ import yaml
 SAFE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 GOVERNANCE_AUTO_SYNC_COMMIT_MESSAGE = "chore(governance): auto-sync local changes"
 LIFECYCLE_PATH = Path(__file__).resolve().parents[3] / "lifecycle.yaml"
+CONTEXT_DOC_SUFFIXES = {".md", ".yaml", ".yml"}
+AMBIGUOUS_SERVICE_NAMES = {"api", "auth", "common", "core", "data", "identity"}
+CONTROL_TOPOLOGIES = ("3-branch", "flat")
+DEFAULT_BRANCH_CANDIDATES = ("main", "master", "develop", "trunk")
 
 
 @lru_cache(maxsize=1)
@@ -55,6 +56,54 @@ def lifecycle_track_flow() -> str:
 
 def lifecycle_track_markdown() -> str:
     return ", ".join(f"`{track}`" for track in lifecycle_track_names())
+
+
+def _module_control_topology() -> str | None:
+    for parent in Path(__file__).resolve().parents:
+        config_path = parent / "bmadconfig.yaml"
+        if not config_path.is_file():
+            continue
+        try:
+            data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return None
+        if isinstance(data, dict) and data.get("control_topology"):
+            return str(data["control_topology"]).strip()
+    return None
+
+
+def resolve_control_topology(args: argparse.Namespace) -> str:
+    topology = str(getattr(args, "control_topology", None) or _module_control_topology() or "3-branch").strip()
+    if topology not in CONTROL_TOPOLOGIES:
+        expected = ", ".join(CONTROL_TOPOLOGIES)
+        raise ValueError(f"invalid control_topology '{topology}' — expected one of: {expected}")
+    return topology
+
+
+def resolve_default_branch(repo: str | None) -> str:
+    """Resolve a repo's default branch, falling back to known/current branches."""
+    if not repo:
+        return "main"
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
+    if result and result.returncode == 0:
+        remote_ref = result.stdout.strip()
+        if remote_ref.startswith("origin/"):
+            return remote_ref.removeprefix("origin/")
+    for candidate in DEFAULT_BRANCH_CANDIDATES:
+        if git_branch_exists(repo, candidate, include_remote=True):
+            return candidate
+    try:
+        return git_current_branch(repo) or "main"
+    except RuntimeError:
+        return "main"
 
 
 def now_iso() -> str:
@@ -106,6 +155,132 @@ def unique_paths(paths: list[str]) -> list[str]:
     return ordered
 
 
+def feature_entry_id(entry: dict) -> str:
+    return str(entry.get("featureId") or entry.get("id") or "").strip()
+
+
+def feature_dir_from_entry(governance_repo: str, entry: dict) -> Path:
+    return (
+        Path(governance_repo)
+        / "features"
+        / str(entry.get("domain") or "")
+        / str(entry.get("service") or "")
+        / feature_entry_id(entry)
+    )
+
+
+def collect_doc_files(root: Path) -> list[str]:
+    if not root.exists() or not root.is_dir():
+        return []
+    return [
+        str(path)
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and path.suffix.lower() in CONTEXT_DOC_SUFFIXES
+    ]
+
+
+def collect_feature_context_paths(governance_repo: str, entry: dict, depth: str) -> list[str]:
+    feature_dir = feature_dir_from_entry(governance_repo, entry)
+    summary = feature_dir / "summary.md"
+    if depth in {"summary", "summaries"}:
+        return [str(summary)] if summary.exists() else []
+
+    paths: list[str] = []
+    feature_yaml = feature_dir / "feature.yaml"
+    if feature_yaml.exists():
+        paths.append(str(feature_yaml))
+    paths.extend(collect_doc_files(feature_dir / "docs"))
+    return unique_paths(paths)
+
+
+def collect_service_context_paths(
+    governance_repo: str,
+    service_name: str,
+    exclude_feature_id: str,
+    domain: str | None = None,
+) -> list[str]:
+    features_root = Path(governance_repo) / "features"
+    if not features_root.exists():
+        return []
+
+    search_domains = [domain] if domain else [path.name for path in sorted(features_root.iterdir()) if path.is_dir()]
+    matches: list[str] = []
+    for domain_name in search_domains:
+        if not domain_name:
+            continue
+        service_dir = features_root / domain_name / service_name
+        if not service_dir.is_dir():
+            continue
+
+        service_yaml = service_dir / "service.yaml"
+        if service_yaml.exists():
+            matches.append(str(service_yaml))
+        matches.extend(collect_doc_files(service_dir / "docs"))
+
+        for summary_path in sorted(service_dir.glob("*/summary.md")):
+            if summary_path.parent.name != exclude_feature_id:
+                matches.append(str(summary_path))
+
+    return unique_paths(matches)
+
+
+def normalize_lookup_text(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return f" {normalized} " if normalized else ""
+
+
+def available_service_names(governance_repo: str, features: list[dict], domain: str | None = None) -> list[str]:
+    names: set[str] = set()
+    features_root = Path(governance_repo) / "features"
+
+    if features_root.exists():
+        pattern = f"{domain}/*/service.yaml" if domain else "*/*/service.yaml"
+        for service_yaml in sorted(features_root.glob(pattern)):
+            if service_yaml.is_file():
+                names.add(service_yaml.parent.name.lower())
+
+    for feature in features:
+        feature_domain = str(feature.get("domain") or "").strip().lower()
+        if domain and feature_domain != domain.lower():
+            continue
+        service_name = str(feature.get("service") or "").strip().lower()
+        if service_name:
+            names.add(service_name)
+
+    return sorted(names)
+
+
+def detect_service_refs_from_texts(texts: list[str], candidate_services: list[str]) -> list[str]:
+    haystacks = [normalize_lookup_text(text) for text in texts]
+    haystacks = [text for text in haystacks if text]
+    if not haystacks:
+        return []
+
+    detected: list[str] = []
+    for service_name in candidate_services:
+        service_key = service_name.lower()
+        needle = normalize_lookup_text(service_key)
+        if not needle:
+            continue
+
+        cue_matches = [
+            f" {service_key} service ",
+            f" service {service_key} ",
+            f" {service_key} svc ",
+            f" svc {service_key} ",
+            f" {service_key} api ",
+            f" api {service_key} ",
+        ]
+        has_cue_match = any(any(cue in haystack for cue in cue_matches) for haystack in haystacks)
+        has_bare_match = any(needle in haystack for haystack in haystacks)
+
+        if has_cue_match or (has_bare_match and service_key not in AMBIGUOUS_SERVICE_NAMES):
+            detected.append(service_name)
+
+    return unique_paths(detected)
+
+
 def is_same_path(first: str, second: str) -> bool:
     try:
         return Path(first).resolve() == Path(second).resolve()
@@ -141,6 +316,26 @@ def git_current_branch(repo: str) -> str:
         msg = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
         raise RuntimeError(f"{git_command_text(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])} failed: {msg}")
     return result.stdout.strip() or "HEAD"
+
+
+def git_branch_exists(repo: str, branch: str, *, include_remote: bool = False) -> bool:
+    result = subprocess.run(
+        git_command_argv(repo, ["branch", "--list", branch]),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    if result.stdout.strip():
+        return True
+    if not include_remote:
+        return False
+    result = subprocess.run(
+        git_command_argv(repo, ["branch", "-r", "--list", f"origin/{branch}"]),
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def worktree_has_local_changes(repo: str) -> bool:
@@ -313,14 +508,20 @@ def build_container_result_fields(
     }
 
 
-def related_service_clone_path(domain: str, service: str) -> str:
+def related_service_clone_container_path(domain: str, service: str) -> str:
     return f"TargetProjects/{domain}/{service}"
 
 
+def related_service_clone_path(domain: str, service: str) -> str:
+    return f"{related_service_clone_container_path(domain, service)}/<repo-name>"
+
+
 def related_service_clone_guidance(domain: str, service: str) -> str:
+    container_path = related_service_clone_container_path(domain, service)
+    example_path = related_service_clone_path(domain, service)
     return (
-        "Before running /new-feature, clone any related service repositories into "
-        f"{related_service_clone_path(domain, service)}."
+        "Before running /new-feature, clone each related service repository into its own "
+        f"repo-named subfolder under {container_path} (for example {example_path})."
     )
 
 
@@ -337,11 +538,15 @@ def build_workspace_scaffold_batches(
     for workspace_root, rel_paths in grouped.items():
         unique_rel_paths = unique_paths(rel_paths)
         noun = "folder" if len(unique_rel_paths) == 1 else "folders"
+        add_args = ["add"]
+        if any(Path(rel_path).parts[:1] == ("TargetProjects",) for rel_path in unique_rel_paths):
+            add_args.append("--force")
+        add_args.extend(unique_rel_paths)
         batches.append(
             (
                 workspace_root,
                 [
-                    ["add", *unique_rel_paths],
+                    add_args,
                     ["commit", "-m", f"scaffold({scope}): add {identifier} {noun}", "--only", "--", *unique_rel_paths],
                     ["push"],
                 ],
@@ -709,14 +914,11 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
     created_domain_constitution = False
 
     # Scaffold paths
-    tp_gitkeep_path: Path | None = None
+    target_projects_path: Path | None = None
     workspace_scaffold_entries: list[tuple[str, str]] = []
     if args.target_projects_root:
         tp_root = Path(args.target_projects_root)
-        tp_gitkeep_path = tp_root / domain / service / ".gitkeep"
-        workspace_scaffold_entries.append(
-            (str(tp_root.parent), (Path(tp_root.name) / domain / service / ".gitkeep").as_posix())
-        )
+        target_projects_path = tp_root / domain / service
 
     docs_gitkeep_path: Path | None = None
     if args.docs_root:
@@ -775,7 +977,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
             "created_constitution_paths": service_const_paths,
             "created_domain_marker": parent_domain_absent,
             "created_domain_constitution": parent_domain_absent,
-            "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
+            "target_projects_path": str(target_projects_path) if target_projects_path else None,
             "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
             "context_path": context_path,
             "related_service_clone_path": related_service_clone_path(domain, service),
@@ -818,11 +1020,10 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
         return {"status": "fail", "scope": "service", "dry_run": False,
                 "error": f"Failed to write service constitution: {exc}"}
 
-    # Write scaffold .gitkeep files
-    if tp_gitkeep_path is not None:
+    # Create the service container folder without a tracked placeholder.
+    if target_projects_path is not None:
         try:
-            tp_gitkeep_path.parent.mkdir(parents=True, exist_ok=True)
-            tp_gitkeep_path.touch()
+            target_projects_path.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             return {"status": "fail", "scope": "service", "dry_run": False,
                     "error": f"Failed to scaffold TargetProjects service folder: {exc}"}
@@ -862,7 +1063,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
                 "created_constitution_paths": service_const_paths,
                 "created_domain_marker": created_domain_marker,
                 "created_domain_constitution": created_domain_constitution,
-                "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
+                "target_projects_path": str(target_projects_path) if target_projects_path else None,
                 "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
                 "context_path": written_context_path,
                 "related_service_clone_path": related_service_clone_path(domain, service),
@@ -885,7 +1086,7 @@ def cmd_create_service(args: argparse.Namespace) -> dict:
         "created_constitution_paths": service_const_paths,
         "created_domain_marker": created_domain_marker,
         "created_domain_constitution": created_domain_constitution,
-        "target_projects_path": str(tp_gitkeep_path.parent) if tp_gitkeep_path else None,
+        "target_projects_path": str(target_projects_path) if target_projects_path else None,
         "docs_path": str(docs_gitkeep_path.parent) if docs_gitkeep_path else None,
         "context_path": written_context_path,
         "related_service_clone_path": related_service_clone_path(domain, service),
@@ -983,6 +1184,23 @@ def _load_feature_index(gov_path: Path) -> dict:
     return data
 
 
+def load_existing_feature_index(gov_path: Path) -> tuple[dict, bool]:
+    index_path = gov_path / "feature-index.yaml"
+    if not index_path.exists():
+        return {"features": []}, False
+    return _load_feature_index(gov_path), True
+
+
+def feature_index_by_id(features: list[dict]) -> dict[str, dict]:
+    index: dict[str, dict] = {}
+    for feature in features:
+        for key in (feature.get("featureId"), feature.get("id")):
+            feature_id = str(key or "").strip()
+            if feature_id:
+                index[feature_id] = feature
+    return index
+
+
 def _feature_index_has_id(index_data: dict, feature_id: str) -> bool:
     for entry in index_data.get("features", []):
         if entry.get("featureId") == feature_id or entry.get("id") == feature_id:
@@ -1000,6 +1218,7 @@ def _make_index_entry(
     username: str,
     starting_phase: str,
     timestamp: str,
+    plan_branch: str,
 ) -> dict:
     return {
         "featureId": feature_id,
@@ -1011,7 +1230,7 @@ def _make_index_entry(
         "status": starting_phase,
         "track": track,
         "owner": username,
-        "plan_branch": f"{feature_id}-plan",
+        "plan_branch": plan_branch,
         "related_features": {"depends_on": [], "blocks": [], "related": []},
         "created": timestamp,
         "updated_at": timestamp,
@@ -1032,6 +1251,12 @@ def cmd_create(args: argparse.Namespace) -> dict:
     governance_repo = args.governance_repo
     control_repo = resolve_control_repo_for_feature(args.control_repo, governance_repo)
     description = args.description if args.description else ""
+    try:
+        control_topology = resolve_control_topology(args)
+    except ValueError as exc:
+        return {"status": "fail", "scope": "feature", "dry_run": bool(args.dry_run), "error": str(exc)}
+    control_default_branch = resolve_default_branch(control_repo) if control_repo else "main"
+    plan_branch = control_default_branch if control_topology == "flat" else f"{feature_id}-plan"
 
     if not track:
         try:
@@ -1115,7 +1340,8 @@ def cmd_create(args: argparse.Namespace) -> dict:
             (
                 f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/"
                 f"scripts/git-orchestration-ops.py create-feature-branches "
-                f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} --feature-id {shlex.quote(feature_id)}"
+                f"--governance-repo {shlex.quote(governance_repo)} --repo {shlex.quote(control_repo)} "
+                f"--feature-id {shlex.quote(feature_id)} --control-topology {shlex.quote(control_topology)}"
             ),
             (
                 f"uv run --script {{project-root}}/lens.core/_bmad/lens-work/skills/lens-switch/"
@@ -1152,6 +1378,9 @@ def cmd_create(args: argparse.Namespace) -> dict:
             "scope": "feature",
             "feature_id": feature_id,
             "feature_slug": feature_slug,
+            "control_topology": control_topology,
+            "control_default_branch": control_default_branch,
+            "plan_branch": plan_branch,
             "domain": domain,
             "service": service,
             "track": track,
@@ -1221,7 +1450,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
     # Re-read index (timestamp may differ) and append entry
     index_data = _load_feature_index(gov_path)
     new_entry = _make_index_entry(
-        feature_id, feature_slug, domain, service, name, track, username, starting_phase, timestamp
+        feature_id, feature_slug, domain, service, name, track, username, starting_phase, timestamp, plan_branch
     )
     index_data["features"].append(new_entry)
     try:
@@ -1258,17 +1487,24 @@ def cmd_create(args: argparse.Namespace) -> dict:
                 ),
             }
 
-    is_express = track == "express"
     gh_commands: list[str] = []
-    if not is_express and control_repo:
-        gh_commands = [
-            (
-                f"gh pr create --repo {shlex.quote(control_repo)} "
-                f"--head {shlex.quote(f'{feature_id}-plan')} --base {shlex.quote(feature_id)} "
-                f"--title {shlex.quote(f'[plan] {feature_id} — planning artifacts')} "
-                f"--body {shlex.quote('Auto-created by lens-init-feature')}"
+    planning_pr_followup_commands: list[str] = []
+    planning_pr_deferred_reason: str | None = None
+    if control_repo:
+        if control_topology == "flat":
+            planning_pr_deferred_reason = "Planning PR creation is not required for flat control topology."
+        else:
+            planning_pr_followup_commands = [
+                (
+                    f"gh pr create --repo {shlex.quote(control_repo)} "
+                    f"--head {shlex.quote(f'{feature_id}-plan')} --base {shlex.quote(feature_id)} "
+                    f"--title {shlex.quote(f'[plan] {feature_id} — planning artifacts')} "
+                    f"--body {shlex.quote('Auto-created by lens-init-feature')}"
+                )
+            ]
+            planning_pr_deferred_reason = (
+                "Planning PR creation is deferred until the plan branch contains planning commits."
             )
-        ]
 
     return {
         "status": "pass",
@@ -1276,14 +1512,19 @@ def cmd_create(args: argparse.Namespace) -> dict:
         "scope": "feature",
         "feature_id": feature_id,
         "feature_slug": feature_slug,
+        "control_topology": control_topology,
+        "control_default_branch": control_default_branch,
+        "plan_branch": plan_branch,
         "domain": domain,
         "service": service,
         "track": track,
         "starting_phase": starting_phase,
         "recommended_command": "/next",
         "router_command": "/next",
-        "planning_pr_created": bool(gh_commands),
+        "planning_pr_created": False,
         "gh_commands": gh_commands,
+        "planning_pr_followup_commands": planning_pr_followup_commands,
+        "planning_pr_deferred_reason": planning_pr_deferred_reason,
         "path": str(feature_yaml_path),
         "summary_path": str(summary_md_path),
         "index_path": str(index_path),
@@ -1295,6 +1536,145 @@ def cmd_create(args: argparse.Namespace) -> dict:
             governance_commit_sha=governance_commit_sha,
         ),
         "remaining_commands": remaining_commands,
+    }
+
+
+def cmd_read_context(args: argparse.Namespace) -> dict:
+    context_path = Path(args.personal_folder) / "context.yaml"
+    if not context_path.exists():
+        return {
+            "status": "fail",
+            "error": "context_missing",
+            "path": str(context_path),
+        }
+
+    try:
+        data = yaml.safe_load(context_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        return {"status": "fail", "error": f"Failed to read context.yaml: {exc}", "path": str(context_path)}
+
+    return {
+        "status": "pass",
+        "domain": data.get("domain"),
+        "service": data.get("service"),
+        "updated_at": data.get("updated_at"),
+        "updated_by": data.get("updated_by"),
+        "path": str(context_path),
+    }
+
+
+def cmd_fetch_context(args: argparse.Namespace) -> dict:
+    gov_path = Path(args.governance_repo)
+    if not gov_path.is_dir():
+        return {"status": "fail", "error": f"Governance repo not found: {args.governance_repo}"}
+
+    try:
+        index_data, index_exists = load_existing_feature_index(gov_path)
+    except (OSError, yaml.YAMLError) as exc:
+        return {"status": "fail", "error": f"Failed to read feature-index.yaml: {exc}"}
+
+    if not index_exists:
+        return {"status": "fail", "error": "feature-index.yaml not found"}
+
+    features = index_data.get("features") or []
+    if not isinstance(features, list):
+        return {"status": "fail", "error": "feature-index.yaml features must be a list"}
+
+    index_by_id = feature_index_by_id(features)
+    target = index_by_id.get(args.feature_id)
+    if target is None:
+        return {"status": "fail", "error": f"Feature '{args.feature_id}' not found in feature-index.yaml"}
+
+    target_feature_dir = feature_dir_from_entry(str(gov_path), target)
+    target_feature_path = target_feature_dir / "feature.yaml"
+    if not target_feature_path.exists():
+        return {"status": "fail", "error": f"feature.yaml not found for '{args.feature_id}'"}
+
+    try:
+        feature_data = yaml.safe_load(target_feature_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        return {"status": "fail", "error": f"Failed to read feature.yaml: {exc}"}
+
+    depth = "summaries" if args.depth == "summary" else args.depth
+    target_domain = str(feature_data.get("domain") or target.get("domain") or "").strip().lower()
+    target_service = str(feature_data.get("service") or target.get("service") or "").strip().lower()
+    target_id = feature_entry_id(target)
+
+    dependencies = feature_data.get("dependencies") or {}
+    related_features = feature_data.get("related_features") or target.get("related_features") or {}
+    depends_on_ids = list(dependencies.get("depends_on") or related_features.get("depends_on") or [])
+    blocks_ids = list(dependencies.get("blocks") or related_features.get("blocks") or [])
+
+    related = [
+        feature
+        for feature in features
+        if str(feature.get("domain") or "").strip().lower() == target_domain
+        and feature_entry_id(feature) != target_id
+    ]
+    depends_on = [index_by_id[feature_id] for feature_id in depends_on_ids if feature_id in index_by_id]
+    blocks = [index_by_id[feature_id] for feature_id in blocks_ids if feature_id in index_by_id]
+
+    explicit_service_refs = unique_paths([
+        service.strip().lower()
+        for service in getattr(args, "service_ref", [])
+        if service.strip()
+    ])
+    service_ref_texts = [text.strip() for text in getattr(args, "service_ref_text", []) if text.strip()]
+    candidate_services = [
+        service_name
+        for service_name in available_service_names(str(gov_path), features, target_domain)
+        if service_name != target_service
+    ]
+    detected_service_refs = detect_service_refs_from_texts(service_ref_texts, candidate_services)
+    service_refs = unique_paths(explicit_service_refs + detected_service_refs)
+
+    related_paths: list[str] = []
+    dependency_paths: list[str] = []
+    blocking_paths: list[str] = []
+    for feature in related:
+        related_paths.extend(collect_feature_context_paths(str(gov_path), feature, "summaries"))
+    for feature in depends_on:
+        dependency_paths.extend(collect_feature_context_paths(str(gov_path), feature, "full"))
+    for feature in blocks:
+        blocking_paths.extend(collect_feature_context_paths(str(gov_path), feature, "full"))
+
+    if depth == "full":
+        for feature in related:
+            related_paths.extend(collect_feature_context_paths(str(gov_path), feature, "full"))
+
+    service_context_paths: list[str] = []
+    missing_service_refs: list[str] = []
+    for service_name in service_refs:
+        matched_paths = collect_service_context_paths(str(gov_path), service_name, target_id, target_domain)
+        if matched_paths:
+            service_context_paths.extend(matched_paths)
+        else:
+            missing_service_refs.append(service_name)
+
+    summaries = unique_paths(related_paths)
+    full_docs = unique_paths(dependency_paths + blocking_paths + service_context_paths)
+    flat_context_paths = unique_paths(summaries + full_docs)
+
+    return {
+        "status": "pass",
+        "feature_id": args.feature_id,
+        "depth": depth,
+        "related": [feature_entry_id(feature) for feature in related],
+        "depends_on": [feature_entry_id(feature) for feature in depends_on],
+        "blocks": [feature_entry_id(feature) for feature in blocks],
+        "service_refs": service_refs,
+        "detected_service_refs": detected_service_refs,
+        "missing_service_refs": missing_service_refs,
+        "summaries": summaries,
+        "full_docs": full_docs,
+        "context_paths": flat_context_paths,
+        "relationship_context_paths": {
+            "related": unique_paths(related_paths),
+            "depends_on": unique_paths(dependency_paths),
+            "blocks": unique_paths(blocking_paths),
+            "services": unique_paths(service_context_paths),
+        },
+        "service_context_paths": unique_paths(service_context_paths),
     }
 
 
@@ -1338,8 +1718,24 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--description", default="")
     create.add_argument("--track")
     create.add_argument("--username", default="")
+    create.add_argument("--control-topology", choices=CONTROL_TOPOLOGIES, default=None)
     create.add_argument("--execute-governance-git", action="store_true")
     create.add_argument("--dry-run", action="store_true")
+
+    read_context = subparsers.add_parser("read-context", help="Read active domain/service context")
+    read_context.add_argument("--personal-folder", required=True)
+
+    fetch_context = subparsers.add_parser("fetch-context", help="Fetch cross-feature context")
+    fetch_context.add_argument("--governance-repo", required=True)
+    fetch_context.add_argument("--feature-id", required=True)
+    fetch_context.add_argument(
+        "--depth",
+        default="summaries",
+        choices=("summary", "summaries", "full"),
+        help="Context depth: summaries (default) or full",
+    )
+    fetch_context.add_argument("--service-ref", action="append", default=[])
+    fetch_context.add_argument("--service-ref-text", action="append", default=[])
 
     return parser
 
@@ -1354,6 +1750,10 @@ def main() -> int:
         result = cmd_create_domain(args)
     elif args.command == "create-service":
         result = cmd_create_service(args)
+    elif args.command == "read-context":
+        result = cmd_read_context(args)
+    elif args.command == "fetch-context":
+        result = cmd_fetch_context(args)
     else:
         result = {"status": "fail", "error": f"Unsupported command: {args.command}"}
 

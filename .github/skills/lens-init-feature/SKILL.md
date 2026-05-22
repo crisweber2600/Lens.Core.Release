@@ -1,13 +1,17 @@
 ---
 name: lens-init-feature
-description: Feature initialization orchestrator — creates 2-branch topology, feature.yaml, PR, and feature-index entry. Use when starting a new feature from scratch.
+description: Feature initialization orchestrator — creates topology-aware control branches, feature.yaml, PR guidance, and feature-index entry. Use when starting a new feature from scratch.
 ---
+
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
 
 # Feature Initializer
 
 ## Overview
 
-This skill orchestrates the full initialization of a new feature in the Lens governance framework. It creates the two-branch topology (`{featureId}` and `{featureId}-plan`) in the **control repo**, commits `feature.yaml` to governance `main`, registers the feature in `feature-index.yaml` on `main`, creates a `summary.md` stub on `main`, and opens a PR from the plan branch to the feature branch in the control repo when the selected track uses an immediate planning PR. New features persist a canonical composite `featureId` plus a short `featureSlug` so control-repo branches stay unique across domains/services while target-repo working branches can stay concise. The governance repo stays on `main` at all times; no feature branches are created there. For the `express` track, the planning PR is deferred until planning artifacts exist on the plan branch.
+This skill orchestrates the full initialization of a new feature in the Lens governance framework. It prepares the topology-aware control docs branch (the control repo default branch for `flat`, or `{featureId}` plus `{featureId}-plan`/`{featureId}-dev` for legacy `3-branch`), commits `feature.yaml` to governance `main`, registers the feature in `feature-index.yaml` on `main`, and creates a `summary.md` stub on `main`. New features persist a canonical composite `featureId` plus a short `featureSlug` so target-repo working branches can stay concise. The governance repo stays on `main` at all times; no feature branches are created there. Planning PR creation is not required in `flat` and is deferred for legacy plan branches until planning artifacts exist.
 
 **Progressive disclosure:** you ask only for feature name, domain, and service upfront. Then you derive the canonical featureId, load track choices from `lifecycle.yaml`, and require an explicit track selection before creation. Username and repo paths are resolved from `user-profile.md`, config, and git config.
 
@@ -44,13 +48,13 @@ You are the entry point for all feature work in the Lens system. You orchestrate
 |------|-----------|
 | **featureId** | Unique identifier for the feature. Always derived as `{domain}-{service}-{featureSlug}` (e.g., `platform-identity-auth-refresh`) and treated as read-only user-facing identity. |
 | **featureSlug** | Short feature-local slug derived from feature name (e.g., `auth-refresh`); preserved for concise target-repo working branches |
-| **plan branch** | `{featureId}-plan` — control repo planning branch for code work and draft artifacts |
-| **feature branch** | `{featureId}` — the base branch in the control repo for all development work on this feature |
+| **plan branch** | Topology-aware planning branch. In `flat`, this aliases to the control repo default branch. In legacy `3-branch`, it is `{featureId}-plan`. |
+| **feature branch** | Legacy `3-branch` base branch `{featureId}` in the control repo; not created for `flat` |
 | **feature-index.yaml** | Registry file at `{governance-repo}/feature-index.yaml` on `main`; always reflects the current set of features |
 | **summary.md** | Stub file at `{governance-repo}/features/{domain}/{service}/{featureId}/summary.md` on `main`; mechanically extracted from frontmatter; updated by planning skills |
 | **governance repo** | Lens-owned metadata repository; holds feature.yaml, feature-index.yaml, user profiles, themes, and planning artifacts — all on `main` (never feature branches) |
 | **control repo** | Source code repository; Lens interacts with it but does not own it; defaults to governance repo if not separately configured |
-| **2-branch topology** | The feature branch + plan branch pair that forms the unit of feature work |
+| **control topology** | `flat` uses the control repo default branch; legacy `3-branch` uses base, plan, and dev control branches |
 | **docs.path** | Control-repo artifact output folder: `docs/{domain}/{service}/{featureId}` — populated in feature.yaml at init time; used by all workflows as the primary docs path |
 | **governance_docs_path** | Governance-repo docs subfolder: `features/{domain}/{service}/{featureId}/docs` — populated in feature.yaml at init time; used by document-project skill to mirror docs into the governance repo |
 
@@ -200,7 +204,7 @@ uv run scripts/init-feature-ops.py read-context \
 - stages, commits, and pushes governance artifacts automatically on `main`
 - returns `governance_git_commands`, `remaining_git_commands`, `remaining_commands`, `governance_git_executed`, and `governance_commit_sha`
 
-Feature init also returns branch and activation follow-up commands when callers pass a separate `--control-repo`; omitted or governance-equivalent control repo values intentionally skip those commands so the governance repo stays on `main`. The git commands route through `lens-git-orchestration create-feature-branches` so `{featureId}` is created from the control repo default branch before `{featureId}-plan` is created. The activation command then routes through `lens-switch switch` so the control repo lands on `{featureId}-plan` and local Lens context is updated.
+Feature init also returns branch and activation follow-up commands when callers pass a separate `--control-repo`; omitted or governance-equivalent control repo values intentionally skip those commands so the governance repo stays on `main`. The git commands route through `lens-git-orchestration create-feature-branches` with the resolved `control_topology`. The activation command then routes through `lens-switch switch` so the control repo lands on the topology-correct branch and local Lens context is updated.
 
 `git_commands` remains the full planned git-only command list for compatibility. When governance git already ran, callers should surface `remaining_commands` plus any returned `gh_commands` to the user. If a caller still needs the split view, `remaining_git_commands` excludes the post-creation activation step while `control_repo_activation_commands` exposes it directly.
 
@@ -215,7 +219,7 @@ Both `create-domain` and `create-service` accept an optional `--docs-root` argum
 - `create-domain` creates `docs/{domain}/.gitkeep`
 - `create-service` creates `docs/{domain}/{service}/.gitkeep`
 - The returned JSON includes `docs_path` when the scaffold was created or planned
-- The returned JSON includes `related_service_clone_path` and `related_service_clone_guidance`; callers should instruct users to clone related service repositories into `TargetProjects/{domain}/{service}` before `/new-feature`
+- The returned JSON includes `target_projects_path`, `related_service_clone_path`, and `related_service_clone_guidance`; callers should instruct users to clone related service repositories into repo-named subfolders under `TargetProjects/{domain}/{service}` before `/new-feature`
 - `workspace_git_commands` lists the control-repo scaffold publish commands; for `create-domain` with `--execute-governance-git`, those commands are executed automatically and `remaining_git_commands` is empty on success
 - `governance_git_commands` exposes the governance publish sequence, and `governance_commit_sha` identifies the pushed commit when `--execute-governance-git` succeeds
 

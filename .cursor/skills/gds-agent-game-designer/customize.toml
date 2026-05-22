@@ -45,15 +45,10 @@ skill = "gds-create-game-brief"
 
 [[agent.menu]]
 code = "GDD"
-description = "Create a Game Design Document"
-skill = "gds-create-gdd"
+description = "Create, update, or validate a Game Design Document"
+skill = "gds-gdd"
 
 [[agent.menu]]
 code = "ND"
 description = "Design narrative elements and story"
 skill = "gds-create-narrative"
-
-[[agent.menu]]
-code = "QP"
-description = "Rapid game prototyping — test mechanics and ideas quickly"
-skill = "gds-quick-prototype"

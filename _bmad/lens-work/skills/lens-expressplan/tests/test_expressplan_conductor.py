@@ -39,7 +39,7 @@ class TestExpressPlanContract:
         assert delegation_index == -1, "Activation gates should not delegate before the execution contract"
         assert "Express-only gate before any delegation" in activation
         assert "feature.yaml.track" in activation
-        assert "Constitution permission check" in activation
+        assert "Constitution permission and hard gate check" in activation
         assert "permitted_tracks" in activation
 
     def test_activation_restores_mode_resolution_and_interactive_gate(self):

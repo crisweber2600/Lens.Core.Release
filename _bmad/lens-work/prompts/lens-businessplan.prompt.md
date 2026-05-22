@@ -2,6 +2,10 @@
 description: 'BusinessPlan phase — PRD creation and UX design for a feature'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # /businessplan
 
 Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-businessplan/SKILL.md` and execute it.

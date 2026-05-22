@@ -3,6 +3,10 @@ name: lens-adversarial-review
 description: Lifecycle adversarial review gate with a party-mode blind-spot challenge for Lens planning phases.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens Adversarial Review - Lifecycle Planning Gate
 
 ## Overview

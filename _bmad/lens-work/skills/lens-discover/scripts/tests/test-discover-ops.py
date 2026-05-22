@@ -270,6 +270,24 @@ def test_validate_passes_well_formed_inventory(tmp_path: Path):
     assert result == {"valid": True, "errors": []}
 
 
+def test_validate_passes_domain_service_repo_subfolder(tmp_path: Path):
+    inventory = tmp_path / "repo-inventory.yaml"
+    inventory.write_text(
+        "repositories:\n"
+        "  - name: weberbot.bmad (azure-devops context)\n"
+        "    domain: azuredevopsextensions\n"
+        "    service: bmad-integration\n"
+        "    remote_url: https://github.com/crisweber2600/weberbot.bmad.git\n"
+        "    local_path: TargetProjects/azuredevopsextensions/bmad-integration/weberbot.bmad\n",
+        encoding="utf-8",
+    )
+
+    result, code = run_validate(inventory)
+
+    assert code == 0
+    assert result == {"valid": True, "errors": []}
+
+
 def test_validate_fails_missing_name(tmp_path: Path):
     inventory = tmp_path / "repo-inventory.yaml"
     inventory.write_text(
@@ -285,6 +303,67 @@ def test_validate_fails_missing_name(tmp_path: Path):
     assert len(result["errors"]) == 1
     assert result["errors"][0]["index"] == 0
     assert "name" in result["errors"][0]["issue"]
+
+
+def test_validate_fails_domain_service_container_path(tmp_path: Path):
+    inventory = tmp_path / "repo-inventory.yaml"
+    inventory.write_text(
+        "repositories:\n"
+        "  - name: weberbot.bmad (azure-devops context)\n"
+        "    domain: azuredevopsextensions\n"
+        "    service: bmad-integration\n"
+        "    remote_url: https://github.com/crisweber2600/weberbot.bmad.git\n"
+        "    local_path: TargetProjects/azuredevopsextensions/bmad-integration\n",
+        encoding="utf-8",
+    )
+
+    result, code = run_validate(inventory)
+
+    assert code == 1
+    assert result["valid"] is False
+    assert result["errors"][0]["local_path"] == "TargetProjects/azuredevopsextensions/bmad-integration"
+    assert "include a repo subfolder" in result["errors"][0]["issue"]
+
+
+def test_validate_fails_domain_service_path_traversal(tmp_path: Path):
+    inventory = tmp_path / "repo-inventory.yaml"
+    inventory.write_text(
+        "repositories:\n"
+        "  - name: weberbot.bmad (azure-devops context)\n"
+        "    domain: azuredevopsextensions\n"
+        "    service: bmad-integration\n"
+        "    remote_url: https://github.com/crisweber2600/weberbot.bmad.git\n"
+        "    local_path: TargetProjects/azuredevopsextensions/bmad-integration/../other-repo\n",
+        encoding="utf-8",
+    )
+
+    result, code = run_validate(inventory)
+
+    assert code == 1
+    assert result["valid"] is False
+    assert result["errors"][0]["local_path"] == (
+        "TargetProjects/azuredevopsextensions/bmad-integration/../other-repo"
+    )
+    assert "must not contain path traversal segments" in result["errors"][0]["issue"]
+
+
+def test_validate_fails_domain_service_missing_declared_local_path(tmp_path: Path):
+    inventory = tmp_path / "repo-inventory.yaml"
+    inventory.write_text(
+        "repositories:\n"
+        "  - name: weberbot.bmad (azure-devops context)\n"
+        "    domain: azuredevopsextensions\n"
+        "    service: bmad-integration\n"
+        "    remote_url: https://github.com/crisweber2600/weberbot.bmad.git\n",
+        encoding="utf-8",
+    )
+
+    result, code = run_validate(inventory)
+
+    assert code == 1
+    assert result["valid"] is False
+    assert "local_path" not in result["errors"][0]
+    assert result["errors"][0]["issue"] == "missing local_path/local_paths for domain/service entry"
 
 
 def test_noop_run_produces_unchanged_hash(tmp_path: Path):

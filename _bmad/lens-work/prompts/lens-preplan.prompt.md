@@ -2,6 +2,10 @@
 description: 'PrePlan phase — brainstorm, research, and product brief for a feature.'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # /preplan
 
 Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-preplan/SKILL.md` and follow it exactly.

@@ -8,6 +8,13 @@
       "phaseHints": ["preplan"],
       "entryPath": "skills/bmad-brainstorming/SKILL.md"
     },
+    "bmad-cis": {
+      "displayName": "BMAD CIS Brainstorming Coach",
+      "contextMode": "feature-optional",
+      "outputMode": "planning-docs",
+      "phaseHints": ["preplan"],
+      "entryPath": "skills/bmad-cis-agent-brainstorming-coach/SKILL.md"
+    },
     "bmad-product-brief": {
       "displayName": "BMAD Product Brief",
       "contextMode": "feature-required",

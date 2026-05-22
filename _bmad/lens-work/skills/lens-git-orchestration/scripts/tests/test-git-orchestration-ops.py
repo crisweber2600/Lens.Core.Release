@@ -345,6 +345,33 @@ class TestCreateFeatureBranches:
         assert ops.branch_exists(str(local), "develop-feat-plan")
         assert ops.branch_exists(str(local), "develop-feat-dev")
 
+    def test_flat_topology_uses_default_branch_without_feature_branches(self, repo_pair):
+        local, remote = repo_pair
+        yaml_path = write_feature_yaml(local, "flat-feat")
+        subprocess.run(["git", "-C", str(local), "add", str(yaml_path)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "commit", "-m", "add feature.yaml"], check=True, capture_output=True)
+
+        result, code = ops.cmd_create_feature_branches(_no_args(
+            governance_repo=str(local),
+            feature_id="flat-feat",
+            repo=None,
+            default_branch=None,
+            dry_run=False,
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["default_branch"] == "main"
+        assert result["base_branch"] == "main"
+        assert result["plan_branch"] == "main"
+        assert result["dev_branch"] == "main"
+        assert result["created_branches"] == []
+        assert result["no_op"] is True
+        assert not ops.branch_exists(str(local), "flat-feat")
+        assert not ops.branch_exists(str(local), "flat-feat-plan")
+        assert not ops.branch_exists(str(local), "flat-feat-dev")
+
 
 # ---------------------------------------------------------------------------
 # cmd_commit_artifacts
@@ -453,6 +480,31 @@ class TestCommitArtifacts:
         # File should NOT be committed — git status should still show it
         status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True)
         assert "artifact-dry.md" in status.stdout
+
+    def test_flat_topology_commits_planning_artifacts_on_default_branch(self, repo):
+        subprocess.run(["git", "-C", str(repo), "checkout", "main"], check=True, capture_output=True)
+        (repo / "business-plan.md").write_text("business")
+
+        result, code = ops.cmd_commit_artifacts(_no_args(
+            repo=str(repo),
+            governance_repo=str(repo),
+            feature_id="flat-commit",
+            files=["business-plan.md"],
+            description="flat planning artifact",
+            phase="expressplan",
+            phase_step=None,
+            push=False,
+            no_confirm=True,
+            dry_run=False,
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["default_branch"] == "main"
+        assert result["branch"] == "main"
+        assert result["routing"]["expected_branch"] == "main"
+        assert result["routing"]["routing_rule"] == "flat_default_branch"
 
 
 # ---------------------------------------------------------------------------
@@ -711,6 +763,25 @@ class TestMergePlanDirect:
         ))
         assert code == 0
         assert result["plan_branch_deleted"] is False
+
+    def test_flat_topology_merge_plan_noops(self, repo):
+        result, code = ops.cmd_merge_plan(_no_args(
+            governance_repo=str(repo),
+            feature_id="flat-merge",
+            repo=None,
+            strategy="pr",
+            auto_merge=False,
+            delete_after_merge=False,
+            dry_run=False,
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["default_branch"] == "main"
+        assert result["base_branch"] == "main"
+        assert result["plan_branch"] == "main"
+        assert result["no_op"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -1229,7 +1300,9 @@ class TestCLIIntegration:
         assert proc.returncode == 0
         data = json.loads(proc.stdout)
         assert data["dry_run"] is True
-        assert data["base_branch"] == "cli-test-feat"
+        assert data["control_topology"] == "flat"
+        assert data["base_branch"] == "main"
+        assert data["created_branches"] == []
 
     def test_invalid_feature_id_exit_1(self, repo):
         proc = subprocess.run(
@@ -1413,6 +1486,11 @@ class TestTopologyAndRouting:
         assert branch == "route-feat"
         assert rule == "finalizeplan_step_3_to_feature"
 
+    def test_branch_for_phase_write_flat_routes_to_default_branch(self):
+        branch, rule = ops.branch_for_phase_write("route-feat", "expressplan", None, "flat", "main")
+        assert branch == "main"
+        assert rule == "flat_default_branch"
+
     def test_commit_requires_three_branch_topology(self, repo):
         make_branch(repo, "route-feat")
         make_branch(repo, "route-feat-plan")
@@ -1544,6 +1622,28 @@ class TestPhaseStartValidation:
         assert result["track"] == "express"
         assert result["track_canonical"] == "express"
         assert result["constitution_gate"] == "pass"
+
+    def test_phase_start_accepts_flat_topology_default_branch(self, repo):
+        write_feature_yaml(repo, "phase-flat", phase="expressplan", status="active")
+        feature_yaml = repo / "features" / "platform" / "api" / "phase-flat" / "feature.yaml"
+        payload = yaml.safe_load(feature_yaml.read_text(encoding="utf-8"))
+        payload["track"] = "express"
+        feature_yaml.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+        subprocess.run(["git", "-C", str(repo), "checkout", "main"], check=True, capture_output=True)
+
+        result, code = ops.cmd_validate_phase_start(_no_args(
+            governance_repo=str(repo),
+            repo=str(repo),
+            feature_id="phase-flat",
+            expected_base_branch=None,
+            control_topology="flat",
+        ))
+
+        assert code == 0
+        assert result["control_topology"] == "flat"
+        assert result["default_branch"] == "main"
+        assert result["expected_base_branch"] == "main"
+        assert result["required_branches"] == ["main"]
 
 
 class TestCleanupBranch:
@@ -1924,6 +2024,204 @@ class TestSetFeatureBaseBranch:
         assert result["error"] == "feature_base_branch_missing"
         assert "next_step" in result
         assert "set-feature-base-branch" in result["next_step"]
+
+
+# ---------------------------------------------------------------------------
+# _ensure_delete_branch_on_merge
+# ---------------------------------------------------------------------------
+
+class TestEnsureDeleteBranchOnMerge:
+    """Unit tests for _ensure_delete_branch_on_merge."""
+
+    def _make_gh(self, outcomes: list[tuple[int, str, str]]):
+        """Return a fake subprocess.run that returns outcomes in order."""
+        call_count = [0]
+
+        class FakeResult:
+            def __init__(self, rc, out, err):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+
+        def fake_run(cmd, *, cwd=None, capture_output=True, text=True, check=False, **_):
+            idx = min(call_count[0], len(outcomes) - 1)
+            rc, out, err = outcomes[idx]
+            call_count[0] += 1
+            return FakeResult(rc, out, err)
+
+        return fake_run
+
+    def test_already_enabled_returns_pass(self, tmp_path, monkeypatch):
+        """Returns pass without patching when delete_branch_on_merge is already true."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        # git remote get-url → GitHub URL; gh api check → 'true'
+        call_log = []
+
+        class FakeResult:
+            def __init__(self, rc, out, err):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+
+        def fake_run(cmd, **_):
+            call_log.append(cmd)
+            if cmd[:3] == ["git", "remote", "get-url"]:
+                return FakeResult(0, "https://github.com/owner/myrepo.git", "")
+            if cmd[:2] == ["gh", "api"] and "--jq" in cmd:
+                return FakeResult(0, "true\n", "")
+            raise AssertionError(f"Unexpected command: {cmd}")
+
+        monkeypatch.setattr(ops.subprocess, "run", fake_run)
+        result = ops._ensure_delete_branch_on_merge(str(repo), dry_run=False)
+
+        assert result["status"] == "pass"
+        assert result["delete_branch_on_merge"] is True
+        assert result["enabled"] is False
+        assert result["repo_slug"] == "owner/myrepo"
+        # PATCH should not have been called
+        assert not any(cmd[:2] == ["gh", "api"] and "PATCH" in cmd for cmd in call_log)
+
+    def test_disabled_is_enabled_automatically(self, tmp_path, monkeypatch):
+        """Enables delete_branch_on_merge when it is false and reports enabled=True."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        call_log = []
+
+        class FakeResult:
+            def __init__(self, rc, out, err):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+
+        def fake_run(cmd, **_):
+            call_log.append(cmd)
+            if cmd[:3] == ["git", "remote", "get-url"]:
+                return FakeResult(0, "git@github.com:owner/myrepo.git", "")
+            if cmd[:2] == ["gh", "api"] and "--jq" in cmd:
+                return FakeResult(0, "false\n", "")
+            if cmd[:2] == ["gh", "api"] and "-X" in cmd and "PATCH" in cmd:
+                return FakeResult(0, "{}", "")
+            raise AssertionError(f"Unexpected command: {cmd}")
+
+        monkeypatch.setattr(ops.subprocess, "run", fake_run)
+        result = ops._ensure_delete_branch_on_merge(str(repo), dry_run=False)
+
+        assert result["status"] == "pass"
+        assert result["delete_branch_on_merge"] is True
+        assert result["enabled"] is True
+        assert result["repo_slug"] == "owner/myrepo"
+
+    def test_dry_run_returns_dry_run_status(self, tmp_path, monkeypatch):
+        """Dry-run mode returns status=dry_run without making any gh API calls."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        call_log = []
+
+        class FakeResult:
+            def __init__(self, rc, out, err):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+
+        def fake_run(cmd, **_):
+            call_log.append(cmd)
+            if cmd[:3] == ["git", "remote", "get-url"]:
+                return FakeResult(0, "https://github.com/owner/myrepo.git", "")
+            raise AssertionError(f"gh command should not be called in dry-run: {cmd}")
+
+        monkeypatch.setattr(ops.subprocess, "run", fake_run)
+        result = ops._ensure_delete_branch_on_merge(str(repo), dry_run=True)
+
+        assert result["status"] == "dry_run"
+        assert result["repo_slug"] == "owner/myrepo"
+
+    def test_non_github_remote_returns_skipped(self, tmp_path, monkeypatch):
+        """Returns skipped when origin URL is not a GitHub URL."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        class FakeResult:
+            def __init__(self, rc, out, err):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+
+        def fake_run(cmd, **_):
+            if cmd[:3] == ["git", "remote", "get-url"]:
+                return FakeResult(0, "https://gitlab.com/owner/myrepo.git", "")
+            raise AssertionError(f"Unexpected command for non-GitHub remote: {cmd}")
+
+        monkeypatch.setattr(ops.subprocess, "run", fake_run)
+        result = ops._ensure_delete_branch_on_merge(str(repo), dry_run=False)
+
+        assert result["status"] == "skipped"
+        assert result["repo_slug"] is None
+
+    def test_gh_api_check_failure_returns_warn(self, tmp_path, monkeypatch):
+        """Returns warn when the gh api check call fails (non-blocking)."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        class FakeResult:
+            def __init__(self, rc, out, err):
+                self.returncode = rc
+                self.stdout = out
+                self.stderr = err
+
+        def fake_run(cmd, **_):
+            if cmd[:3] == ["git", "remote", "get-url"]:
+                return FakeResult(0, "https://github.com/owner/myrepo.git", "")
+            if cmd[:2] == ["gh", "api"]:
+                return FakeResult(1, "", "API error")
+            raise AssertionError(f"Unexpected command: {cmd}")
+
+        monkeypatch.setattr(ops.subprocess, "run", fake_run)
+        result = ops._ensure_delete_branch_on_merge(str(repo), dry_run=False)
+
+        assert result["status"] == "warn"
+        assert result["enabled"] is False
+
+    def test_prepare_dev_branch_includes_dbm_check(self, tmp_path, monkeypatch):
+        """prepare-dev-branch output includes delete_branch_on_merge_check field."""
+        project_root = tmp_path
+        target_root = project_root / "TargetProjects" / "lens-dev"
+        target_root.mkdir(parents=True)
+        local, remote = init_repo_pair(target_root, default_branch="main")
+        # Add develop branch to match feature_base_branch in inventory
+        subprocess.run(["git", "-C", str(local), "checkout", "-b", "develop"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "push", "--set-upstream", "origin", "develop"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(local), "checkout", "main"], check=True, capture_output=True)
+        governance_repo = write_repo_inventory(project_root, local, feature_base_branch="develop")
+        write_feature_yaml(governance_repo, "test-feature")
+
+        # Stub _ensure_delete_branch_on_merge to avoid real gh API calls
+        monkeypatch.setattr(
+            ops,
+            "_ensure_delete_branch_on_merge",
+            lambda repo_path, *, dry_run: {
+                "status": "pass",
+                "repo_slug": "owner/testrepo",
+                "delete_branch_on_merge": True,
+                "enabled": False,
+                "detail": "already enabled",
+            },
+        )
+
+        result, code = ops.cmd_prepare_dev_branch(_no_args(
+            repo=str(local),
+            feature_id="test-feature",
+            feature_slug=None,
+            mode="feature-id",
+            username=None,
+            base_branch=None,
+            governance_repo=str(governance_repo),
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert "delete_branch_on_merge_check" in result
+        assert result["delete_branch_on_merge_check"]["status"] == "pass"
 
 
 if __name__ == "__main__":

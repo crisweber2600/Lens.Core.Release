@@ -84,31 +84,32 @@ def test_phase_entry_validates_finalizeplan_complete():
     )
 
 
-def test_control_dev_branch_activation_precedes_phase_entry_validation():
-    """Conductor switches to {feature_id}-dev before story validation reads feature docs."""
+def test_control_feature_docs_branch_activation_precedes_phase_entry_validation():
+    """Conductor switches to the topology-correct docs branch before story validation."""
     text = _skill_text()
-    activation_index = text.find("## Control Dev Branch Activation")
+    activation_index = text.find("## Control Feature Docs Branch Activation")
     validation_index = text.find("## Phase Entry Validation")
 
-    assert activation_index != -1, "SKILL.md must document Control Dev Branch Activation"
+    assert activation_index != -1, "SKILL.md must document Control Feature Docs Branch Activation"
     assert validation_index != -1, "SKILL.md must document Phase Entry Validation"
     assert activation_index < validation_index, (
-        "Control dev branch activation must be documented before phase entry validation"
+        "Control feature docs branch activation must be documented before phase entry validation"
     )
     assert "{feature_id}-dev" in text
-    assert "control_dev_branch_checkout_failed" in text
+    assert "control repo default branch" in text
+    assert "control_docs_branch_checkout_failed" in text
     assert "Do not proceed to `sprint_status_missing`, `story_file_missing`" in text
 
 
-def test_control_dev_branch_pull_uses_ff_only_syntax():
-    """The pull step in Control Dev Branch Activation must use `--ff-only origin {branch}` form."""
+def test_control_docs_branch_pull_uses_ff_only_syntax():
+    """The pull step in branch activation must use `--ff-only origin {branch}` form."""
     text = _skill_text()
-    activation_start = text.find("## Control Dev Branch Activation")
+    activation_start = text.find("## Control Feature Docs Branch Activation")
     activation_end = text.find("##", activation_start + 1)
     section = text[activation_start:activation_end]
     assert "pull --ff-only origin" in section, (
-        "Control Dev Branch Activation pull step must use "
-        "`git pull --ff-only origin {control_dev_branch}` (not `origin/{branch}` ref form)"
+        "Control branch activation pull step must use "
+        "`git pull --ff-only origin {control_docs_branch}` (not `origin/{branch}` ref form)"
     )
 
 

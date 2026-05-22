@@ -3,6 +3,10 @@ name: lens-bmad-skill
 description: Lens-aware BMAD skill wrapper — resolves feature context, governance, and write boundaries then delegates to a registered BMAD skill.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # Lens BMAD Skill Wrapper
 
 ## Overview
@@ -10,6 +14,8 @@ description: Lens-aware BMAD skill wrapper — resolves feature context, governa
 This skill wraps registered BMAD skills with Lens-aware context injection. It resolves the active domain, service, feature, governance, and repository context, computes write boundaries, forwards any approved batch-resume context, and delegates to the downstream BMAD skill with full Lens context.
 
 **Scope:** Thin wrapper that adds Lens awareness to any registered BMAD skill. Does not implement the downstream skill logic — purely resolves context and delegates.
+
+BMAD core setup fields are treated as pre-approved defaults, not user-facing follow-up questions. Do not prompt for BMAD core setup fields when the downstream skill has no initialized BMAD config; forward the defaults through `lens_context.bmad_core_defaults` instead.
 
 **Args:**
 - `--skill <id>` (required): Registered skill ID from the BMAD skill registry (e.g., `bmad-brainstorming`, `bmad-create-prd`).
@@ -38,7 +44,7 @@ You are the Lens BMAD skill router. You load the skill registry, resolve Lens co
 
 ## On Activation
 
-1. Load config from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
+1. Load config from `{project-root}/lens.core/_bmad/lens-work/bmadconfig.yaml`, then merge optional workspace overrides from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml` when those files exist. Do not treat a missing workspace `config.yaml` as a blocker when the module `bmadconfig.yaml` is present.
 2. Resolve `{module_path}` as `{project-root}/lens.core/_bmad/lens-work` (the Lens module root that contains `assets/lens-bmad-skill-registry.json`).
 3. Load skill registry from `{module_path}/assets/lens-bmad-skill-registry.json`.
 4. Look up the requested `skill_id` in the registry. Reject if not found.
@@ -125,6 +131,11 @@ batch_mode: "{batch_resume_context.batch_mode ?? 'none'}"
 approved_input_documents: "{caller.approved_input_documents ?? caller.finalizeplan_input_documents ?? []}"
 finalizeplan_input_documents: "{caller.finalizeplan_input_documents ?? caller.approved_input_documents ?? []}"
 track_input_contract: "{caller.track_input_contract ?? ''}"
+bmad_core_defaults:
+  user_name: "BMad"
+  communication_language: "English"
+  document_output_language: "English"
+  planning_artifacts: "_bmad-output"
 ```
 
 If `approved_input_documents` or `finalizeplan_input_documents` is non-empty, explicitly tell the downstream skill that these files have already passed the Lens lifecycle gate for the current `track`. The downstream skill must use them as its input document list, record them in generated frontmatter such as `inputDocuments`, and avoid stopping solely because PRD-, architecture-, or UX-named files are absent from a track that does not produce them. Missing input blockers must come from the shared Lens validator result supplied by the conductor, not from generic BMAD filename assumptions.
@@ -140,6 +151,7 @@ After the handoff, stop wrapper-side orchestration. Do not ask follow-on workflo
 | Skill ID | Display Name | Context Mode | Output Mode | Phase Hints |
 |----------|-------------|--------------|-------------|-------------|
 | `bmad-brainstorming` | BMAD Brainstorming | feature-optional | planning-docs | preplan |
+| `bmad-cis` | BMAD CIS Brainstorming Coach | feature-optional | planning-docs | preplan |
 | `bmad-product-brief` | BMAD Product Brief | feature-required | planning-docs | preplan |
 | `bmad-domain-research` | BMAD Domain Research | feature-required | planning-docs | preplan |
 | `bmad-market-research` | BMAD Market Research | feature-required | planning-docs | preplan |

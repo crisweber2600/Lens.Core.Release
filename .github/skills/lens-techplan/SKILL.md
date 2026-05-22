@@ -3,6 +3,10 @@ name: lens-techplan
 description: TechPlan phase conductor for the Lens Workbench — resolves feature context, enforces publish-before-author and PRD reference gates, then delegates architecture authoring through the Lens BMAD wrapper.
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # TechPlan — Feature Technical Architecture Phase
 
 ## Overview
@@ -50,12 +54,17 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 
    If the hook exits non-zero, stop and surface the error.
 
-9. Load domain constitution for governance context by running:
+9. Load and enforce domain constitution before architecture authoring:
 
    Load `{project-root}/lens.core/_bmad/lens-work/skills/lens-constitution/SKILL.md` and invoke:
    `lens-constitution resolve --governance-dir {governance_repo}`
 
-   If the constitution is missing, note it and continue.
+   If the constitution fails to resolve (missing required org level or parse error), stop immediately and report: "Constitution resolution failed for domain={domain} service={service}. Hard gate enforcement requires a valid constitution — run /new-domain or /new-service to scaffold missing levels." Do not continue to architecture authoring.
+
+   **Constitution Hard Gate Enforcement:** After resolving the constitution, extract all hard-gate requirements from the full resolved output — both structured fields (`gate_mode: hard`, `required_artifacts`, `enforce_stories`, `enforce_review`) and all prose articles. These requirements are **mandatory pre-authoring constraints** for architecture authoring. Before delegating in step 11:
+   - Display the applicable hard-gate requirements to the operator.
+   - Pass the full resolved constitution prose as required context to the authoring delegate in step 11.
+   - If the planned architecture artifact or delegation would violate any hard-gate requirement, stop and report the violation list. Do not delegate and do not write any artifact until all violations are resolved.
 
 10. Verify that the businessplan adversarial review artifact exists with `status: responses-recorded`.
 
@@ -71,10 +80,33 @@ You are the TechPlan phase conductor. You orchestrate the technical planning pha
 
     Pass context: `featureId`, `prd_path`, `staged_docs_path`, `governance_repo`.
 
-12. After architecture authoring completes, run the TechPlan phase completion adversarial review:
+12. Immediately after architecture authoring returns, commit `architecture.md` to the topology-correct control branch (default branch in `flat`, `{featureId}-plan` in `3-branch`) before any session boundary can invalidate the working tree. Run from the workspace root:
+    ```bash
+    uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
+      --repo {control_repo} \
+      --governance-repo {governance_repo} \
+      --feature-id {feature_id} \
+      --files {staged_docs_path}/architecture.md \
+      --push \
+      --no-confirm
+    ```
+    If the command reports `nothing_to_commit`, the artifact was already committed; continue. If it exits non-zero for any other reason, stop and surface the error.
+
+13. After architecture authoring completes, run the TechPlan phase completion adversarial review:
     `lens-adversarial-review --phase techplan --source phase-complete`
 
-13. On review pass, apply the `lens-adversarial-review` Post-Review Command Contract to the command after the review, then update `feature.yaml` phase to `techplan-complete` via `lens-feature-yaml`.
+14. After review passes, commit `techplan-adversarial-review.md` to the topology-correct control branch:
+    ```bash
+    uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
+      --repo {control_repo} \
+      --governance-repo {governance_repo} \
+      --feature-id {feature_id} \
+      --files {staged_docs_path}/techplan-adversarial-review.md \
+      --push \
+      --no-confirm
+    ```
+
+15. On review pass, apply the `lens-adversarial-review` Post-Review Command Contract to the command after the review, then update `feature.yaml` phase to `techplan-complete` via `lens-feature-yaml`.
 
 ## Phase Completion Artifacts
 

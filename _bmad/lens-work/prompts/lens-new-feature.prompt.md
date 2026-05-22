@@ -2,6 +2,10 @@
 description: 'Feature initializer entry controller'
 ---
 
+## Follow-up Questions
+
+Use `vscode_askQuestions` for all follow-up questions instead of freeform chat prompts.
+
 # lens-new-feature
 
 Use this prompt as the entry controller for `/lens-new-feature`. It must delegate to the `lens-init-feature` skill and must not create governance files, branches, or feature records inline.
@@ -61,6 +65,15 @@ not_yet_implemented: `/lens-new-feature` requires the `init-feature-ops.py creat
 ```
 
 4. When the `create` subcommand is available, the skill must perform the progressive-disclosure flow from `lens-init-feature`, including explicit track selection before any write. The derived canonical featureId is read-only; display it for transparency but do not ask the user to approve, shorten, or customize it.
+
+## Result Handling
+
+After `init-feature-ops.py create` returns:
+
+1. Execute `remaining_commands` in order.
+2. Do not execute `gh_commands` during `/new-feature` initialization.
+3. If `planning_pr_created` is `false` and `planning_pr_followup_commands` is present, render `planning_pr_deferred_reason` and display the follow-up command as a deferred next step to run only after planning commits exist on the topology-correct planning branch. In `flat`, no planning PR follow-up is required.
+4. If `planning_pr_created` is `true`, report the returned PR URL/details only; do not synthesize additional PR commands.
 
 ## Scope Boundaries
 

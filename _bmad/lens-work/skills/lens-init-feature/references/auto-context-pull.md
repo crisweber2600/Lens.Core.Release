@@ -26,7 +26,7 @@ After this flow completes, the caller has a structured context payload for the t
 
 - `--governance-repo <path>`: governance repo root.
 - `--feature-id <id>`: feature to load context for.
-- `--depth summary|full`: optional context depth. Default is `summary`.
+- `--depth summaries|full`: optional context depth. Default is `summaries`. `summary` is accepted as a compatibility alias.
 
 ## Flow
 
@@ -41,8 +41,6 @@ After this flow completes, the caller has a structured context payload for the t
 6. Preserve missing paths in `context_paths` with `exists: false` so callers can report gaps without crashing.
 
 ## Invocation
-
-> **not_yet_implemented**: The `fetch-context` and `read-context` subcommands documented below are not yet available in `init-feature-ops.py`. The current implementation only exposes `create-domain` and `create-service`. These commands will be added during the lens-dev-new-codebase-new-feature dev phase. Do not attempt to run them until that phase is complete.
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-init-feature/scripts/init-feature-ops.py \
