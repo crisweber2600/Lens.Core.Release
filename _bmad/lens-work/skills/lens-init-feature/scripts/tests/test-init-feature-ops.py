@@ -255,7 +255,50 @@ def test_fetch_context_fails_when_feature_index_missing(tmp_path: Path):
 
     assert completed.returncode == 1
     assert payload["status"] == "fail"
-    assert payload["error"] == "feature-index.yaml not found"
+    assert payload["error"] == "Feature 'missing-feature' feature.yaml not found"
+
+
+def test_fetch_context_discovers_flat_docs_feature_without_feature_index(tmp_path: Path):
+    gov = tmp_path / "gov"
+    gov.mkdir()
+    workspace = tmp_path / "workspace"
+    feature_dir = workspace / "docs" / "features" / "lens-seed-improvements"
+    feature_dir.mkdir(parents=True)
+    (feature_dir / "feature.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "feature_id": "lens-seed-improvements",
+                "stable_id": "feature:lens-seed-improvements",
+                "entity_type": "feature",
+                "track": "full",
+                "phase": "preplan",
+                "docs_path": "docs/features/lens-seed-improvements",
+                "related_to": ["nextlens-src-topdownlens"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    write_feature(gov, domain="nextlens", service="src", feature_id="nextlens-src-topdownlens")
+
+    completed, payload = run_script(
+        [
+            "fetch-context",
+            "--governance-repo",
+            str(gov),
+            "--workspace-root",
+            str(workspace),
+            "--feature-id",
+            "lens-seed-improvements",
+            "--depth",
+            "full",
+        ]
+    )
+
+    assert completed.returncode == 0
+    assert payload["status"] == "pass"
+    assert payload["feature_id"] == "lens-seed-improvements"
+    assert payload["related"] == ["nextlens-src-topdownlens"]
+    assert any(path.replace("\\", "/").endswith("nextlens-src-topdownlens/summary.md") for path in payload["summaries"])
 
 
 def test_create_domain_basic(tmp_path: Path):

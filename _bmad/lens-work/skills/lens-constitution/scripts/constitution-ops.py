@@ -232,9 +232,11 @@ def merge_constitutions(levels: list[dict]) -> tuple[dict, list[dict]]:
 
 
 def cmd_resolve(args: argparse.Namespace) -> tuple[dict, int]:
-    """Resolve the effective constitution for a domain/service scope."""
+    """Resolve the effective constitution for a scope."""
     # Validate slugs to prevent path traversal
     for slug_name, slug_val in [("domain", args.domain), ("service", args.service)]:
+        if not slug_val:
+            continue
         err, code = _validate_slug(slug_val, slug_name)
         if err:
             return err, code
@@ -256,10 +258,12 @@ def cmd_resolve(args: argparse.Namespace) -> tuple[dict, int]:
     # Build the ordered level list (org first)
     level_specs: list[tuple[str, Path]] = [
         ("org", constitutions_path / "org" / "constitution.md"),
-        ("domain", constitutions_path / args.domain / "constitution.md"),
-        ("service", constitutions_path / args.domain / args.service / "constitution.md"),
     ]
-    if getattr(args, "repo", None):
+    if getattr(args, "domain", None):
+        level_specs.append(("domain", constitutions_path / args.domain / "constitution.md"))
+    if getattr(args, "domain", None) and getattr(args, "service", None):
+        level_specs.append(("service", constitutions_path / args.domain / args.service / "constitution.md"))
+    if getattr(args, "domain", None) and getattr(args, "service", None) and getattr(args, "repo", None):
         level_specs.append((
             "repo",
             constitutions_path / args.domain / args.service / args.repo / "constitution.md",
@@ -307,8 +311,8 @@ def cmd_resolve(args: argparse.Namespace) -> tuple[dict, int]:
     all_warnings.extend(merge_warnings)
 
     result: dict = {
-        "domain": args.domain,
-        "service": args.service,
+        "domain": getattr(args, "domain", None) or None,
+        "service": getattr(args, "service", None) or None,
         "repo": getattr(args, "repo", None) or None,
         "levels_loaded": levels_loaded,
         "resolved_constitution": merged,
@@ -338,16 +342,14 @@ def cmd_check_compliance(args: argparse.Namespace) -> tuple[dict, int]:
     except yaml.YAMLError as exc:
         return {"error": "feature_yaml_parse_error", "detail": str(exc)}, 1
 
-    domain = feature_data.get("domain")
-    service = feature_data.get("service")
+    domain = feature_data.get("domain") or None
+    service = feature_data.get("service") or None
     track = feature_data.get("track", "quickplan")
-
-    if not domain or not service:
-        return {"error": "feature_yaml_missing_fields",
-                "detail": "feature.yaml must have 'domain' and 'service' fields"}, 1
 
     # Validate domain/service from feature.yaml to prevent path traversal
     for slug_name, slug_val in [("domain", domain), ("service", service)]:
+        if not slug_val:
+            continue
         err, code = _validate_slug(slug_val, slug_name)
         if err:
             return err, code
@@ -538,8 +540,8 @@ def build_parser() -> argparse.ArgumentParser:
     # ---- resolve ------------------------------------------------------------
     p_resolve = sub.add_parser("resolve", help="Resolve effective constitution for a scope")
     p_resolve.add_argument("--governance-repo", required=True, help="Path to governance repo")
-    p_resolve.add_argument("--domain", required=True)
-    p_resolve.add_argument("--service", required=True)
+    p_resolve.add_argument("--domain", default=None)
+    p_resolve.add_argument("--service", default=None)
     p_resolve.add_argument("--repo", default=None)
     p_resolve.add_argument("--dry-run", action="store_true")
 
@@ -559,8 +561,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_display = sub.add_parser("progressive-display",
                                  help="Return context-filtered governance rules")
     p_display.add_argument("--governance-repo", required=True)
-    p_display.add_argument("--domain", required=True)
-    p_display.add_argument("--service", required=True)
+    p_display.add_argument("--domain", default=None)
+    p_display.add_argument("--service", default=None)
     p_display.add_argument("--repo", default=None)
     p_display.add_argument("--phase", choices=list(VALID_PHASES), default=None)
     p_display.add_argument("--track", choices=TRACK_NAMES, default=None)

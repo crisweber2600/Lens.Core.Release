@@ -123,6 +123,9 @@ def resolve_feature_path(args: argparse.Namespace) -> Path:
     governance_repo = resolve_governance_repo(args)
     feature_path = discover_feature_yaml(governance_repo, feature_id)
     if feature_path is None:
+        workspace_root = normalize_absolute_path(getattr(args, "workspace_root", None) or os.getcwd())
+        feature_path = discover_feature_yaml(workspace_root, feature_id)
+    if feature_path is None:
         raise FeatureYamlError("feature_yaml_not_found", f"feature.yaml not found for '{feature_id}'")
     return feature_path
 
@@ -267,6 +270,12 @@ def feature_identity(feature_data: dict[str, Any]) -> dict[str, Any]:
 
 def build_read_payload(feature_path: Path, feature_data: dict[str, Any]) -> dict[str, Any]:
     docs = feature_data.get("docs") if isinstance(feature_data.get("docs"), dict) else {}
+    docs_path = docs.get("path") or feature_data.get("docs_path") or feature_data.get("lens_docs_path")
+    governance_docs_path = docs.get("governance_docs_path") or feature_data.get("governance_docs_path")
+    if docs_path and "path" not in docs:
+        docs = {**docs, "path": docs_path}
+    if governance_docs_path and "governance_docs_path" not in docs:
+        docs = {**docs, "governance_docs_path": governance_docs_path}
     transition_history = feature_data.get("transition_history") or feature_data.get("phase_transitions") or []
     return {
         "status": "pass",
@@ -276,8 +285,8 @@ def build_read_payload(feature_path: Path, feature_data: dict[str, Any]) -> dict
         "phase": feature_data.get("phase"),
         "track": feature_data.get("track"),
         "docs": docs,
-        "docs_path": docs.get("path"),
-        "governance_docs_path": docs.get("governance_docs_path"),
+        "docs_path": docs_path,
+        "governance_docs_path": governance_docs_path,
         "target_repos": feature_data.get("target_repos") or [],
         "dependencies": feature_data.get("dependencies") or {},
         "milestones": feature_data.get("milestones") or {},

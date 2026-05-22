@@ -285,17 +285,21 @@ def load_lens_config(
 
 def discover_feature_yaml(governance_repo: str | os.PathLike[str], feature_id: str) -> Path | None:
     """Find a feature.yaml by deterministic filesystem traversal."""
-    features_dir = normalize_absolute_path(governance_repo) / "features"
-    if not features_dir.exists():
-        return None
-
-    for yaml_file in sorted(features_dir.rglob("feature.yaml")):
-        try:
-            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
-        except (OSError, yaml.YAMLError):
+    root = normalize_absolute_path(governance_repo)
+    for features_dir in [root / "features", root / "docs" / "features"]:
+        if not features_dir.exists():
             continue
-        if isinstance(data, dict) and (data.get("featureId") == feature_id or data.get("feature_id") == feature_id):
-            return yaml_file.resolve(strict=False)
+        for yaml_file in sorted(features_dir.rglob("feature.yaml")):
+            try:
+                data = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError):
+                continue
+            if isinstance(data, dict) and (
+                data.get("featureId") == feature_id
+                or data.get("feature_id") == feature_id
+                or data.get("id") == feature_id
+            ):
+                return yaml_file.resolve(strict=False)
     return None
 
 
