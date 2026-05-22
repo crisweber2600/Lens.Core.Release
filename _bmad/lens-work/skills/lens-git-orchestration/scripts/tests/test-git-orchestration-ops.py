@@ -823,6 +823,37 @@ class TestPush:
 
 
 class TestPublishToGovernance:
+    def test_publish_to_governance_uses_control_feature_yaml_when_governance_missing(self, tmp_path):
+        governance = tmp_path / "governance"
+        control = tmp_path / "control"
+        governance.mkdir()
+        control.mkdir()
+
+        control_docs = control / "docs" / "features" / "local-two-tree"
+        control_docs.mkdir(parents=True, exist_ok=True)
+        (control_docs / "feature.yaml").write_text(yaml.safe_dump({
+            "feature_id": "local-two-tree",
+            "track": "full",
+            "phase": "preplan-complete",
+            "docs_path": "docs/features/local-two-tree",
+        }, sort_keys=False))
+        (control_docs / "product-brief.md").write_text("# Product Brief\n")
+
+        result, code = ops.cmd_publish_to_governance(_no_args(
+            governance_repo=str(governance),
+            control_repo=str(control),
+            feature_id="local-two-tree",
+            phase="preplan",
+            artifact=[],
+            dry_run=False,
+        ))
+
+        assert code == 0
+        assert result["feature_yaml_source"] == "control"
+        assert result["control_docs_path"] == str(control_docs)
+        target = governance / "features" / "local-two-tree" / "docs" / "product-brief.md"
+        assert target.exists()
+
     def test_publish_to_governance_copies_phase_artifacts(self, tmp_path):
         governance = tmp_path / "governance"
         control = tmp_path / "control"
