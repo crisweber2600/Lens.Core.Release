@@ -295,6 +295,57 @@ def feature_identifier(data: dict) -> str | None:
     return data.get("featureId") or data.get("feature_id")
 
 
+def find_control_feature_yaml(control_repo: str, feature_id: str) -> Path | None:
+    """Find local feature metadata from control-repo feature archives."""
+    root = Path(control_repo)
+    for features_dir in [root / "docs" / "features", root / "features"]:
+        if not features_dir.exists():
+            continue
+        for yaml_file in sorted(features_dir.rglob("feature.yaml")):
+            data = load_feature_yaml(yaml_file)
+            if isinstance(data, dict) and (
+                feature_identifier(data) == feature_id or data.get("id") == feature_id
+            ):
+                return yaml_file
+    return None
+
+
+def resolve_publish_feature_yaml(
+    governance_repo: str,
+    control_repo: str,
+    feature_id: str,
+    feature_path: str | None = None,
+) -> tuple[Path | None, str | None, str | None]:
+    """Resolve feature metadata for publication from approved governance or control roots."""
+    governance_root = Path(governance_repo)
+    control_root = Path(control_repo)
+
+    if feature_path:
+        explicit_path = Path(feature_path)
+        if not explicit_path.is_absolute():
+            explicit_path = control_root / explicit_path
+        explicit_path = normalize_publish_path(explicit_path)
+        if not explicit_path.is_file():
+            return None, "explicit", "feature_yaml_not_found"
+        if not (
+            is_relative_to_path(explicit_path, governance_root)
+            or is_relative_to_path(explicit_path, control_root)
+        ):
+            return explicit_path, "explicit", "feature_yaml_outside_boundary"
+        source = "governance" if is_relative_to_path(explicit_path, governance_root) else "control"
+        return explicit_path, source, None
+
+    yaml_path = find_feature_yaml(governance_repo, feature_id)
+    if yaml_path is not None:
+        return yaml_path, "governance", None
+
+    yaml_path = find_control_feature_yaml(control_repo, feature_id)
+    if yaml_path is not None:
+        return yaml_path, "control", None
+
+    return None, None, "feature_yaml_not_found"
+
+
 def path_key(path: Path) -> str:
     """Return a normalized path key for cross-platform inventory comparisons."""
     return os.path.normcase(os.path.normpath(str(path.expanduser().resolve())))
@@ -675,9 +726,23 @@ def resolve_docs_roots(control_repo: str, governance_repo: str, feature_data: di
     domain = feature_data.get("domain", "")
     service = feature_data.get("service", "")
     docs_data = feature_data.get("docs") or {}
+    if not isinstance(docs_data, dict):
+        docs_data = {}
 
-    control_rel = docs_data.get("path") or f"docs/{domain}/{service}/{feature_id}"
-    governance_rel = docs_data.get("governance_docs_path") or f"features/{domain}/{service}/{feature_id}/docs"
+    if docs_data.get("path") or feature_data.get("docs_path"):
+        control_rel = docs_data.get("path") or feature_data.get("docs_path")
+    elif domain and service:
+        control_rel = f"docs/{domain}/{service}/{feature_id}"
+    else:
+        control_rel = f"docs/features/{feature_id}"
+
+    governance_rel = docs_data.get("governance_docs_path") or feature_data.get("governance_docs_path")
+    if not governance_rel:
+        governance_rel = (
+            f"features/{domain}/{service}/{feature_id}/docs"
+            if domain and service
+            else f"features/{feature_id}/docs"
+        )
 
     return Path(control_repo) / control_rel, Path(governance_repo) / governance_rel
 
@@ -1811,9 +1876,16 @@ def cmd_publish_to_governance(args: argparse.Namespace) -> tuple[dict[str, Any],
     if err:
         return {"error": "invalid_feature_id", "detail": err}, 1
 
-    yaml_path = find_feature_yaml(governance_repo, feature_id)
+    yaml_path, yaml_source, yaml_error = resolve_publish_feature_yaml(
+        governance_repo,
+        control_repo,
+        feature_id,
+        getattr(args, "feature_path", None),
+    )
     if yaml_path is None:
-        return {"error": "feature_yaml_not_found", "feature_id": feature_id}, 1
+        return {"error": yaml_error or "feature_yaml_not_found", "feature_id": feature_id}, 1
+    if yaml_error:
+        return {"error": yaml_error, "feature_id": feature_id, "path": str(yaml_path)}, 1
 
     feature_data = load_feature_yaml(yaml_path)
     if not feature_data:
@@ -1874,6 +1946,8 @@ def cmd_publish_to_governance(args: argparse.Namespace) -> tuple[dict[str, Any],
 
     return {
         "feature_id": resolved_feature_id,
+        "feature_yaml_path": str(yaml_path),
+        "feature_yaml_source": yaml_source,
         "phase": args.phase,
         "requested_artifacts": requested_artifacts,
         "control_docs_path": str(control_docs_root),
@@ -2104,6 +2178,11 @@ def build_parser() -> argparse.ArgumentParser:
     ptg.add_argument("--governance-repo", required=True)
     ptg.add_argument("--control-repo", required=True)
     ptg.add_argument("--feature-id", required=True)
+    ptg.add_argument(
+        "--feature-path",
+        default=None,
+        help="Optional feature.yaml path, resolved relative to --control-repo when not absolute",
+    )
     ptg.add_argument("--phase", required=True, choices=sorted(PHASE_ARTIFACTS.keys()))
     ptg.add_argument(
         "--artifact",
