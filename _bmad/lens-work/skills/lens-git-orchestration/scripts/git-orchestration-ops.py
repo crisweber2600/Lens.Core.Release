@@ -204,17 +204,26 @@ def topology_or_error(args: argparse.Namespace) -> tuple[str | None, dict[str, A
         return None, {"error": "invalid_control_topology", "detail": str(exc)}
 
 
-def required_control_branches(feature_id: str, control_topology: str = "3-branch") -> list[str]:
+def required_control_branches(
+    feature_id: str,
+    control_topology: str = "3-branch",
+    default_branch: str | None = None,
+) -> list[str]:
     """Return required control-branch topology for a feature."""
     if control_topology == "flat":
-        return [feature_id]
+        return [default_branch] if default_branch else []
     return [feature_id, f"{feature_id}-plan", f"{feature_id}-dev"]
 
 
-def missing_control_branches(repo: str, feature_id: str, control_topology: str = "3-branch") -> list[str]:
+def missing_control_branches(
+    repo: str,
+    feature_id: str,
+    control_topology: str = "3-branch",
+    default_branch: str | None = None,
+) -> list[str]:
     """Return missing control branches in the repo, checking local and remote refs."""
     missing: list[str] = []
-    for branch in required_control_branches(feature_id, control_topology):
+    for branch in required_control_branches(feature_id, control_topology, default_branch):
         if not branch_exists(repo, branch, include_remote=True):
             missing.append(branch)
     return missing
@@ -225,6 +234,7 @@ def branch_for_phase_write(
     phase: str | None,
     phase_step: str | None,
     control_topology: str = "3-branch",
+    default_branch: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Resolve the expected control-repo branch for a phase write."""
     normalized_phase = str(phase or "").strip().lower()
@@ -234,7 +244,7 @@ def branch_for_phase_write(
         return None, "target_repo_only"
 
     if control_topology == "flat":
-        return feature_id, "flat_feature_branch"
+        return default_branch, "flat_default_branch"
 
     if normalized_phase in PHASE_ROUTE_TO_PLAN:
         return f"{feature_id}-plan", "planning_or_express_to_plan"
@@ -948,10 +958,10 @@ def cmd_create_feature_branches(args: argparse.Namespace) -> tuple[dict[str, Any
     if yaml_path is None:
         return {"error": "feature_yaml_not_found", "feature_id": feature_id}, 1
 
-    plan_branch = feature_id if control_topology == "flat" else f"{feature_id}-plan"
-    dev_branch = feature_id if control_topology == "flat" else f"{feature_id}-dev"
+    plan_branch = default_branch if control_topology == "flat" else f"{feature_id}-plan"
+    dev_branch = default_branch if control_topology == "flat" else f"{feature_id}-dev"
 
-    if branch_exists(repo, feature_id, include_remote=True):
+    if control_topology != "flat" and branch_exists(repo, feature_id, include_remote=True):
         return {"error": "branch_already_exists", "branch": feature_id}, 1
     if control_topology != "flat" and branch_exists(repo, plan_branch, include_remote=True):
         return {"error": "branch_already_exists", "branch": plan_branch}, 1
@@ -972,9 +982,9 @@ def cmd_create_feature_branches(args: argparse.Namespace) -> tuple[dict[str, Any
             runner.run(["pull", "origin", default_branch])
         except RuntimeError as exc:
             return {"error": "pull_failed", "detail": str(exc)}, 1
-        runner.run(["checkout", "-b", feature_id])
-        runner.run(["push", "--set-upstream", "origin", feature_id])
         if control_topology != "flat":
+            runner.run(["checkout", "-b", feature_id])
+            runner.run(["push", "--set-upstream", "origin", feature_id])
             runner.run(["checkout", "-b", plan_branch])
             runner.run(["push", "--set-upstream", "origin", plan_branch])
             runner.run(["checkout", "-b", dev_branch])
@@ -987,14 +997,16 @@ def cmd_create_feature_branches(args: argparse.Namespace) -> tuple[dict[str, Any
     return {
         "feature_id": feature_id,
         "control_topology": control_topology,
-        "base_branch": feature_id,
+        "default_branch": default_branch,
+        "base_branch": default_branch if control_topology == "flat" else feature_id,
         "plan_branch": plan_branch,
         "dev_branch": dev_branch,
-        "base_remote": f"origin/{feature_id}",
+        "base_remote": f"origin/{default_branch if control_topology == 'flat' else feature_id}",
         "plan_remote": f"origin/{plan_branch}",
         "dev_remote": f"origin/{dev_branch}",
         "created_branches": required_control_branches(feature_id, control_topology),
         "created_from": default_branch,
+        "no_op": control_topology == "flat",
         "target_repo_branch_modes": list(DEV_BRANCH_MODES),
         "dry_run": args.dry_run,
     }, 0
@@ -1018,6 +1030,7 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
     control_topology, topology_error = topology_or_error(args)
     if topology_error:
         return topology_error, 1
+    default_branch = resolve_default_branch(repo) if control_topology == "flat" else None
 
     if not files:
         return {"error": "no_files_specified"}, 1
@@ -1029,7 +1042,7 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
 
     # Guard: control topology must exist before phase writes begin.
     if not args.dry_run:
-        missing = missing_control_branches(repo, feature_id, control_topology)
+        missing = missing_control_branches(repo, feature_id, control_topology, default_branch)
         if missing:
             return {
                 "error": "missing_required_branch",
@@ -1037,7 +1050,11 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
                 "control_topology": control_topology,
                 "missing_branches": missing,
                 "action": "init-feature",
-                "detail": "Required control branches are missing. Re-run init-feature/create-feature-branches.",
+                "detail": (
+                    "Required control branch is missing."
+                    if control_topology == "flat"
+                    else "Required control branches are missing. Re-run init-feature/create-feature-branches."
+                ),
             }, 1
 
     # Resolve effective phase (args.phase if provided, else from feature.yaml)
@@ -1057,7 +1074,7 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
     # Guard: must be on a branch belonging to this feature
     if not args.dry_run:
         cb = current_branch(repo)
-        allowed = set(required_control_branches(feature_id, control_topology))
+        allowed = set(required_control_branches(feature_id, control_topology, default_branch))
         if control_topology != "flat":
             allowed.add(f"{feature_id}-dev")
         if cb not in allowed and not (control_topology != "flat" and cb.startswith(f"{feature_id}-dev-")):
@@ -1072,6 +1089,7 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
             phase,
             getattr(args, "phase_step", None),
             control_topology,
+            default_branch,
         )
         routing_decision: dict[str, Any] = {
             "control_topology": control_topology,
@@ -1106,6 +1124,7 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
             phase,
             getattr(args, "phase_step", None),
             control_topology,
+            default_branch,
         )
         routing_decision = {
             "control_topology": control_topology,
@@ -1156,13 +1175,17 @@ def cmd_commit_artifacts(args: argparse.Namespace) -> tuple[dict[str, Any], int]
 
     if push:
         try:
-            runner.run(["push"])
+            if control_topology == "flat" and default_branch:
+                runner.run(["push", "origin", default_branch])
+            else:
+                runner.run(["push"])
         except RuntimeError as exc:
             return {"error": "push_failed", "detail": str(exc)}, 1
 
     result: dict[str, Any] = {
         "feature_id": feature_id,
         "control_topology": control_topology,
+        "default_branch": default_branch,
         "branch": current_branch(repo) if not args.dry_run else "(dry-run)",
         "phase": phase,
         "files_committed": list(files),
@@ -1644,15 +1667,16 @@ def cmd_merge_plan(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     control_topology, topology_error = topology_or_error(args)
     if topology_error:
         return topology_error, 1
+    default_branch = resolve_default_branch(repo) if control_topology == "flat" else None
 
-    plan_branch = feature_id if control_topology == "flat" else f"{feature_id}-plan"
+    plan_branch = default_branch if control_topology == "flat" else f"{feature_id}-plan"
 
-    if not branch_exists(repo, feature_id):
+    if control_topology != "flat" and not branch_exists(repo, feature_id):
         return {"error": "base_branch_not_found", "branch": feature_id}, 1
     if control_topology != "flat" and not branch_exists(repo, plan_branch):
         return {"error": "plan_branch_not_found", "branch": plan_branch}, 1
 
-    missing = missing_control_branches(repo, feature_id, control_topology)
+    missing = missing_control_branches(repo, feature_id, control_topology, default_branch)
     if missing:
         return {
             "error": "missing_required_branch",
@@ -1666,8 +1690,9 @@ def cmd_merge_plan(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     result_payload: dict[str, Any] = {
         "feature_id": feature_id,
         "control_topology": control_topology,
+        "default_branch": default_branch,
         "strategy": strategy,
-        "base_branch": feature_id,
+        "base_branch": default_branch if control_topology == "flat" else feature_id,
         "plan_branch": plan_branch,
         "plan_branch_deleted": False,
         "auto_merge_requested": bool(getattr(args, "auto_merge", False)),
@@ -1679,7 +1704,7 @@ def cmd_merge_plan(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             {
                 "status": "pass",
                 "no_op": True,
-                "detail": "Flat control topology stores planning artifacts directly on the feature branch; no plan merge is required.",
+                "detail": "Flat control topology stores planning artifacts directly on the control default branch; no plan merge is required.",
             }
         )
         return result_payload, 0
@@ -1875,9 +1900,10 @@ def cmd_validate_phase_start(args: argparse.Namespace) -> tuple[dict[str, Any], 
     control_topology, topology_error = topology_or_error(args)
     if topology_error:
         return topology_error, 1
-    expected_base = args.expected_base_branch or feature_id
+    default_branch = resolve_default_branch(repo) if control_topology == "flat" else None
+    expected_base = args.expected_base_branch or (default_branch if control_topology == "flat" else feature_id)
 
-    missing = missing_control_branches(repo, feature_id, control_topology)
+    missing = missing_control_branches(repo, feature_id, control_topology, default_branch)
     if missing:
         return {
             "error": "missing_required_branch",
@@ -1919,12 +1945,13 @@ def cmd_validate_phase_start(args: argparse.Namespace) -> tuple[dict[str, Any], 
         "status": "pass",
         "feature_id": feature_id,
         "control_topology": control_topology,
+        "default_branch": default_branch,
         "current_branch": cb,
         "expected_base_branch": expected_base,
         "track": raw_track,
         "track_canonical": track,
         "constitution_gate": "pass",
-        "required_branches": required_control_branches(feature_id, control_topology),
+        "required_branches": required_control_branches(feature_id, control_topology, default_branch),
         "message": "Phase-start validation passed.",
     }, 0
 

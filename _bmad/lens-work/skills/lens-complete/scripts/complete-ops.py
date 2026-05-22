@@ -586,10 +586,10 @@ def _gh_merge_to_main(
     if dry_run:
         return "dry_run", None
 
-    head_branch = head_branch or (feature_id if control_topology == "flat" else f"{feature_id}-dev")
+    head_branch = head_branch or (base_branch if control_topology == "flat" else f"{feature_id}-dev")
     feature_branch = feature_id
     plan_branch = None if control_topology == "flat" else f"{feature_id}-plan"
-    cleanup_branches = [feature_branch] if control_topology == "flat" else [plan_branch, feature_branch, head_branch]
+    cleanup_branches = [] if control_topology == "flat" else [plan_branch, feature_branch, head_branch]
     cwd = str(control_repo)
 
     def _git(*cmd_args: str) -> tuple[int, str, str]:
@@ -619,6 +619,21 @@ def _gh_merge_to_main(
         return None, f"control repo status failed: {err or out}"
     if out:
         return None, f"control repo has uncommitted changes; commit them on {head_branch} before finalizing."
+
+    if control_topology == "flat":
+        code, out, err = _git("fetch", "--prune", "origin")
+        if code != 0:
+            return None, f"control repo fetch failed: {err or out}"
+        code, out, err = _git("checkout", base_branch)
+        if code != 0:
+            return None, f"control repo checkout {base_branch} failed: {err or out}"
+        code, out, err = _git("pull", "--ff-only", "origin", base_branch)
+        if code != 0:
+            return None, f"control repo pull {base_branch} failed: {err or out}"
+        code, out, err = _git("push", "origin", base_branch)
+        if code != 0:
+            return None, f"control repo push {base_branch} failed: {err or out}"
+        return "default_branch", None
 
     def _branch_ref(branch: str, required: bool = True) -> tuple[str | None, str | None]:
         code, out, err = _git("rev-parse", "--verify", branch)
@@ -1059,7 +1074,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         planned_changes.append({
             "repo": str(control_repo),
             "change": (
-                f"validate branches and merge PR: {feature_id} -> main; delete feature branch"
+                "validate clean control default branch and push/pull it"
                 if control_topology == "flat"
                 else f"validate branches and merge PR: {feature_id}-dev -> main; delete related branches"
             ),
@@ -1164,7 +1179,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
             changes_applied.append({
                 "repo": str(control_repo),
                 "change": (
-                    f"PR merged and feature branch deleted: {feature_id} -> main"
+                    "control default branch verified and synchronized"
                     if control_topology == "flat"
                     else f"PR merged and related branches deleted: {feature_id}-dev -> main"
                 ),

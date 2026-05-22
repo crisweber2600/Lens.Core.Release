@@ -96,7 +96,7 @@ def test_control_feature_docs_branch_activation_precedes_phase_entry_validation(
         "Control feature docs branch activation must be documented before phase entry validation"
     )
     assert "{feature_id}-dev" in text
-    assert "{feature_id}`" in text
+    assert "control repo default branch" in text
     assert "control_docs_branch_checkout_failed" in text
     assert "Do not proceed to `sprint_status_missing`, `story_file_missing`" in text
 

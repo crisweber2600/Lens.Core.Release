@@ -117,7 +117,7 @@ uv run --script {project-root}/{release_repo_root}/_bmad/lens-work/skills/lens-s
   --service identity
 ```
 
-The `switch` result always includes `plan_branch`; in `flat` this aliases to `{featureId}`, while legacy `3-branch` uses `{featureId}-plan`. It also includes `control_topology`, `branch_switched: true|false`, `checked_out_branch`, and `branch_error`, using `.` as the default control-repo root when `--control-repo` is omitted.
+The `switch` result always includes `plan_branch`; in `flat` this aliases to the control repo default branch, while legacy `3-branch` uses `{featureId}-plan`. It also includes `control_topology`, `control_default_branch`, `branch_switched: true|false`, `checked_out_branch`, and `branch_error`, using `.` as the default control-repo root when `--control-repo` is omitted.
 
 ## JSON Contracts
 

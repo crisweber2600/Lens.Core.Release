@@ -104,7 +104,7 @@ Expected Step 1 outputs:
 - `tech-plan.md`
 - `sprint-plan.md`
 
-Immediately after QuickPlan returns, commit the Step 1 artifacts to the topology-correct control branch (`{featureId}` in `flat`, `{featureId}-plan` in `3-branch`) before any session boundary can invalidate the working tree. Run from the workspace root:
+Immediately after QuickPlan returns, commit the Step 1 artifacts to the topology-correct control branch (the control repo default branch in `flat`, `{featureId}-plan` in `3-branch`) before any session boundary can invalidate the working tree. Run from the workspace root:
 ```bash
 uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
   --repo {control_repo} \

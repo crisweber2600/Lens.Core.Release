@@ -27,6 +27,7 @@ LIFECYCLE_PATH = Path(__file__).resolve().parents[3] / "lifecycle.yaml"
 CONTEXT_DOC_SUFFIXES = {".md", ".yaml", ".yml"}
 AMBIGUOUS_SERVICE_NAMES = {"api", "auth", "common", "core", "data", "identity"}
 CONTROL_TOPOLOGIES = ("3-branch", "flat")
+DEFAULT_BRANCH_CANDIDATES = ("main", "master", "develop", "trunk")
 
 
 @lru_cache(maxsize=1)
@@ -77,6 +78,32 @@ def resolve_control_topology(args: argparse.Namespace) -> str:
         expected = ", ".join(CONTROL_TOPOLOGIES)
         raise ValueError(f"invalid control_topology '{topology}' — expected one of: {expected}")
     return topology
+
+
+def resolve_default_branch(repo: str | None) -> str:
+    """Resolve a repo's default branch, falling back to known/current branches."""
+    if not repo:
+        return "main"
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        result = None
+    if result and result.returncode == 0:
+        remote_ref = result.stdout.strip()
+        if remote_ref.startswith("origin/"):
+            return remote_ref.removeprefix("origin/")
+    for candidate in DEFAULT_BRANCH_CANDIDATES:
+        if git_branch_exists(repo, candidate, include_remote=True):
+            return candidate
+    try:
+        return git_current_branch(repo) or "main"
+    except RuntimeError:
+        return "main"
 
 
 def now_iso() -> str:
@@ -289,6 +316,26 @@ def git_current_branch(repo: str) -> str:
         msg = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
         raise RuntimeError(f"{git_command_text(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])} failed: {msg}")
     return result.stdout.strip() or "HEAD"
+
+
+def git_branch_exists(repo: str, branch: str, *, include_remote: bool = False) -> bool:
+    result = subprocess.run(
+        git_command_argv(repo, ["branch", "--list", branch]),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    if result.stdout.strip():
+        return True
+    if not include_remote:
+        return False
+    result = subprocess.run(
+        git_command_argv(repo, ["branch", "-r", "--list", f"origin/{branch}"]),
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def worktree_has_local_changes(repo: str) -> bool:
@@ -1208,7 +1255,8 @@ def cmd_create(args: argparse.Namespace) -> dict:
         control_topology = resolve_control_topology(args)
     except ValueError as exc:
         return {"status": "fail", "scope": "feature", "dry_run": bool(args.dry_run), "error": str(exc)}
-    plan_branch = feature_id if control_topology == "flat" else f"{feature_id}-plan"
+    control_default_branch = resolve_default_branch(control_repo) if control_repo else "main"
+    plan_branch = control_default_branch if control_topology == "flat" else f"{feature_id}-plan"
 
     if not track:
         try:
@@ -1331,6 +1379,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
             "feature_id": feature_id,
             "feature_slug": feature_slug,
             "control_topology": control_topology,
+            "control_default_branch": control_default_branch,
             "plan_branch": plan_branch,
             "domain": domain,
             "service": service,
@@ -1464,6 +1513,7 @@ def cmd_create(args: argparse.Namespace) -> dict:
         "feature_id": feature_id,
         "feature_slug": feature_slug,
         "control_topology": control_topology,
+        "control_default_branch": control_default_branch,
         "plan_branch": plan_branch,
         "domain": domain,
         "service": service,

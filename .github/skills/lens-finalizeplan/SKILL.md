@@ -48,7 +48,7 @@ You are the FinalizePlan phase conductor. You coordinate final planning gates, b
 1. Load config from `{project-root}/lens.core/_bmad/config.yaml` and `{project-root}/lens.core/_bmad/config.user.yaml`.
 2. Resolve `{governance_repo}`, `{control_repo}`, `{feature_id}`, and `{module_path}`.
 3. Load `feature.yaml` through `lens-feature-yaml` and resolve `domain`, `service`, `track`, `phase`, `docs.path`, and branch names.
-4. Validate the configured branch model before FinalizePlan proceeds: `flat` requires `{featureId}`; legacy `3-branch` requires `{featureId}` and `{featureId}-plan`.
+4. Validate the configured branch model before FinalizePlan proceeds: `flat` requires the control repo default branch; legacy `3-branch` requires `{featureId}` and `{featureId}-plan`.
 5. Resolve staged docs path from `feature.yaml.docs.path` with fallback `docs/{domain}/{service}/{featureId}` in `{control_repo}`.
 6. Validate the predecessor phase gate and capture `predecessor_phase`:
    - `techplan-complete` or active `techplan` -> `predecessor_phase=techplan`.
@@ -177,7 +177,7 @@ uv run --script {project-root}/lens.core/_bmad/lens-work/scripts/validate-phase-
 
 4. Stop if strict validation fails. Surface missing artifacts or metadata errors and leave `feature.yaml` unchanged.
 5. Commit and push the downstream bundle on the topology-correct control branch through `lens-git-orchestration`.
-6. In legacy `3-branch`, open or verify the final PR from `{featureId}` to `{featureId}-dev` by executing this terminal command; do not narrate the operation or ask the user to create the PR. In `flat`, skip this PR because Dev reads the same `{featureId}` control branch.
+6. In legacy `3-branch`, open or verify the final PR from `{featureId}` to `{featureId}-dev` by executing this terminal command; do not narrate the operation or ask the user to create the PR. In `flat`, skip this PR because Dev reads the same control repo default branch.
 
 ```bash
 uv run --script {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py \

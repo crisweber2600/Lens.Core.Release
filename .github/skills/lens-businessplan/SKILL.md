@@ -106,7 +106,7 @@ updated_at: {ISO timestamp}
 
 When lifecycle-required businessplan artifacts are staged:
 
-1. **Commit authored artifacts:** Immediately after delegation returns, commit all authored artifacts that are present in `{staged_docs_path}` (any of `prd.md`, `ux-design.md`) to the `{featureId}-plan` branch before any session boundary can invalidate the working tree. Run from the workspace root:
+1. **Commit authored artifacts:** Immediately after delegation returns, commit all authored artifacts that are present in `{staged_docs_path}` (any of `prd.md`, `ux-design.md`) to the topology-correct control branch (default branch in `flat`, `{featureId}-plan` in `3-branch`) before any session boundary can invalidate the working tree. Run from the workspace root:
    ```bash
    uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
      --repo {control_repo} \
@@ -120,7 +120,7 @@ When lifecycle-required businessplan artifacts are staged:
 2. **Adversarial review gate:** Run `lens-adversarial-review --phase businessplan --source phase-complete` using `phases.businessplan.completion_review` from `lifecycle.yaml`. Do not run during batch pass 1. In interactive mode and batch pass 2:
    - Verdict `fail`: stop, do not update `feature.yaml`
    - Verdict `pass` or `pass-with-warnings`: apply the `lens-adversarial-review` Post-Review Command Contract to the command after the review, then continue
-3. **Commit review artifact:** After review passes, commit `businessplan-adversarial-review.md` to the `{featureId}-plan` branch:
+3. **Commit review artifact:** After review passes, commit `businessplan-adversarial-review.md` to the topology-correct control branch:
    ```bash
    uv run {project-root}/lens.core/_bmad/lens-work/skills/lens-git-orchestration/scripts/git-orchestration-ops.py commit-artifacts \
      --repo {control_repo} \
