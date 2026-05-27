@@ -13,7 +13,7 @@ Performs deterministic structural checks:
 - All skill folders have at least one capability entry in the CSV
 - No orphan CSV entries pointing to nonexistent skills
 - Menu codes are unique
-- Before/after references point to real capability entries
+- preceded-by/followed-by references point to real capability entries
 - Required module.yaml fields are present
 - CSV column count is consistent
 """
@@ -28,7 +28,7 @@ from pathlib import Path
 REQUIRED_YAML_FIELDS = {"code", "name", "description"}
 CSV_HEADER = [
     "module", "skill", "display-name", "menu-code", "description",
-    "action", "args", "phase", "after", "before", "required",
+    "action", "args", "phase", "preceded-by", "followed-by", "required",
     "output-location", "outputs",
 ]
 
@@ -77,12 +77,22 @@ def parse_yaml_minimal(text: str) -> dict[str, str]:
     return result
 
 
-def parse_csv_rows(csv_text: str) -> tuple[list[str], list[dict[str, str]]]:
-    """Parse CSV text into header and list of row dicts."""
-    reader = csv.DictReader(StringIO(csv_text))
+def parse_csv_rows(csv_text: str) -> tuple[list[str], list[dict[str, str]], list[int]]:
+    """Parse CSV text into (header, row dicts, raw column count per data row).
+
+    ``restval=""`` fills missing trailing fields in a short row with empty strings
+    instead of ``None``, so downstream ``.strip()`` calls stay safe on malformed
+    rows. DictReader pads short rows to the header width, so ``len(row)`` cannot
+    reveal a field shortfall; the raw per-row column counts from ``csv.reader``
+    (blank lines skipped, to stay aligned with DictReader) are returned separately
+    for the column-count consistency check.
+    """
+    reader = csv.DictReader(StringIO(csv_text), restval="")
     header = reader.fieldnames or []
     rows = list(reader)
-    return header, rows
+    raw_rows = list(csv.reader(StringIO(csv_text)))
+    col_counts = [len(r) for r in raw_rows[1:] if r != []]
+    return header, rows, col_counts
 
 
 def validate(module_dir: Path, verbose: bool = False) -> dict:
@@ -163,7 +173,7 @@ def validate(module_dir: Path, verbose: bool = False) -> dict:
 
     # 4. Parse and validate CSV
     csv_text = (csv_dir / "assets" / "module-help.csv").read_text(encoding="utf-8")
-    header, rows = parse_csv_rows(csv_text)
+    header, rows, col_counts = parse_csv_rows(csv_text)
 
     # Check header
     if header != CSV_HEADER:
@@ -182,11 +192,12 @@ def validate(module_dir: Path, verbose: bool = False) -> dict:
 
     info["csv_entries"] = len(rows)
 
-    # 5. Check column count consistency
+    # 5. Check column count consistency (using raw field counts: DictReader pads
+    #    short rows to the header width, so len(row) alone can't detect a shortfall)
     expected_cols = len(CSV_HEADER)
-    for i, row in enumerate(rows):
-        if len(row) != expected_cols:
-            finding("medium", "csv-columns", f"Row {i + 2} has {len(row)} columns, expected {expected_cols}",
+    for i, (row, n_cols) in enumerate(zip(rows, col_counts)):
+        if n_cols != expected_cols:
+            finding("medium", "csv-columns", f"Row {i + 2} has {n_cols} columns, expected {expected_cols}",
                     f"skill={row.get('skill', '?')}")
 
     # 6. Collect skills from CSV and filesystem
@@ -220,7 +231,7 @@ def validate(module_dir: Path, verbose: bool = False) -> dict:
         if len(names) > 1:
             finding("high", "duplicate-menu-code", f"Menu code '{code}' used by multiple entries: {', '.join(names)}")
 
-    # 10. Before/after reference validation
+    # 10. preceded-by/followed-by reference validation
     # Build set of valid capability references (skill:action)
     valid_refs = set()
     for row in rows:
@@ -231,7 +242,7 @@ def validate(module_dir: Path, verbose: bool = False) -> dict:
 
     for row in rows:
         display = row.get("display-name", "?")
-        for field in ("after", "before"):
+        for field in ("preceded-by", "followed-by"):
             value = row.get(field, "").strip()
             if not value:
                 continue
