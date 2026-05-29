@@ -360,7 +360,7 @@ def test_switch_index_errors_are_structured(tmp_path: Path):
     assert code == 1
     assert payload["error"] == "index_malformed"
 
-    (tmp_path / "feature-index.yaml").write_text(yaml.safe_dump({"features": [{"id": "auth-login"}]}))
+    (tmp_path / "feature-index.yaml").write_text(yaml.safe_dump({"features": [{"owner": "cweber"}]}))
     payload, code = run_switch(["switch", "--governance-repo", str(tmp_path), "--feature-id", "auth-login"])
     assert code == 1
     assert payload["error"] == "index_malformed"
@@ -373,6 +373,88 @@ def test_switch_unknown_feature_fails_without_scan(tmp_path: Path):
 
     assert code == 1
     assert payload["error"] == "feature_not_found"
+
+
+def test_list_and_switch_work_intake_feature_without_domain_service(tmp_path: Path):
+    governance = tmp_path / "governance"
+    control = tmp_path / "control"
+    governance.mkdir()
+    control.mkdir()
+    init_git_repo(control)
+    subprocess.run(["git", "-C", str(control), "branch", "-M", "main"], capture_output=True, check=True)
+    archive = control / "docs" / "features" / "lens-seed-improvements"
+    archive.mkdir(parents=True)
+    (archive / "feature.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "stable_id": "feature:lens-seed-improvements",
+                "entity_type": "feature",
+                "title": "Lens Seed Improvements",
+                "feature_id": "lens-seed-improvements",
+                "status": "intake-blocked",
+                "phase": "dev-complete",
+                "track": "full",
+                "updated_at": "2099-01-01T00:00:00Z",
+                "docs_path": "docs/features/lens-seed-improvements",
+                "related_to": [],
+                "depends_on": [],
+                "target_repos": [
+                    {
+                        "name": "lens.core.src",
+                        "local_path": "TargetProjects/lens-dev/new-codebase/lens.core.src",
+                    }
+                ],
+            },
+            sort_keys=False,
+        )
+    )
+    write_index(
+        governance,
+        [
+            {
+                "id": "lens-seed-improvements",
+                "status": "intake-blocked",
+                "phase": "dev-complete",
+                "track": "full",
+                "docs_path": str(archive),
+            }
+        ],
+    )
+
+    list_payload, list_code = run_switch(["list", "--governance-repo", str(governance), "--status-filter", "all"])
+
+    assert list_code == 0
+    assert list_payload["status"] == "pass"
+    assert list_payload["features"][0]["id"] == "lens-seed-improvements"
+    assert list_payload["features"][0]["domain"] == ""
+    assert list_payload["features"][0]["service"] == ""
+    assert list_payload["features"][0]["docs_path"] == str(archive)
+
+    switch_payload, switch_code = run_switch(
+        [
+            "switch",
+            "--governance-repo",
+            str(governance),
+            "--feature-id",
+            "lens-seed-improvements",
+            "--control-repo",
+            str(control),
+            "--control-topology",
+            "flat",
+        ]
+    )
+
+    assert switch_code == 0
+    assert switch_payload["status"] == "pass"
+    assert switch_payload["feature_id"] == "lens-seed-improvements"
+    assert switch_payload["context_path"] == str(archive)
+    assert switch_payload["docs_path"] == "docs/features/lens-seed-improvements"
+    assert switch_payload["domain"] == ""
+    assert switch_payload["service"] == ""
+    assert switch_payload["phase"] == "dev-complete"
+    assert switch_payload["branch_switched"] is True
+    context_data = yaml.safe_load(Path(switch_payload["personal_context_path"]).read_text())
+    assert context_data["feature_id"] == "lens-seed-improvements"
 
 
 def test_switch_success_full_contract_context_paths_and_context_file(tmp_path: Path):
