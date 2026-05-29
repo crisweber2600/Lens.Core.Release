@@ -270,16 +270,39 @@ def summarize_list_entry_state(index_entry: dict, feature_data: dict | None) -> 
     }
 
 
+def feature_id_from_entry(entry: dict) -> str:
+    """Return the canonical feature id field from an index entry."""
+    return str(entry.get("id") or entry.get("featureId") or "").strip()
+
+
+def docs_path_from_entry(entry: dict) -> str:
+    """Return work-intake docs path from an index entry when present."""
+    return str(entry.get("docs_path") or entry.get("docsPath") or "").strip()
+
+
 def feature_yaml_path_for_index_entry(governance_repo: str, entry: dict) -> Path | None:
-    """Return the direct feature.yaml path for an index entry when available."""
-    feature_id = str(entry.get("id") or entry.get("featureId") or "").strip()
-    domain = str(entry.get("domain") or "").strip()
-    service = str(entry.get("service") or "").strip()
-    if not feature_id or not domain or not service:
+    """Return feature.yaml path for either legacy or work-intake index entries."""
+    feature_id = feature_id_from_entry(entry)
+    if not feature_id:
         return None
 
-    feature_path = Path(governance_repo) / "features" / domain / service / feature_id / "feature.yaml"
-    return feature_path if feature_path.exists() else None
+    docs_path = docs_path_from_entry(entry)
+    if docs_path:
+        path = Path(docs_path)
+        candidate_paths = [path] if path.is_absolute() else [Path(governance_repo) / path, governance_workspace_root(governance_repo) / path]
+        for candidate in candidate_paths:
+            feature_path = candidate / "feature.yaml" if candidate.is_dir() or candidate.suffix != ".yaml" else candidate
+            if feature_path.exists():
+                return feature_path
+
+    domain = str(entry.get("domain") or "").strip()
+    service = str(entry.get("service") or "").strip()
+    if domain and service:
+        feature_path = Path(governance_repo) / "features" / domain / service / feature_id / "feature.yaml"
+        if feature_path.exists():
+            return feature_path
+
+    return find_feature_yaml(governance_repo, feature_id)
 
 
 def validate_identifier(value: str, field_name: str) -> str | None:
@@ -322,29 +345,39 @@ def load_feature_index(governance_repo: str) -> tuple[dict | None, dict | None]:
     for index, entry in enumerate(features):
         if not isinstance(entry, dict):
             return None, fail("index_malformed", f"feature-index.yaml features[{index}] must be a mapping")
-        missing = [field for field in ("id", "domain", "service") if not entry.get(field)]
-        if missing:
-            return None, fail(
-                "index_malformed",
-                f"feature-index.yaml features[{index}] missing required field(s): {', '.join(missing)}",
-            )
+        if not feature_id_from_entry(entry):
+            return None, fail("index_malformed", f"feature-index.yaml features[{index}] missing required field(s): id")
 
     return data, None
 
 
+def governance_workspace_root(governance_repo: str) -> Path:
+    """Resolve the control workspace root from the standard TargetProjects/lens layout."""
+    repo_path = Path(governance_repo).resolve()
+    for parent in repo_path.parents:
+        if parent.name == "TargetProjects":
+            return parent.parent
+    return repo_path.parent
+
+
 def find_feature_yaml(governance_repo: str, feature_id: str) -> Path | None:
-    """Find feature.yaml by scanning all domains/services under features/."""
-    features_dir = Path(governance_repo) / "features"
-    if not features_dir.exists():
-        return None
-    for yaml_file in sorted(features_dir.rglob("feature.yaml")):
-        try:
-            with open(yaml_file, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            if data and data.get("featureId") == feature_id:
-                return yaml_file
-        except (yaml.YAMLError, OSError):
+    """Find feature.yaml by scanning governance and work-intake feature archives."""
+    roots = [Path(governance_repo) / "features"]
+    docs_features = governance_workspace_root(governance_repo) / "docs" / "features"
+    if docs_features not in roots:
+        roots.append(docs_features)
+
+    for root in roots:
+        if not root.exists():
             continue
+        for yaml_file in sorted(root.rglob("feature.yaml")):
+            try:
+                with open(yaml_file, encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+                if data and (data.get("featureId") == feature_id or data.get("feature_id") == feature_id):
+                    return yaml_file
+            except (yaml.YAMLError, OSError):
+                continue
     return None
 
 
@@ -404,14 +437,47 @@ def resolve_personal_folder(
 
 def is_stale(feature_data: dict) -> bool:
     """Return True if the feature has not been updated in STALE_DAYS days."""
-    updated = feature_data.get("updated", "")
-    if not updated or not isinstance(updated, str):
+    updated = feature_value(feature_data, "updated", "updated_at")
+    if not updated:
         return False
     try:
         dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
         return (datetime.now(timezone.utc) - dt).days > STALE_DAYS
     except ValueError:
         return False
+
+
+def feature_value(feature_data: dict, *keys: str) -> str:
+    """Return first non-empty feature metadata value for mixed schema support."""
+    for key in keys:
+        value = str(feature_data.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def dependencies_from_feature(feature_data: dict) -> tuple[list[str], list[str], list[str]]:
+    """Return related, depends_on, and blocks from legacy or work-intake metadata."""
+    deps = feature_data.get("dependencies") if isinstance(feature_data.get("dependencies"), dict) else {}
+    return (
+        deps.get("related") or feature_data.get("related_to") or [],
+        deps.get("depends_on") or feature_data.get("depends_on") or [],
+        deps.get("blocks") or feature_data.get("blocks") or [],
+    )
+
+
+def resolve_docs_path(control_repo: str, feature_data: dict, feature_id: str) -> Path:
+    """Resolve docs path for legacy staged docs or work-intake feature archive."""
+    docs_path = feature_value(feature_data, "docs_path", "docsPath")
+    if docs_path:
+        path = Path(docs_path)
+        return path if path.is_absolute() else Path(control_repo) / path
+
+    domain = feature_value(feature_data, "domain")
+    service = feature_value(feature_data, "service")
+    if domain and service:
+        return Path(control_repo) / "docs" / domain / service / feature_id
+    return Path(control_repo) / "docs" / "features" / feature_id
 
 
 def build_context_paths(
@@ -421,21 +487,40 @@ def build_context_paths(
     control_repo: str,
 ) -> dict[str, list[dict]]:
     """Derive cross-feature context paths from dependencies with exists flags."""
-    deps = feature_data.get("dependencies") or {}
-    depends_on: list[str] = deps.get("depends_on") or []
-    related: list[str] = deps.get("related") or []
-    blocks: list[str] = deps.get("blocks") or []
+    related, depends_on, blocks = dependencies_from_feature(feature_data)
 
     def build_item(feature_id: str, kind: str) -> dict:
         path: Path | None = None
         entry = index_by_id.get(feature_id)
-        if entry:
-            d = entry.get("domain", "")
-            s = entry.get("service", "")
-            if kind == "related":
-                path = Path(governance_repo) / "features" / d / s / feature_id / "summary.md"
-            else:
-                path = Path(control_repo) / "docs" / d / s / feature_id / "tech-plan.md"
+        related_feature_path = feature_yaml_path_for_index_entry(governance_repo, entry) if entry else find_feature_yaml(governance_repo, feature_id)
+        related_feature_data: dict = {}
+        if related_feature_path:
+            try:
+                with open(related_feature_path, encoding="utf-8") as f:
+                    loaded = yaml.safe_load(f)
+                related_feature_data = loaded if isinstance(loaded, dict) else {}
+            except (yaml.YAMLError, OSError):
+                related_feature_data = {}
+        if kind == "related" and related_feature_path:
+            path = related_feature_path.parent / "summary.md"
+            if not path.exists():
+                path = related_feature_path.parent / "work.md"
+        elif kind != "related" and related_feature_data:
+            path = resolve_docs_path(control_repo, related_feature_data, feature_id) / "tech-plan.md"
+        elif entry:
+            d = str(entry.get("domain") or "").strip()
+            s = str(entry.get("service") or "").strip()
+            docs_path = docs_path_from_entry(entry)
+            if docs_path:
+                base = Path(docs_path)
+                base = base if base.is_absolute() else Path(control_repo) / base
+                path = base / ("work.md" if kind == "related" else "tech-plan.md")
+            elif d and s:
+                path = (
+                    Path(governance_repo) / "features" / d / s / feature_id / "summary.md"
+                    if kind == "related"
+                    else Path(control_repo) / "docs" / d / s / feature_id / "tech-plan.md"
+                )
         return {
             "id": feature_id,
             "path": str(path) if path else None,
@@ -560,18 +645,22 @@ def cmd_list(args: argparse.Namespace) -> dict:
             if entry_state["is_missing"] and not entry_state["is_index_archived"]:
                 continue
         elif status_filter != "all":
-            if entry_state["is_missing"] or entry_state["is_hidden_by_state"]:
+            if entry_state["is_missing"] and not docs_path_from_entry(f):
+                continue
+            if entry_state["is_hidden_by_state"]:
                 continue
 
+        feature_id = feature_id_from_entry(f)
         features.append(
             {
                 "num": len(features) + 1,
-                "id": f.get("id", ""),
+                "id": feature_id,
                 "domain": f.get("domain", ""),
                 "service": f.get("service", ""),
                 "status": entry_state["effective_status"],
                 "owner": f.get("owner", ""),
                 "summary": f.get("summary", ""),
+                "docs_path": docs_path_from_entry(f) or feature_value(feature_data or {}, "docs_path", "docsPath"),
                 "target_repo": normalize_target_repo_state(feature_data or {}),
             }
         )
@@ -638,7 +727,7 @@ def cmd_switch(args: argparse.Namespace) -> dict:
         return err
 
     raw_features: list[dict] = index_data.get("features") or []
-    index_by_id = {f.get("id"): f for f in raw_features if f.get("id")}
+    index_by_id = {feature_id_from_entry(f): f for f in raw_features if feature_id_from_entry(f)}
 
     index_entry = index_by_id.get(args.feature_id)
     if not index_entry:
@@ -666,12 +755,16 @@ def cmd_switch(args: argparse.Namespace) -> dict:
     context_paths = build_context_paths(feature_data, index_by_id, governance_repo, control_repo)
     context_to_load = context_to_load_from_paths(context_paths)
 
+    domain = feature_value(feature_data, "domain") or str(index_entry.get("domain") or "")
+    service = feature_value(feature_data, "service") or str(index_entry.get("service") or "")
+    docs_path = feature_value(feature_data, "docs_path", "docsPath") or docs_path_from_entry(index_entry)
+
     try:
         personal_context_path = str(
             write_context_yaml(
                 personal_folder,
-                str(feature_data.get("domain", "")),
-                str(feature_data.get("service", "")),
+                domain,
+                service,
                 "lens-switch",
                 feature_id=args.feature_id,
             )
@@ -696,37 +789,43 @@ def cmd_switch(args: argparse.Namespace) -> dict:
 
     target_repo_state = normalize_target_repo_state(feature_data)
     feature_dir = str(feature_path.parent)
+    phase = feature_value(feature_data, "phase")
+    track = feature_value(feature_data, "track")
+    priority = feature_value(feature_data, "priority")
+    updated = feature_value(feature_data, "updated", "updated_at")
     out: dict = {
         "status": "pass",
         "control_topology": control_topology,
         "control_default_branch": control_default_branch,
         "plan_branch": plan_branch,
         "feature_id": args.feature_id,
-        "domain": feature_data.get("domain", ""),
-        "service": feature_data.get("service", ""),
-        "phase": feature_data.get("phase", ""),
-        "track": feature_data.get("track", ""),
-        "priority": feature_data.get("priority", ""),
+        "domain": domain,
+        "service": service,
+        "phase": phase,
+        "track": track,
+        "priority": priority,
         "owner": owner,
         "stale": is_stale(feature_data),
         "context_path": feature_dir,
+        "docs_path": docs_path,
         "personal_context_path": personal_context_path,
         "target_repo_state": target_repo_state,
         "context_paths": context_paths,
         "context_to_load": context_to_load,
         "feature": {
             "id": args.feature_id,
-            "name": feature_data.get("name", ""),
-            "domain": feature_data.get("domain", ""),
-            "service": feature_data.get("service", ""),
-            "phase": feature_data.get("phase", ""),
-            "track": feature_data.get("track", ""),
-            "priority": feature_data.get("priority", ""),
-            "status": index_entry.get("status", "active"),
+            "name": feature_value(feature_data, "name", "title"),
+            "domain": domain,
+            "service": service,
+            "phase": phase,
+            "track": track,
+            "priority": priority,
+            "status": index_entry.get("status", feature_data.get("status", "active")),
             "owner": owner,
             "stale": is_stale(feature_data),
-            "updated": str(feature_data.get("updated", "")),
+            "updated": updated,
             "context_path": feature_dir,
+            "docs_path": docs_path,
             "personal_context_path": personal_context_path,
             "target_repo": target_repo_state,
         },
@@ -788,13 +887,14 @@ def cmd_context_paths(args: argparse.Namespace) -> dict:
     if not isinstance(feature_data, dict):
         return fail("feature_yaml_malformed", "feature.yaml is not a valid YAML mapping")
 
-    # Load index for domain/service lookups of dependency features
+    # Load index for dependency lookups. Malformed optional fields must not block context paths.
     index_data, _ = load_feature_index(governance_repo)
     index_by_id: dict[str, dict] = {}
     if index_data:
         for f in (index_data.get("features") or []):
-            if f.get("id"):
-                index_by_id[f["id"]] = f
+            feature_id = feature_id_from_entry(f)
+            if feature_id:
+                index_by_id[feature_id] = f
 
     control_repo = getattr(args, "control_repo", None) or os.getcwd()
     context_paths = build_context_paths(feature_data, index_by_id, governance_repo, control_repo)
